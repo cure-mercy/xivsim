@@ -447,6 +447,13 @@
         const u = unit(c, CENTRE), toward = frontLine(s) || (k === 0 && shape === 'orb') ? u : [-u[0], -u[1]];
         return add(add(c, toward, shape === 'donut' ? IN_AT + 8 : OUT_AT), flameSide(s), shape === 'donut' ? 18 : 24);
       }
+      // Step by step the tower souls dodge in a plain spread on Athena's side, with no lean towards their
+      // tower: where they stand must not answer the tower question still to come.
+      if(!st.live){
+        const u = unit(c, CENTRE), perp = [-u[1], u[0]];
+        const i = SLOTS.filter(x => !isFlame(x)).indexOf(s);
+        return add(add(c, u, shape === 'donut' ? IN_AT - 8 : OUT_AT + 22), perp, [-42, -14, 14, 42][i]);
+      }
       const tw = towerSpot(towerSideOf(s));
       const u = unit(c, tw), perp = [-u[1], u[0]];
       // for the longer chain a strong soul already takes its waiting spot
@@ -494,7 +501,8 @@
       if(step === 4) return gatherAt(st.second, s);
       if(step === 5) return spotLaser(s);
       if(step === 6) return spotLast(s, 1);
-      return spotTowers(s, false);
+      // the tower question: Heavensflame has spread, the tower souls are still at the last cluster
+      return isFlame(s) ? spotTowers(s, false) : spotLast(s, 1);
     }
     // the last cluster's spots as if the other chain were the shorter: where a wrong order leads you
     function lastSpotIf(short, s, k = 1){
@@ -515,6 +523,15 @@
       T.playBeams(document.getElementById('sc-beams'), SLOTS.filter(s => kindOf(s) === 'strong').map(s => ({ from: CENTRE, through: pos[s] })));
     }
     // the towers drop, the bright souls' small AoEs go off, then Heavensflame
+    // Everyone to their tower spots (you to `mine`, if given), then the towers drop, Heavensflame goes off,
+    // the strong souls step in and the towers resolve (you to `mineLate`).
+    function playTowers(mine, mineLate){
+      runOn(s => spotTowers(s, false), mine);
+      after(arrivalMs(), () => towersAndFlames(() => {
+        runOn(s => spotTowers(s, true), mineLate);
+        after(arrivalMs(), fxTowersGo);
+      }));
+    }
     function towersAndFlames(then){
       // the bright souls' small AoEs ping first, then the towers appear
       fxGlow(settled(), SLOTS.filter(s => kindOf(s) === 'bright'));
@@ -1244,7 +1261,7 @@
         (st.fxTimers || []).forEach(clearTimeout);
         st.fxTimers = [];
         layer('sc-fx'); layer('sc-beams');
-        if(st.step === 7) drawTowersLive(); else layer('sc-towers');
+        layer('sc-towers');
       }
       document.getElementById('sc-playerMarker').setAttribute('opacity','0');
       document.getElementById('sc-playerMarker').removeAttribute('transform');
@@ -1407,13 +1424,10 @@
     function answer6(id){
       lock();
       const ok = id === st.a6;
-      runOn(s => spotTowers(s, false), ok ? spotTowers(st.me, false) : null);
-      // Heavensflame's pull ends here, so the soak plays out straight after
-      const soakToo = ok && st.a6 === 'spread';
-      after(arrivalMs(), () => towersAndFlames(soakToo ? () => {
-        othersTo(s => spotTowers(s, true));
-        after(arrivalMs(), fxTowersGo);
-      } : null));
+      // Heavensflame's pull ends here, so the whole tower part plays out now; otherwise only Heavensflame
+      // spreads, and the towers wait for your tower answer, so nothing gives it away
+      if(ok && st.a6 === 'spread') playTowers(spotTowers(st.me, false), spotTowers(st.me, true));
+      else othersTo(s => isFlame(s) ? spotTowers(s, false) : posAt(s, sceneNow()));
       const d = DEBUFF[st.key];
       let why;
       if(st.a6 === 'drop'){
@@ -1433,8 +1447,10 @@
       lock();
       const d = DEBUFF[st.key];
       const ok = side === st.a7;
-      runOn(s => spotTowers(s, true), d.kind === 'bright' ? towerSpot(side) : dropOf(side));
-      after(arrivalMs(), fxTowersGo);
+      // your tower drops on the side you chose, and you soak or step off it there
+      if(d.kind === 'bright') st.myDrop = towerSpot(side);
+      const near = add(add(CENTRE, outOf(st.third), st.finalShort === 'donut' ? 40 : 110), unit(CENTRE, towerSpot(side)), 20);
+      playTowers(d.kind === 'bright' ? towerSpot(side) : near, d.kind === 'bright' ? postSpot(towerSpot(side)) : towerSpot(side));
       const mine = d.fam === 'astral' ? 'Astral' : 'Umbral';
       const other = d.fam === 'astral' ? 'Umbral' : 'Astral';
       const why = d.kind === 'bright'
