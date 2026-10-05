@@ -1,0 +1,815 @@
+/* Twelfth Circle Trainer: shared styles. Rules used by a single mechanic live in its file under mechanics/. */
+
+:root{
+  /* Syncademy's colours: a violet ground under the dragon, with its flame as the accent */
+  --void: #120922;
+  --void-2: #190d2e;
+  --nebula: #21123a;
+  --nebula-2: #2b1849;
+  --line: rgba(214,186,255,0.16);
+  --line-strong: rgba(214,186,255,0.32);
+  --brand: #9333ea;
+  --brand-soft: #c084fc;
+  --astral: #e2523f;
+  --astral-soft: #f28b6e;
+  --umbral: #4a8fe0;
+  --umbral-soft: #82b6f2;
+  --aether: #f7931e;
+  --aether-soft: #ffcb45;
+  --mist: #f1ecf9;
+  --mist-dim: #a89fc2;
+  --mist-faint: #6d6590;
+  --good: #6fd19a;
+  --bad: #ff5d73;
+  --shape-orange: #f2a53c;
+  --shape-purple: #b083ea;
+  --font-display: 'Cormorant SC', Georgia, 'Times New Roman', serif;
+  --font-body: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Space Mono', 'Courier New', monospace;
+}
+
+*{ box-sizing: border-box; }
+/* The page brings its own basics rather than leaning on a host's reset: hosted as a claude.ai artifact it
+   gets one, served as plain files (GitHub Pages) it does not. Without this rule every drill's panel shows
+   at once, since .layout's display beats the browser's own [hidden] style. */
+[hidden]{ display: none !important; }
+:root{ color-scheme: dark; }
+
+body{
+  margin: 0;
+  background: var(--void);
+  color: var(--mist);
+  font-family: var(--font-body);
+  padding: 40px 20px 64px;
+  line-height: 1.5;
+}
+/* the glows sit on a fixed layer, so they keep their size however tall the page grows */
+body::before{
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 62% 46% at 50% -8%, rgba(147,51,234,0.30), transparent 62%),
+    radial-gradient(ellipse 52% 40% at 92% 100%, rgba(247,147,30,0.14), transparent 62%);
+}
+
+a{ color: var(--aether-soft); }
+
+.page{
+  max-width: 1180px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ---------- Masthead ---------- */
+.masthead{
+  text-align: center;
+  display: flex;
+  justify-content: center;
+}
+.brand{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.brand-logo{
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 10px rgba(147,51,234,0.45));
+}
+@media (max-width: 620px){
+  .brand-logo{ width: 38px; height: 38px; }
+}
+.eyebrow{
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--brand-soft);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* ---------- Playing-as card ---------- */
+.role-select.player-select{ display: grid; gap: 6px; margin-bottom: 10px; }
+.player-select.cols-2{ grid-template-columns: repeat(2, 1fr); }
+.player-select.cols-5{ grid-template-columns: repeat(5, 1fr); }
+.player-select.cols-8{ grid-template-columns: repeat(4, 1fr); }
+.player-select .role-btn{ padding: 9px 4px; font-family: var(--font-mono); font-size: 0.86rem; font-weight: 700; }
+.player-select.cols-2 .role-btn{ font-family: var(--font-body); font-size: 0.95rem; font-weight: 600; }
+.player-select .role-btn[aria-pressed="true"] span{ color: var(--aether-soft) !important; }
+.player-note{ margin: 0; font-size: 0.8rem; color: var(--mist-faint); line-height: 1.45; }
+
+/* ---------- Settings cog & popover ---------- */
+.settings-wrap{ position: relative; display: flex; }
+.icon-btn{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--nebula);
+  color: var(--mist-dim);
+  cursor: pointer;
+}
+.icon-btn svg{ width: 19px; height: 19px; }
+.icon-btn:hover{ color: var(--mist); border-color: var(--line-strong); }
+.icon-btn:focus-visible{ outline: 2px solid var(--mist); outline-offset: 2px; }
+.icon-btn[aria-expanded="true"]{
+  color: var(--aether-soft);
+  border-color: rgba(247,147,30,0.5);
+  background: rgba(247,147,30,0.12);
+}
+.settings-pop{
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 30;
+  width: min(330px, calc(100vw - 40px));
+  background: var(--nebula-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 18px 44px rgba(0,0,0,0.55);
+  text-align: left;
+}
+.settings-pop h2{
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mist-faint);
+  margin: 0 0 12px;
+}
+.opt-row{
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--mist-dim);
+}
+.opt-row input{ margin-top: 3px; width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; accent-color: var(--aether); }
+.opt-row b{ color: var(--mist); display: block; margin-bottom: 3px; font-weight: 600; }
+.opt-row + .opt-row{ margin-top: 12px; }
+.opt-group{ display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.opt-text{ font-size: 0.85rem; line-height: 1.45; color: var(--mist-dim); }
+.opt-text b{ color: var(--mist); display: block; margin-bottom: 3px; font-weight: 600; }
+.opt-seg{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.opt-seg button{
+  padding: 7px 6px; border-radius: 10px; border: 1px solid var(--line-strong);
+  background: rgba(241,236,249,0.04); color: var(--mist-dim);
+  font-family: var(--font-body); font-size: 0.8rem; font-weight: 600; cursor: pointer;
+}
+.opt-seg button:hover{ background: rgba(241,236,249,0.09); color: var(--mist); }
+.opt-seg button:focus-visible{ outline: 2px solid var(--mist); outline-offset: 2px; }
+.opt-seg button[aria-pressed="true"]{
+  background: linear-gradient(180deg, rgba(247,147,30,0.24), rgba(247,147,30,0.10));
+  border-color: rgba(247,147,30,0.55); color: var(--aether-soft);
+}
+
+.auto-row{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--mist-dim);
+  cursor: pointer;
+}
+.auto-row input{ width: 15px; height: 15px; cursor: pointer; accent-color: var(--aether); }
+.auto-row.done{ color: var(--good); cursor: default; }
+.auto-note{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: var(--mist-faint);
+}
+.auto-bar{ flex: 0 1 150px; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.auto-bar i{ display: block; height: 100%; background: var(--aether); transform-origin: left center; transform: scaleX(1); }
+
+/* ---------- Mechanic switcher row: the switcher sits dead centre, the page actions on the right ---------- */
+/* as wide as the two drill columns below (620 + 28 + 360), so the actions end flush with the side column */
+.nav-row{
+  width: 100%;
+  max-width: 1008px;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.nav-row > .mech-nav{ grid-column: 2; }
+.nav-actions{
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.brief-link{
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 14px 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--nebula);
+  color: var(--mist-dim);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.brief-link svg{ width: 18px; height: 18px; }
+.brief-link:hover{ color: var(--mist); border-color: var(--line-strong); }
+.brief-link:focus-visible{ outline: 2px solid var(--mist); outline-offset: 2px; }
+/* With three columns the row takes the same three tracks as the drill below: the switcher centred over
+   the arena, the actions starting at the inner edge of the side column. */
+body.layout-three .nav-row{
+  max-width: none;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 620px) minmax(270px, 340px);
+  justify-content: center;
+  column-gap: 24px;
+}
+body.layout-three .nav-row > .mech-nav{ grid-column: 2; }
+body.layout-three .nav-actions{ grid-column: 3; justify-self: start; }
+/* too narrow for three columns: the actions take their own line above the switcher */
+@media (max-width: 900px){
+  .nav-row{ grid-template-columns: minmax(0, 1fr); row-gap: 14px; }
+  .nav-row > .mech-nav{ grid-column: 1; grid-row: 2; }
+  .nav-actions{ grid-column: 1; grid-row: 1; }
+}
+
+/* ---------- Mechanic switcher ---------- */
+.mech-nav{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+.mech-step:disabled{ opacity: 0.35; cursor: default; color: var(--mist-dim); border-color: var(--line); }
+.mech-wrap{ position: relative; min-width: 0; }
+.mech-current{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(380px, calc(100vw - 136px));
+  padding: 6px 14px 6px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(247,147,30,0.4);
+  background: linear-gradient(180deg, rgba(247,147,30,0.14), rgba(247,147,30,0.04)), var(--nebula);
+  color: var(--mist);
+  font-family: var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+.mech-current:hover{ border-color: rgba(247,147,30,0.65); }
+.mech-current:focus-visible{ outline: 2px solid var(--mist); outline-offset: 2px; }
+.mech-num{
+  flex-shrink: 0;
+  width: 38px; height: 38px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  background: rgba(247,147,30,0.16);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--aether-soft);
+  font-variant-numeric: tabular-nums;
+}
+.mech-meta{ display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.mech-phase{
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mist-faint);
+}
+.mech-name{ font-weight: 600; font-size: 1rem; color: var(--aether-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mech-count{ margin-left: auto; font-family: var(--font-mono); font-size: 0.72rem; color: var(--mist-faint); white-space: nowrap; }
+.mech-caret{ display: flex; color: var(--mist-dim); }
+.mech-caret svg{ width: 16px; height: 16px; transition: transform 0.15s ease; }
+.mech-current[aria-expanded="true"] .mech-caret svg{ transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce){ .mech-caret svg{ transition: none; } }
+@media (max-width: 460px){ .mech-count{ display: none; } .mech-caret{ margin-left: auto; } }
+
+.mech-menu{
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  width: min(560px, calc(100vw - 52px));
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 18px;
+  background: var(--nebula-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 18px 44px rgba(0,0,0,0.55);
+}
+@media (max-width: 600px){ .mech-menu{ grid-template-columns: minmax(0, 1fr); } }
+.mech-group h2{
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mist-faint);
+  margin: 4px 10px 6px;
+}
+.mech-group ul{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.mech-item{
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--mist-dim);
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.mech-item:hover{ background: rgba(241,236,249,0.05); color: var(--mist); }
+.mech-item:focus-visible{ outline: 2px solid var(--mist); outline-offset: -2px; }
+.mech-item[aria-current="true"]{ background: rgba(247,147,30,0.12); border-color: rgba(247,147,30,0.4); color: var(--aether-soft); font-weight: 600; }
+.mech-item-num{ font-family: var(--font-mono); font-size: 0.74rem; color: var(--mist-faint); font-variant-numeric: tabular-nums; }
+.mech-item[aria-current="true"] .mech-item-num{ color: var(--aether); }
+.mech-item:disabled{ cursor: default; color: var(--mist-faint); opacity: 0.6; }
+.mech-item:disabled:hover{ background: none; color: var(--mist-faint); }
+.mech-lock{ margin-left: auto; font-family: var(--font-mono); font-size: 0.64rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mist-faint); }
+
+/* ---------- Layout ---------- */
+/* Three areas: the lead (step pill, the ask, the fight clock; on wide screens also the feedback, the pace
+   and how the call works), the arena, and the side cards. Narrower, the lead sits above the arena and the
+   feedback below it; on a phone everything stacks. */
+.layout{
+  display: grid;
+  grid-template-columns: minmax(0, 620px) minmax(280px, 360px);
+  grid-template-areas: "lead hud" "arena hud" "fb hud";
+  grid-template-rows: auto auto 1fr;
+  column-gap: 28px;
+  row-gap: 16px;
+  align-items: start;
+  justify-content: center;
+}
+.layout > .lead{ grid-area: lead; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.layout > .arena-wrap{ grid-area: arena; min-width: 0; }
+.layout > .feedback{ grid-area: fb; min-width: 0; }
+.layout > .hud{ grid-area: hud; min-width: 0; }
+.lead .prompt{ margin: 0; }
+/* three columns: on by default from 1240 px, or always when chosen in the settings (never on a phone) */
+body.layout-three .page{ max-width: 1360px; }
+body.layout-three .layout{
+  grid-template-columns: minmax(240px, 300px) minmax(0, 620px) minmax(270px, 340px);
+  grid-template-areas: "lead arena hud";
+  grid-template-rows: auto;
+  column-gap: 24px;
+}
+@media (max-width: 900px){
+  .layout{ grid-template-columns: minmax(0, 1fr); grid-template-areas: "lead" "arena" "fb" "hud"; grid-template-rows: auto; }
+}
+
+/* ---------- Arena panel ---------- */
+.arena-wrap{
+  background: linear-gradient(180deg, var(--nebula), var(--void-2));
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  overflow: hidden;
+}
+.arena-wrap::before{
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 20% 15%, rgba(255,255,255,0.05), transparent 40%);
+  pointer-events: none;
+}
+
+.step-row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.history-ctrls{ display: flex; gap: 6px; margin-left: auto; }
+.history-btn{
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--mist-dim);
+  background: rgba(241,236,249,0.05);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 6px 12px 6px 9px;
+  cursor: pointer;
+}
+.history-btn svg{ width: 15px; height: 15px; }
+.history-btn:hover:not(:disabled){ color: var(--mist); background: rgba(241,236,249,0.1); }
+.history-btn:focus-visible{ outline: 2px solid var(--mist); outline-offset: 2px; }
+.history-btn:disabled{ opacity: 0.35; cursor: default; }
+.history-reroll{ margin-left: 6px; color: var(--aether-soft); border-color: rgba(247,147,30,0.4); }
+.history-reroll:hover:not(:disabled){ color: var(--aether-soft); background: rgba(247,147,30,0.12); }
+.history-btn:not(.history-reroll) span{ display: none; }
+.history-btn:not(.history-reroll){ padding: 7px; }
+@media (max-width: 520px){
+  .history-reroll span{ display: none; }
+  .history-reroll{ padding: 7px; }
+}
+.step-pill{
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--aether-soft);
+  background: rgba(247,147,30,0.10);
+  border: 1px solid rgba(247,147,30,0.32);
+  border-radius: 999px;
+  padding: 6px 14px;
+}
+.arena-svg{ width: 100%; height: auto; display: block; touch-action: manipulation; }
+/* Arenas with a row of answer buttons under the floor keep a strip for it. The row and a feedback message
+   never show together: while feedback is up, or when the step has no buttons, the strip folds away and
+   whatever follows the arena moves up into the same spot. */
+.layout:has(.feedback:not([hidden])) .arena-svg [id$="-zones"]{ display: none; }
+.arena-svg[style*="--zone-band"]:has([id$="-zones"]:empty),
+.layout:has(.feedback:not([hidden])) .arena-svg[style*="--zone-band"]{
+  margin-bottom: calc(-1 * var(--zone-band));
+}
+.arena-caption{ margin: 0; font-size: 0.76rem; color: var(--mist-faint); text-align: center; }
+
+.hit{ cursor: pointer; }
+.hit:focus{ outline: none; }
+.hit:focus .focus-ring{ opacity: 1; }
+.hit[aria-disabled="true"]{ cursor: default; pointer-events: none; }
+
+/* Clickable spots: a marching flame-amber ring, drawn over the players, so a spot on top of your own
+   marker still reads as something to click. Only the plain spot circles take it; coloured objects that
+   are themselves clickable (towers and the like) keep their own look. */
+.arena-svg .hit > circle:not(.focus-ring):is([stroke="var(--mist)"], [stroke="var(--line-strong)"]){
+  stroke: var(--aether-soft);
+  stroke-dasharray: 4 3;
+  fill: rgba(247,147,30,0.13);
+  transition: fill 0.15s ease, stroke 0.15s ease;
+}
+.arena-svg .hit:hover > circle:not(.focus-ring):is([stroke="var(--mist)"], [stroke="var(--line-strong)"]){
+  stroke: var(--aether);
+  fill: rgba(247,147,30,0.28);
+}
+@media (prefers-reduced-motion: no-preference){
+  .arena-svg .hit:not([aria-disabled="true"]) > circle:not(.focus-ring):is([stroke="var(--mist)"], [stroke="var(--line-strong)"]){
+    animation: hit-march 1.4s linear infinite;
+  }
+}
+@keyframes hit-march{ to{ stroke-dashoffset: -14; } }
+
+/* Freeform picks: the whole board is the answer, so it takes a faint amber wash, and a dashed ghost of
+   your marker follows the pointer (or the arrow keys) to show the spot a click would choose. */
+.arena-svg .hit.free-pick{ cursor: crosshair; }
+.arena-svg .hit.free-pick .free-area{ fill: rgba(247,147,30,0.035); stroke: none; transition: fill 0.15s ease; }
+.arena-svg .hit.free-pick:hover .free-area{ fill: rgba(247,147,30,0.07); }
+.arena-svg .hit.free-pick:focus-visible .free-area{ stroke: var(--mist); stroke-width: 2; }
+.arena-svg .free-ring{ fill: rgba(247,147,30,0.18); stroke: var(--aether-soft); stroke-width: 2; stroke-dasharray: 4 3; }
+@media (prefers-reduced-motion: no-preference){
+  .arena-svg .free-ring{ animation: hit-march 1.4s linear infinite; }
+}
+
+/* While a step waits for your pick, the other players' tokens step back so the eye goes to the spots.
+   Their debuff and soul icons stay at full strength: several steps are about reading them. */
+.arena-svg .player > *{ transition: opacity 0.2s ease; }
+/* A drill where the whole party is the puzzle opts out with data-dim="off"; elsewhere the players your
+   answer depends on (a partner, say) are marked related and stay in view too. */
+.layout:not([data-dim="off"]):has(.feedback[hidden]):has(.hit:not([aria-disabled="true"])) .arena-svg .player:not(.me):not(.related) > :not(image):not(rect){
+  opacity: 0.4;
+}
+@media (prefers-reduced-motion: reduce){ .arena-svg .player > *{ transition: none; } }
+
+/* ---------- Feedback ---------- */
+.feedback{
+  border-radius: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  background: var(--nebula-2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.feedback[data-verdict="good"]{ border-color: rgba(111,209,154,0.45); background: rgba(111,209,154,0.08); }
+.feedback[data-verdict="bad"]{ border-color: rgba(255,93,115,0.45); background: rgba(255,93,115,0.08); }
+.feedback[data-verdict="warn"]{ border-color: rgba(247,147,30,0.5); background: rgba(247,147,30,0.08); }
+.feedback-head{
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+.feedback[data-verdict="good"] .feedback-head{ color: var(--good); }
+.feedback[data-verdict="bad"] .feedback-head{ color: var(--bad); }
+.feedback[data-verdict="warn"] .feedback-head{ color: var(--aether-soft); }
+.feedback-body{ color: var(--mist-dim); font-size: 0.92rem; }
+.feedback-body b{ color: var(--mist); font-weight: 600; }
+.btn{
+  align-self: flex-start;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--void);
+  background: linear-gradient(180deg, var(--aether-soft), var(--aether));
+  border: none;
+  border-radius: 10px;
+  padding: 9px 18px;
+  cursor: pointer;
+}
+.btn:hover{ filter: brightness(1.08); }
+.btn:focus-visible{ outline: 2px solid var(--mist); outline-offset: 2px; }
+.btn.bad{ background: linear-gradient(180deg, #ff8a97, var(--bad)); color: #2a0a10; }
+.btn.ghost{
+  background: transparent;
+  color: var(--mist-dim);
+  border: 1px solid var(--line-strong);
+}
+.btn.ghost:hover{ color: var(--mist); }
+.btn-row{ display: flex; gap: 8px; flex-wrap: wrap; }
+.btn.fb-undo{ display: inline-flex; align-items: center; gap: 7px; }
+.btn.fb-undo svg{ width: 16px; height: 16px; flex-shrink: 0; }
+
+/* ---------- HUD cards ---------- */
+.hud{ display: flex; flex-direction: column; gap: 18px; }
+.card{
+  background: var(--nebula);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px 18px 20px;
+}
+.card h2{
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mist-faint);
+  margin: 0 0 12px;
+}
+/* a card heading with a "?" beside it: the explanation shows on hover, focus or tap */
+.card-head{ display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px; }
+.card-head h2{ margin: 0; }
+.info-tip{ position: relative; display: inline-flex; }
+.info-btn{
+  width: 22px; height: 22px; padding: 0;
+  display: grid; place-items: center;
+  border-radius: 50%; border: 1px solid var(--line-strong); background: transparent;
+  color: var(--mist-dim); font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; line-height: 1;
+  cursor: help; transition: color 0.15s ease, border-color 0.15s ease;
+}
+.info-btn:hover, .info-tip.open .info-btn{ color: var(--mist); border-color: var(--brand-soft); }
+.info-btn:focus-visible{ outline: 2px solid var(--brand-soft); outline-offset: 2px; }
+.info-pop{
+  position: absolute; top: calc(100% + 8px); right: -6px; z-index: 30;
+  width: min(260px, 72vw); padding: 10px 12px;
+  background: var(--nebula-2); border: 1px solid var(--line-strong); border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+  font-family: var(--font-body); font-size: 0.8rem; line-height: 1.45; color: var(--mist-dim);
+  text-transform: none; letter-spacing: normal;
+  opacity: 0; visibility: hidden; transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+}
+.info-pop b{ color: var(--mist); font-weight: 600; }
+.info-tip:hover .info-pop, .info-btn:focus-visible + .info-pop, .info-tip.open .info-pop{ opacity: 1; visibility: visible; transform: none; }
+@media (prefers-reduced-motion: reduce){ .info-btn, .info-pop{ transition: none; } }
+
+.role-select{ display: flex; gap: 8px; margin-bottom: 14px; }
+.role-btn{
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: rgba(241,236,249,0.04);
+  color: var(--mist-dim);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+.role-btn svg{ width: 18px; height: 18px; flex-shrink: 0; }
+.role-btn:hover{ background: rgba(241,236,249,0.09); color: var(--mist); }
+.role-btn:focus-visible{ outline: 2px solid var(--mist); outline-offset: 2px; }
+.role-btn[aria-pressed="true"]{
+  background: linear-gradient(180deg, rgba(247,147,30,0.24), rgba(247,147,30,0.10));
+  border-color: rgba(247,147,30,0.55);
+  color: var(--aether-soft);
+}
+
+.assign-row{ display: flex; gap: 10px; margin-bottom: 12px; }
+.badge{
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+.badge svg{ width: 22px; height: 22px; flex-shrink: 0; }
+.badge img{ width: 24px; height: 32px; border-radius: 4px; flex-shrink: 0; object-fit: contain; }
+.badge.astral{ background: rgba(226,82,63,0.12); color: var(--astral-soft); border-color: rgba(226,82,63,0.4); }
+.badge.umbral{ background: rgba(74,143,224,0.12); color: var(--umbral-soft); border-color: rgba(74,143,224,0.4); }
+.badge.role{ background: rgba(241,236,249,0.06); color: var(--mist); }
+.assign-text{ margin: 0; color: var(--mist-dim); font-size: 0.9rem; }
+
+.lc-row{ display: flex; align-items: center; gap: 14px; }
+.lc-num{
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1.6rem;
+  color: var(--aether-soft);
+  background: rgba(247,147,30,0.12);
+  border: 1px solid rgba(247,147,30,0.45);
+  border-radius: 14px;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* the step's ask, directly under the step pill and above the arena */
+.prompt{ margin: -4px 0 14px; }
+.instr-text{
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--aether);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(247,147,30,0.10), rgba(247,147,30,0.03)), var(--nebula);
+  color: var(--mist);
+  font-size: 0.96rem;
+}
+.instr-text .hl{ color: var(--aether-soft); font-weight: 600; }
+.prompt-note{ color: var(--mist-dim); font-size: 0.86rem; line-height: 1.45; }
+/* Without hints only what you need to act on stays: the scene-setting before each ask and the arena's
+   captions wait for the hints switch too. */
+body:not(.show-hints) .prompt-note, body:not(.show-hints) .arena-caption{ display: none; }
+/* the tells a step would otherwise give away; the settings switch brings them back, quietly */
+.hint{ display: none; }
+.hint-only{ display: none !important; }
+body.show-hints .hint-only{ display: block !important; }
+body.show-hints .hint{
+  display: inline;
+  color: var(--mist-faint);
+  font-size: 0.88em;
+  font-weight: 400;
+  font-style: italic;
+}
+.hint b, .hint .hl{ color: var(--mist-dim); font-weight: 600; }
+.prompt-ask{ color: var(--mist); font-size: 1.06rem; font-weight: 600; line-height: 1.4; text-wrap: balance; }
+
+/* the reference card: the whole header row is the toggle, with a labelled chevron chip on the right */
+details.card{ padding: 0; transition: border-color 0.15s ease; }
+details.card:hover{ border-color: var(--line-strong); }
+details.card summary{
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mist-dim);
+  list-style: none;
+}
+details.card summary::-webkit-details-marker{ display: none; }
+details.card summary:hover{ color: var(--mist); }
+details.card summary:focus-visible{ outline: 2px solid var(--mist); outline-offset: -2px; }
+details.card summary::after{
+  content: "Show";
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 30px 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background:
+    no-repeat right 11px center / 10px 10px
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 3.5 5 7l3.5-3.5' fill='none' stroke='%23f6d685' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"),
+    rgba(247,147,30,0.08);
+  color: var(--aether-soft);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+}
+details.card summary:hover::after{ background-color: rgba(247,147,30,0.16); border-color: rgba(247,147,30,0.5); }
+details.card[open] summary::after{
+  content: "Hide";
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 6.5 5 3l3.5 3.5' fill='none' stroke='%23f6d685' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+details.card[open] summary{ padding-bottom: 6px; }
+details.card[open]{ padding-bottom: 20px; }
+@media (prefers-reduced-motion: reduce){ details.card{ transition: none; } }
+details.card ol{
+  margin: 6px 18px 0;
+  padding-left: 1.1em;
+  color: var(--mist-dim);
+  font-size: 0.88rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+details.card li b{ color: var(--mist); }
+
+.legend-list{ display: flex; flex-direction: column; gap: 10px; margin: 0; }
+.legend-item{ display: flex; align-items: center; gap: 10px; font-size: 0.86rem; color: var(--mist-dim); }
+.legend-item svg{ width: 20px; height: 20px; flex-shrink: 0; }
+.legend-item img{ width: 24px; height: 32px; border-radius: 4px; flex-shrink: 0; object-fit: contain; }
+.legend-item b{ color: var(--mist); font-weight: 600; }
+
+@media (prefers-reduced-motion: no-preference){
+  .spin{ animation: spin 40s linear infinite; transform-origin: 300px 300px; }
+  .pulse{ animation: pulse 2.2s ease-in-out infinite; }
+  .stripe{ animation: stripe 1s linear infinite; }
+  .auto-bar i{ animation: fillbar 1.1s linear forwards; }
+}
+/* an add's line AoE, played once as it fires: the rectangle lights up, one pulse runs along it, it fades */
+.beam{ display: none; }
+@media (prefers-reduced-motion: no-preference){
+  .beam{ display: inline; }
+  .beam-band{ opacity: 0; animation: beam-band 1.6s ease-in-out forwards; }
+  .beam-pulse{ opacity: 0; animation: beam-pulse 0.55s cubic-bezier(0.45, 0, 0.55, 1) 0.4s forwards; }
+}
+@keyframes beam-band{
+  0%{ opacity: 0; }
+  20%{ opacity: 1; }
+  68%{ opacity: 1; }
+  100%{ opacity: 0; }
+}
+@keyframes beam-pulse{
+  0%{ transform: translateX(0); opacity: 0; }
+  12%{ opacity: 1; }
+  88%{ opacity: 1; }
+  100%{ transform: translateX(var(--run)); opacity: 0; }
+}
+/* where you should have been, after a wrong answer */
+.target-mark{ animation: target-in 0.35s ease-out both; }
+@keyframes target-in{ from{ opacity: 0; } to{ opacity: 1; } }
+@media (prefers-reduced-motion: reduce){ .target-mark{ animation: none; } }
+.target-dim{ fill: rgba(10,6,22,0.55); }
+.target-ring{ fill: rgba(111,209,154,0.14); stroke: var(--good); stroke-width: 2.5; stroke-dasharray: 6 4; }
+.target-dot{ fill: var(--good); }
+.target-path{ stroke: var(--good); stroke-width: 2; stroke-dasharray: 2 6; stroke-linecap: round; opacity: 0.85; }
+.target-label{ font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.1em; fill: var(--good); paint-order: stroke; stroke: var(--void); stroke-width: 3px; }
+@media (prefers-reduced-motion: no-preference){ .target-ring{ animation: target-march 1.2s linear infinite; } }
+@keyframes target-march{ to{ stroke-dashoffset: -20; } }
+/* Paradeigma's adds appear on a ring around Athena, about her hitbox, and zoom out to their spots */
+.add-zoom{ animation: add-zoom 0.9s cubic-bezier(0.2, 0.75, 0.3, 1) both; }
+@keyframes add-zoom{
+  from{ transform: translate(var(--zx), var(--zy)); opacity: var(--zo, 0.2); }
+  to{ transform: translate(var(--tx, 0px), var(--ty, 0px)); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce){ .add-zoom{ animation: none; } }
+@keyframes fillbar{ from{ transform: scaleX(0); } to{ transform: scaleX(1); } }
+@keyframes spin{ to{ transform: rotate(360deg); } }
+@keyframes pulse{ 0%,100%{ opacity: 0.55; } 50%{ opacity: 1; } }
+/* Marching borders loop seamlessly only when the offset is a whole number of dash repeats: every
+   .stripe pattern repeats every 12 or 24 units, every hit-march pattern every 7 or 14. */
+@keyframes stripe{ to{ stroke-dashoffset: -24; } }
