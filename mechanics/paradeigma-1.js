@@ -237,7 +237,7 @@
       document.getElementById('p1-start').parentNode.style.minHeight = '';
       // the most casts the strip ever shows at once, so it keeps that many rows throughout
       st.castSlots = Math.max(1, ...Array.from({ length: 300 }, (_, k) => liveRows(k * 0.1).length));
-      st.moves = {};
+      st.moves = {}; st.track = [];
       const start = startPositions();
       SLOTS.forEach(s => setAt(s, start[s]));
       render();
@@ -290,6 +290,8 @@
       const now = sceneNow(), from = posAt(s, now);
       const t0 = now + (delay === undefined ? STEP_OFF : delay);
       st.moves[s] = { from, to, t0, dur: Math.hypot(to[0] - from[0], to[1] - from[1]) / (st.live ? SPEED : STEP_SPEED) };
+      // your own runs against the clock, for the recap
+      if(st.live && s === st.me) st.track.push({ at: now, t0, dur: st.moves[s].dur });
       kickAnim();
     }
     function othersTo(pos, delay){ SLOTS.filter(s => s !== st.me).forEach(s => moveTo(s, pos[s], delay)); }
@@ -386,11 +388,14 @@
       lock();
       renderLive();
       fb.dataset.noUndo = '1';
+      // each part counts from when White Flame picks its targets, or the cleave where there is no wave
+      const due = [LIVE.lock[0], LIVE.cleave[1], LIVE.lock[2]];
+      const run = i => T.recapText(T.runRecap(st.track, i ? due[i - 1] : 0, due[i]), due[i]);
       showFeedback(fb, true, 'Paradeigma cleared',
         `You were in place for both waves of White Flame and clear of all three cleaves.<ul>`
-        + `<li>First wave and cleave at <b>${LIVE.cleave[0].toFixed(1)} s</b>: in place</li>`
-        + `<li>Second cleave at <b>${LIVE.cleave[1].toFixed(1)} s</b>: on the safe side, swapping</li>`
-        + `<li>Second wave and third cleave at <b>${LIVE.cleave[2].toFixed(1)} s</b>: in place</li></ul>`,
+        + `<li>First wave and cleave at <b>${due[0].toFixed(1)} s</b>: ${run(0)}</li>`
+        + `<li>Second cleave at <b>${due[1].toFixed(1)} s</b>: on the safe side, ${run(1)}</li>`
+        + `<li>Second wave and third cleave at <b>${due[2].toFixed(1)} s</b>: ${run(2)}</li></ul>`,
         'New pull ↻', () => newRound());
     }
 

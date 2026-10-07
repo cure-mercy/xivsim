@@ -413,32 +413,29 @@
       at('partyTowers', LIVE.laserHit + 0.2, () => { others('post', 0.3, 'tether'); others('lane', 0.3, 'soul'); });
       at('soakFx', LIVE.soak[1], fxSoak);
       at('partyLanes', LIVE.soak[1] + 0.1, () => others('lane', 0.2, 'tether'));
-      // Each part resolves on where you actually are at that moment, wherever you clicked.
+      // Each part resolves on where you actually are at that moment, wherever you were headed.
       if(tethered){
         at('lasers', LIVE.lasers[1], () => {
-          const p = posAt(st.me, LIVE.lasers[1]), k = lastPick(), a = st.answers.one = answerNow(IN_RANGE.stretch);
+          const p = posAt(st.me, LIVE.lasers[1]);
           const where = stretchVerdict(p);
           if(where === 'across'){ st.youSpot = p; st.step = 2; render(); shootLasers(); return; }
-          if(!k) return lateFail('Too slow to stretch', `The line AoE fired while you were still standing next to Athena, close to your add, and at that range it is lethal. The tethers landed at <b>${LIVE.reveal.toFixed(1)} s</b> and the laser went off at <b>${LIVE.lasers[1].toFixed(1)} s</b>: you have about <b>${(LIVE.lasers[1] - LIVE.reveal).toFixed(1)} seconds</b> to read it and run.`);
-          if(stretchVerdict(k.p) === 'across') return lateFail('Still on your way', `You set off at <b>${a.t.toFixed(1)} s</b>, but you would only have been far enough across at <b>${a.ready.toFixed(1)} s</b>, and the laser fired at <b>${LIVE.lasers[1].toFixed(1)} s</b> with your tether still short. Read your add and go as soon as the tethers land.`);
+          if(!T.runRecap(st.track, 0, LIVE.lasers[1])) return lateFail('Too slow to stretch', `The line AoE fired while you were still standing next to Athena, close to your add, and at that range it is lethal. The tethers landed at <b>${LIVE.reveal.toFixed(1)} s</b> and the laser went off at <b>${LIVE.lasers[1].toFixed(1)} s</b>: you have about <b>${(LIVE.lasers[1] - LIVE.reveal).toFixed(1)} seconds</b> to read it and run.`);
           judgeStretch({ id: where, xy: p });
         });
         at('soak', LIVE.soak[1], () => {
-          const p = posAt(st.me, LIVE.soak[1]), k = lastPick(), a = st.answers.two = answerNow(TOWER_R);
+          const p = posAt(st.me, LIVE.soak[1]);
           const inside = towerHolding(p);
           if(inside === st.myQuad){ st.step = 3; render(); return; }
           if(inside){ drawTowers(true); return judgeTower(inside); }
-          if(k && towerHolding(k.p) === st.myQuad) return lateFail('Tower not reached', `You set off for the tower at <b>${a.t.toFixed(1)} s</b> but would only have been inside it at <b>${a.ready.toFixed(1)} s</b>, after it resolved at <b>${LIVE.soak[1].toFixed(1)} s</b>, so it exploded.`);
           return lateFail('Tower not soaked', `Nobody stood in the tower dropped for you when it resolved at <b>${LIVE.soak[1].toFixed(1)} s</b>, so it exploded. It is the tower in your own quadrant, <b>${st.myQuad}</b>, and you have to be inside its circle. After your laser lands at ${LIVE.laserHit.toFixed(1)} s there are only about <b>${(LIVE.soak[1] - LIVE.laserHit).toFixed(1)} seconds</b> to step into it.`);
         });
       } else {
         at('towers', LIVE.towers, () => {
           // the tower drops wherever you actually are, a little short of the spot if you were still running
-          const p = st.myDrop = posAt(st.me, LIVE.towers), k = lastPick(), a = st.answers.one = answerNow(IN_RANGE.drop);
+          const p = st.myDrop = posAt(st.me, LIVE.towers);
           const where = dropVerdict(p);
           if(where === 'ok'){ st.step = 3; render(); shootLasers(); fxTowers(); return; }
-          if(!k) return lateFail('Too slow to place your tower', `Your Soul ran out at <b>${LIVE.towers.toFixed(1)} s</b> while you were still by Athena, so your tower dropped there, away from the tethered player who needed it, and it went unsoaked. The Soul lasts <b>9 seconds</b> from the moment it lands.`);
-          if(dropVerdict(k.p) === 'ok') return lateFail('Tower dropped short', `You set off for your spot at <b>${a.t.toFixed(1)} s</b>, but would only have been near enough at <b>${a.ready.toFixed(1)} s</b>, and your Soul ran out at <b>${LIVE.towers.toFixed(1)} s</b> on the way. The tower dropped short of its spot.`);
+          if(!T.runRecap(st.track, 0, LIVE.towers)) return lateFail('Too slow to place your tower', `Your Soul ran out at <b>${LIVE.towers.toFixed(1)} s</b> while you were still by Athena, so your tower dropped there, away from the tethered player who needed it, and it went unsoaked. The Soul lasts <b>9 seconds</b> from the moment it lands.`);
           if(where !== 'off') return judgeStepOne(where);
           const t = towerAt(st.correctQuadrant), yalms = Math.hypot(p[0] - t[0], p[1] - t[1]) / 12;
           lateFail('Tower out of place', `Your tower dropped in the right quadrant, <b>${st.correctQuadrant}</b>, but about <b>${yalms.toFixed(0)} yalms</b> from its spot at max melee on the intercardinal, just outside Athena's target circle. There it sits in the way of the tethered player's laser or out of their reach, and it goes unsoaked. Sweep: <b>${traceExplanation()}</b>.`);
@@ -478,7 +475,6 @@
     // Against the clock a click anywhere sends you running there; you can change course at any time.
     function livePick(p){
       if(st.over) return;
-      st.picks.push({ t: clock.t, p });
       moveTo(st.me, p);
       st.lockNote = 'Moving to your spot';
       renderLive();
@@ -523,15 +519,6 @@
     }
     // once the pull is over, nothing to click and no marker following the pointer
     function endFreePick(){ document.getElementById('eg-freeHits').innerHTML = ''; }
-    const lastPick = since => { const k = st.picks.filter(k => k.t >= (since || 0)); return k.length ? k[k.length - 1] : null; };
-    // What the run in progress amounts to at a deadline: when you set off, and when you were within `tol`
-    // of where you clicked.
-    function answerNow(tol){
-      const k = lastPick();
-      if(!k) return null;
-      const m = st.actors[st.me].move;
-      return { t: k.t, arrive: m.t0 + m.dur, ready: inRangeAt(tol) };
-    }
     // Where a tethered player stands, as a stretch: across (right), short of far enough, still on the add's
     // half, or over the add's centreline into the diagonal quadrant.
     function stretchVerdict(p){
@@ -579,8 +566,8 @@
     // against the clock, which spot each late failure was about
     function lateTarget(title){
       const tethered = st.part === 'tether';
-      if(/tower not|not soaked|not reached/i.test(title)) return towerCentre(st.myQuad);
-      if(/place your tower|dropped short|out of place/i.test(title)) return towerAt(st.correctQuadrant);
+      if(/not soaked/i.test(title)) return towerCentre(st.myQuad);
+      if(/place your tower|out of place/i.test(title)) return towerAt(st.correctQuadrant);
       if(/caught in the tower/i.test(title)) return laneSpot(asideSpot(st.correctQuadrant));
       if(/caught in a laser/i.test(title)) return tethered ? acrossSpot() : towerAt(st.correctQuadrant);
       return acrossSpot();
@@ -693,7 +680,7 @@
       stopClock();
       st.live = pace === 'live';
       st.phase = st.live ? 'pre' : 'live';
-      st.fired = {}; st.answers = {}; st.over = false; st.lockNote = ''; st.picks = [];
+      st.fired = {}; st.over = false; st.lockNote = ''; st.track = [];
       document.getElementById('eg-target').innerHTML = '';
       document.getElementById('eg-freeHits').innerHTML = '';
       (st.fxTimers || []).forEach(clearTimeout);
@@ -730,11 +717,6 @@
     // tower to soak it, within about 3.75 yalms of your tower spot, about 3.5 yalms of your stretch spot, and
     // inside the lane (its half-width less your own) for the dive.
     const IN_RANGE = { drop: 45, stretch: 42, soak: 22, lane: 48 };
-    // When your current run first brings you within `tol` of where it ends.
-    function inRangeAt(tol){
-      const m = st.actors[st.me].move;
-      return m.t0 + Math.max(0, m.dur * SPEED - tol) / SPEED;
-    }
     const svgEl = (name, attrs) => { const n = document.createElementNS(SVG_NS, name); for(const k in attrs) n.setAttribute(k, attrs[k]); return n; };
 
     function buildParty(){
@@ -810,6 +792,7 @@
       const from = posAt(id, sceneNow());
       const dur = Math.hypot(to[0] - from[0], to[1] - from[1]) / (st.live ? SPEED : STEP_SPEED);
       st.actors[id].move = { from, to, t0, dur };
+      if(st.live && id === st.me) st.track.push({ at: sceneNow(), t0, dur });
       kickAnim();
       return t0 + dur;
     }
@@ -1414,24 +1397,17 @@
       drawHazards(true);
       const tethered = st.part === 'tether';
       // a lane counts as picked if you set off after your job was done
-      const k = lastPick(tethered ? LIVE.soak[1] : LIVE.towers);
-      if(k){
-        const m = st.actors[st.me].move;
-        st.answers.three = { t: k.t, arrive: m.t0 + m.dur, ready: m.t0 + Math.max(0, Math.abs(m.to[0] - m.from[0]) - IN_RANGE.lane) / SPEED };
-      }
-      const moved = !!k;
-      const running = moved && st.answers.three.arrive > LIVE.rayHit + 0.05;
+      const job = tethered ? LIVE.soak[1] : LIVE.towers;
+      const lane = T.runRecap(st.track, job, LIVE.rayHit);
+      const moved = !!lane, running = moved && lane.ready === Infinity;
       const col = colOf(posAt(st.me, LIVE.rayHit)[0]);
       const safe = st.safeCols.includes(col);
-      const line = (label, a, deadline) => !a ? `<li>${label}: not done</li>`
-        : a.ready <= deadline
-          ? `<li>${label}: set off at <b>${a.t.toFixed(1)} s</b>, in place at <b>${a.ready.toFixed(1)} s</b>, ${(deadline - a.ready).toFixed(1)} s to spare</li>`
-          : `<li>${label}: set off at <b>${a.t.toFixed(1)} s</b>, still on the move but close enough when it counted</li>`;
+      const line = (label, since, deadline, idle) => `<li>${label}: ${T.recapText(T.runRecap(st.track, since, deadline), deadline, idle)}</li>`;
       const recap = `<ul>`
         + (tethered
-          ? line('Tether stretched', st.answers.one, LIVE.lasers[1]) + line('Tower soaked', st.answers.two, LIVE.soak[1])
-          : line('Tower spot reached', st.answers.one, LIVE.towers))
-        + line('Lane picked', st.answers.three, LIVE.rayHit) + `</ul>`;
+          ? line('Tether stretched', 0, LIVE.lasers[1]) + line('Tower soaked', LIVE.lasers[1], LIVE.soak[1])
+          : line('Tower spot reached', 0, LIVE.towers))
+        + line('Lane picked', job, LIVE.rayHit, 'not done') + `</ul>`;
       const cols = st.redCols.map(c => COL_WORD[c]).join(' and ');
       renderLive();
       fb.dataset.noUndo = '1';

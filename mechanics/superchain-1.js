@@ -330,7 +330,7 @@
       (st.fxTimers || []).forEach(clearTimeout);
       st.fxTimers = [];
       st.live = pace === 'live';
-      st.fired = {}; st.over = false; st.picks = []; st.myDrop = null; st.lockNote = '';
+      st.fired = {}; st.over = false; st.track = []; st.myDrop = null; st.lockNote = '';
       ['sc-fx', 'sc-beams', 'sc-towers', 'sc-under', 'sc-target', 'sc-freeHits', 'sc-players'].forEach(id => { document.getElementById(id).innerHTML = ''; });
       clock.t = LIVE.start;
       panel.classList.toggle('sc-timed', st.live);
@@ -560,6 +560,8 @@
       const now = sceneNow(), from = posAt(s, now);
       const t0 = now + (delay === undefined ? STEP_OFF : delay);
       st.moves[s] = { from, to, t0, dur: Math.hypot(to[0] - from[0], to[1] - from[1]) / (st.live ? SPEED : STEP_SPEED) };
+      // your own runs against the clock, for the recap
+      if(st.live && s === st.me) st.track.push({ at: now, t0, dur: st.moves[s].dur });
       kickAnim();
     }
     function othersTo(fn, delay){ SLOTS.filter(s => s !== st.me).forEach(s => moveTo(s, fn(s), delay)); }
@@ -818,12 +820,15 @@
       endFreePick();
       renderLive();
       fb.dataset.noUndo = '1';
+      const last = isFlame(st.me) ? LIVE.flame : kindOf(st.me) === 'bright' ? LIVE.drop : LIVE.towers;
+      const run = (since, due) => T.recapText(T.runRecap(st.track, since, due), due);
+      const legs = st.a5 === 'out-in' ? ['out', 'in'] : ['in', 'out'];
       showFeedback(fb, true, 'Superchain cleared',
         `You were where you needed to be at every beat.<ul>`
-        + `<li>First cluster at <b>${LIVE.first.toFixed(1)} s</b>: ${st.firstDist === 'donut' ? 'in' : 'out'}, ${st.firstForm === 'orange' ? 'spread' : 'paired'}</li>`
-        + `<li>Impact lasers at <b>${LIVE.lasers.toFixed(1)} s</b>: shared in the ${GROUP[st.key]} group</li>`
-        + `<li>Last cluster at <b>${LIVE.third[0].toFixed(1)}</b> and <b>${LIVE.third[1].toFixed(1)} s</b>: ${st.a5 === 'out-in' ? 'out, then in' : 'in, then out'}</li>`
-        + `<li>${{ bright:'Tower dropped', strong:'Tower soaked', flame:'Heavensflame spread' }[isFlame(st.me) ? 'flame' : kindOf(st.me)]} by <b>${(isFlame(st.me) ? LIVE.flame : kindOf(st.me) === 'bright' ? LIVE.drop : LIVE.towers).toFixed(1)} s</b></li></ul>`,
+        + `<li>First cluster at <b>${LIVE.first.toFixed(1)} s</b>: ${st.firstDist === 'donut' ? 'in' : 'out'}, ${st.firstForm === 'orange' ? 'spread' : 'paired'}; ${run(0, LIVE.first)}</li>`
+        + `<li>Impact lasers at <b>${LIVE.lasers.toFixed(1)} s</b>: shared in the ${GROUP[st.key]} group; ${run(LIVE.first, LIVE.lasers)}</li>`
+        + `<li>Last cluster at <b>${LIVE.third[0].toFixed(1)}</b> and <b>${LIVE.third[1].toFixed(1)} s</b>: ${legs[0]}, ${run(LIVE.lasers, LIVE.third[0])}; then ${legs[1]}, ${run(LIVE.third[0], LIVE.third[1])}</li>`
+        + `<li>${{ bright:'Tower dropped', strong:'Tower soaked', flame:'Heavensflame spread' }[isFlame(st.me) ? 'flame' : kindOf(st.me)]} by <b>${last.toFixed(1)} s</b>: ${run(LIVE.third[1], last)}</li></ul>`,
         'New pull ↻', () => newRound());
     }
 
@@ -1110,7 +1115,6 @@
     // Against the clock a click anywhere sends you running there; you can change course at any time.
     function livePick(p){
       if(st.over) return;
-      st.picks.push({ t: clock.t, p });
       moveTo(st.me, p);
       st.lockNote = 'Moving to your spot';
       renderLive();
