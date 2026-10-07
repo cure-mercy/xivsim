@@ -1345,7 +1345,7 @@
       if(ok){
         const last = next > 7;
         showFeedback(fb, true, title, why,
-          last ? 'Next mechanic →' : 'Continue → Step ' + next,
+          last ? 'New pull ↻' : 'Continue → Step ' + next,
           last ? () => newRound() : () => { st.step = next; render(); });
       } else {
         showFeedback(fb, false, title, why, 'New pull ↻', () => newRound());

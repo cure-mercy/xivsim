@@ -1395,7 +1395,7 @@
       if(st.safeCols.includes(col)){
         showFeedback(fb, true, 'Mechanic cleared',
           `You moved into the ${COL_WORD[col]} column, clear of the dive. The two red adds north of the platform fired down the <b>${st.redCols.map(c => COL_WORD[c]).join(' and ')}</b> columns.`,
-          'Next mechanic →', () => newRound());
+          'New pull ↻', () => newRound());
       } else {
         showTarget(laneSpot(st.myLane));
         showFeedback(fb, false, 'Caught in the dive',
