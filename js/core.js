@@ -559,36 +559,6 @@ window.Twelfth = (function(){
     return [+el.getAttribute('data-x'), +el.getAttribute('data-y')];
   }
 
-  /* ---------- the recap of your runs, against the clock ---------- */
-  // Each drill logs the runs it gives you as { at, t0, dur }: when it was set, when you set off and for how
-  // long you run. A run ends when it reaches its spot or the next one replaces it, and runs that follow
-  // straight on from each other, with no more than a beat standing still between, are one stretch on the
-  // move.
-  function movingSpans(track){
-    const spans = [];
-    track.forEach((m, k) => {
-      const end = Math.min(m.t0 + m.dur, k + 1 < track.length ? track[k + 1].at : Infinity);
-      if(end <= m.t0) return;
-      const last = spans[spans.length - 1];
-      if(last && m.t0 - last[1] <= 0.1) last[1] = Math.max(last[1], end);
-      else spans.push([m.t0, end]);
-    });
-    return spans;
-  }
-  // For a part you could set off for at `since` that resolves at `deadline`: when you set off and when you
-  // came to a stop (Infinity if you were still moving when it resolved), or null if you never moved between.
-  function runRecap(track, since, deadline){
-    const span = movingSpans(track).filter(s => s[1] > since && s[0] < deadline).pop();
-    if(!span) return null;
-    return { t: Math.max(span[0], since), ready: span[1] <= deadline ? span[1] : Infinity };
-  }
-  // The same, as words for a recap line; `idle` is what to say if you never moved.
-  function recapText(r, deadline, idle){
-    if(!r) return idle || 'already in place';
-    if(r.ready === Infinity) return `set off at <b>${r.t.toFixed(1)} s</b>, still on the move when it went off`;
-    return `set off at <b>${r.t.toFixed(1)} s</b>, in place at <b>${r.ready.toFixed(1)} s</b>, ${(deadline - r.ready).toFixed(1)} s to spare`;
-  }
-
   // Watches a panel for the clicks that move a pull along: answers on the arena and feedback buttons.
   function watchPanel(id){
     const panel = document.getElementById('panel-' + id);
@@ -950,7 +920,7 @@ window.Twelfth = (function(){
 
   return {
     shared, shuffle, showFeedback, trackRounds,
-    isReplaying: () => replaying, playBeams, freePoint, runRecap, recapText, zoomAdd, unzoomAdd, drawTarget, holdPrompt, castRows, leadBeside,
+    isReplaying: () => replaying, playBeams, freePoint, zoomAdd, unzoomAdd, drawTarget, holdPrompt, castRows, leadBeside,
     aspectColor, aspectSoft, aspectLabel, tiltIcon, soulIcon,
     register, start
   };

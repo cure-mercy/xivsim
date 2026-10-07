@@ -36,7 +36,6 @@
     .eg-cast.mine .eg-cast-bar i{ background: var(--brand-soft); }
     .eg-cast.mine .eg-left{ color: var(--brand-soft); }
     .eg-idle{ font-size: 0.8rem; color: var(--mist-faint); }
-    .eg-locked{ font-size: 0.8rem; color: var(--good); }
     /* the arena before the debuffs land: no tethers, no aspects, nothing to click yet */
     /* players never take a click: the tower or spot under them stays reachable */
     #eg-souls, #panel-engrave [id^="tp-"]{ pointer-events: none; }
@@ -419,7 +418,7 @@
           const p = posAt(st.me, LIVE.lasers[1]);
           const where = stretchVerdict(p);
           if(where === 'across'){ st.youSpot = p; st.step = 2; render(); shootLasers(); return; }
-          if(!T.runRecap(st.track, 0, LIVE.lasers[1])) return lateFail('Too slow to stretch', `The line AoE fired while you were still standing next to Athena, close to your add, and at that range it is lethal. The tethers landed at <b>${LIVE.reveal.toFixed(1)} s</b> and the laser went off at <b>${LIVE.lasers[1].toFixed(1)} s</b>: you have about <b>${(LIVE.lasers[1] - LIVE.reveal).toFixed(1)} seconds</b> to read it and run.`);
+          if(!lastRun(0, LIVE.lasers[1])) return lateFail('Too slow to stretch', `The line AoE fired while you were still standing next to Athena, close to your add, and at that range it is lethal. The tethers landed at <b>${LIVE.reveal.toFixed(1)} s</b> and the laser went off at <b>${LIVE.lasers[1].toFixed(1)} s</b>: you have about <b>${(LIVE.lasers[1] - LIVE.reveal).toFixed(1)} seconds</b> to read it and run.`);
           judgeStretch({ id: where, xy: p });
         });
         at('soak', LIVE.soak[1], () => {
@@ -435,7 +434,7 @@
           const p = st.myDrop = posAt(st.me, LIVE.towers);
           const where = dropVerdict(p);
           if(where === 'ok'){ st.step = 3; render(); shootLasers(); fxTowers(); return; }
-          if(!T.runRecap(st.track, 0, LIVE.towers)) return lateFail('Too slow to place your tower', `Your Soul ran out at <b>${LIVE.towers.toFixed(1)} s</b> while you were still by Athena, so your tower dropped there, away from the tethered player who needed it, and it went unsoaked. The Soul lasts <b>9 seconds</b> from the moment it lands.`);
+          if(!lastRun(0, LIVE.towers)) return lateFail('Too slow to place your tower', `Your Soul ran out at <b>${LIVE.towers.toFixed(1)} s</b> while you were still by Athena, so your tower dropped there, away from the tethered player who needed it, and it went unsoaked. The Soul lasts <b>9 seconds</b> from the moment it lands.`);
           if(where !== 'off') return judgeStepOne(where);
           const t = towerAt(st.correctQuadrant), yalms = Math.hypot(p[0] - t[0], p[1] - t[1]) / 12;
           lateFail('Tower out of place', `Your tower dropped in the right quadrant, <b>${st.correctQuadrant}</b>, but about <b>${yalms.toFixed(0)} yalms</b> from its spot at max melee on the intercardinal, just outside Athena's target circle. There it sits in the way of the tethered player's laser or out of their reach, and it goes unsoaked. Sweep: <b>${traceExplanation()}</b>.`);
@@ -476,8 +475,6 @@
     function livePick(p){
       if(st.over) return;
       moveTo(st.me, p);
-      st.lockNote = 'Moving to your spot';
-      renderLive();
     }
     // The click layer over the whole floor, as in Paradeigma I: a ghost marker follows the pointer, and the
     // arrow keys move it for a keyboard pick.
@@ -611,8 +608,7 @@
       casts.innerHTML = T.castRows('eg', rows, clock.t,
         clock.t < LIVE.reveal ? 'Paradeigma has gone off. Nothing to do yet.' : 'Nothing casting.', st.castSlots);
       const note = document.getElementById('eg-liveNote');
-      const locked = st.lockNote ? `<span class="eg-locked">${st.lockNote}</span>` : '';
-      note.innerHTML = !clock.running && !st.over && clock.t <= LIVE.start ? '<span class="hint">Click to move as the fight unfolds: where you stand when each part resolves is what counts.</span>' : locked;
+      note.innerHTML = !clock.running && !st.over && clock.t <= LIVE.start ? '<span class="hint">Click to move as the fight unfolds: where you stand when each part resolves is what counts.</span>' : '';
     }
 
     function setPace(p){
@@ -680,7 +676,7 @@
       stopClock();
       st.live = pace === 'live';
       st.phase = st.live ? 'pre' : 'live';
-      st.fired = {}; st.over = false; st.lockNote = ''; st.track = [];
+      st.fired = {}; st.over = false; st.track = [];
       document.getElementById('eg-target').innerHTML = '';
       document.getElementById('eg-freeHits').innerHTML = '';
       (st.fxTimers || []).forEach(clearTimeout);
@@ -795,6 +791,24 @@
       if(st.live && id === st.me) st.track.push({ at: sceneNow(), t0, dur });
       kickAnim();
       return t0 + dur;
+    }
+    // Your runs against the clock, logged as { at, t0, dur }: when each was set, when you set off and for how
+    // long you run. A run ends when it reaches its spot or the next one replaces it, and runs that follow
+    // straight on from each other, with no more than a beat standing still between, are one stretch on the
+    // move. For a part you could set off for at `since` that resolves at `deadline`, the last such stretch:
+    // when you set off and when you stopped (Infinity if still moving when it resolved), or null if you never
+    // moved between.
+    function lastRun(since, deadline){
+      const spans = [];
+      st.track.forEach((m, k) => {
+        const end = Math.min(m.t0 + m.dur, k + 1 < st.track.length ? st.track[k + 1].at : Infinity);
+        if(end <= m.t0) return;
+        const last = spans[spans.length - 1];
+        if(last && m.t0 - last[1] <= 0.1) last[1] = Math.max(last[1], end);
+        else spans.push([m.t0, end]);
+      });
+      const span = spans.filter(s => s[1] > since && s[0] < deadline).pop();
+      return span ? { t: Math.max(span[0], since), ready: span[1] <= deadline ? span[1] : Infinity } : null;
     }
     function others(phase, delay, kind){
       Object.keys(st.actors).filter(id => id !== st.me && (!kind || st.actors[id].kind === kind))
@@ -1398,32 +1412,26 @@
       const tethered = st.part === 'tether';
       // a lane counts as picked if you set off after your job was done
       const job = tethered ? LIVE.soak[1] : LIVE.towers;
-      const lane = T.runRecap(st.track, job, LIVE.rayHit);
+      const lane = lastRun(job, LIVE.rayHit);
       const moved = !!lane, running = moved && lane.ready === Infinity;
       const col = colOf(posAt(st.me, LIVE.rayHit)[0]);
       const safe = st.safeCols.includes(col);
-      const line = (label, since, deadline, idle) => `<li>${label}: ${T.recapText(T.runRecap(st.track, since, deadline), deadline, idle)}</li>`;
-      const recap = `<ul>`
-        + (tethered
-          ? line('Tether stretched', 0, LIVE.lasers[1]) + line('Tower soaked', LIVE.lasers[1], LIVE.soak[1])
-          : line('Tower spot reached', 0, LIVE.towers))
-        + line('Lane picked', job, LIVE.rayHit, 'not done') + `</ul>`;
       const cols = st.redCols.map(c => COL_WORD[c]).join(' and ');
       renderLive();
       fb.dataset.noUndo = '1';
       // only where you are when it lands counts, even mid-run
       if(safe && moved){
         showFeedback(fb, true, 'Mechanic cleared',
-          `Ray of Light landed at <b>${LIVE.rayHit.toFixed(1)} s</b>, down the ${cols} columns, and you were clear in the ${COL_WORD[col]} one${running ? ', still on the move' : ''}.${recap}`,
+          `Ray of Light landed at <b>${LIVE.rayHit.toFixed(1)} s</b>, down the ${cols} columns, and you were clear in the ${COL_WORD[col]} one${running ? ', still on the move' : ''}.`,
           'New pull ↻', () => newRound());
       } else if(safe){
         showFeedback(fb, 'warn', 'Safe by luck',
-          `You never picked a lane, but where you stood, in the ${COL_WORD[col]} column, happened to be clear of Ray of Light down the ${cols} columns. Next time, find the gap between the red adds as soon as your job is done.${recap}`,
+          `You never picked a lane, but where you stood, in the ${COL_WORD[col]} column, happened to be clear of Ray of Light down the ${cols} columns. Next time, find the gap between the red adds as soon as your job is done.`,
           'New pull ↻', () => newRound());
       } else {
         showTarget(laneSpot(posAt(st.me, LIVE.rayHit)));
         showFeedback(fb, false, 'Caught in the dive',
-          `Ray of Light landed at <b>${LIVE.rayHit.toFixed(1)} s</b> down the ${cols} columns, and you were ${running ? 'still running, in' : moved ? '' : 'still '}${running ? ' ' : 'in '}the ${COL_WORD[col]} one. Its cast starts at ${LIVE.ray[0].toFixed(1)} s, so as soon as your job is done, look north for the red adds and step into a column with none above it.${recap}`,
+          `Ray of Light landed at <b>${LIVE.rayHit.toFixed(1)} s</b> down the ${cols} columns, and you were ${running ? 'still running, in' : moved ? '' : 'still '}${running ? ' ' : 'in '}the ${COL_WORD[col]} one. Its cast starts at ${LIVE.ray[0].toFixed(1)} s, so as soon as your job is done, look north for the red adds and step into a column with none above it.`,
           'New pull ↻', () => newRound());
       }
     }

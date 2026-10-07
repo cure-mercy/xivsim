@@ -21,7 +21,6 @@
     .sc-cast.mine .sc-cast-bar i{ background: var(--brand-soft); }
     .sc-cast.mine .sc-left{ color: var(--brand-soft); }
     .sc-idle{ font-size: 0.8rem; color: var(--mist-faint); }
-    .sc-locked{ font-size: 0.8rem; color: var(--good); }
     /* the mechanic resolving: the AoEs flash, the towers pop in, the souls burst */
     .sc-fx-pop, .sc-fx-burst{ transform-box: fill-box; transform-origin: center; }
     @media (prefers-reduced-motion: no-preference){
@@ -330,7 +329,7 @@
       (st.fxTimers || []).forEach(clearTimeout);
       st.fxTimers = [];
       st.live = pace === 'live';
-      st.fired = {}; st.over = false; st.track = []; st.myDrop = null; st.lockNote = '';
+      st.fired = {}; st.over = false; st.myDrop = null;
       ['sc-fx', 'sc-beams', 'sc-towers', 'sc-under', 'sc-target', 'sc-freeHits', 'sc-players'].forEach(id => { document.getElementById(id).innerHTML = ''; });
       clock.t = LIVE.start;
       panel.classList.toggle('sc-timed', st.live);
@@ -560,8 +559,6 @@
       const now = sceneNow(), from = posAt(s, now);
       const t0 = now + (delay === undefined ? STEP_OFF : delay);
       st.moves[s] = { from, to, t0, dur: Math.hypot(to[0] - from[0], to[1] - from[1]) / (st.live ? SPEED : STEP_SPEED) };
-      // your own runs against the clock, for the recap
-      if(st.live && s === st.me) st.track.push({ at: now, t0, dur: st.moves[s].dur });
       kickAnim();
     }
     function othersTo(fn, delay){ SLOTS.filter(s => s !== st.me).forEach(s => moveTo(s, fn(s), delay)); }
@@ -663,12 +660,15 @@
         const word = st.purpleRole === 'support' ? 'supports' : 'DPS';
         if(targeted.includes(st.me)){
           const sharers = SLOTS.filter(s => s !== st.me && inCone(c, me, pos[s]));
-          if(sharers.length === 0) return liveFail('Cone not shared', `The purple jack aimed its cones at the ${word}, you among them, and nobody stood in yours to split it. ${firstRule()}`, spotFirst(st.me));
+          if(sharers.length === 0) return liveFail('Cone not shared', `The purple jack aimed its cones at the ${word}, you among them, and nobody stood in yours to split it, so you took its full damage alone, which most likely kills you. ${firstRule()}`, spotFirst(st.me));
           if(sharers.some(s => targeted.includes(s)) || sharers.length > 1) return liveFail('Cones overlap', `The purple jack aimed its cones at the ${word}, and yours caught <b>${sharers.join(' and ')}</b> as well as your partner. ${firstRule()}`, spotFirst(st.me));
         } else {
           const cones = targeted.filter(s => inCone(c, pos[s], me));
-          if(cones.length === 0) return liveFail('Cone not shared', `The purple jack aimed its cones at the ${word}, and you were in none of them, so your partner <b>${partnerOf(st.me)}</b> took theirs alone. ${firstRule()}`, spotFirst(st.me));
+          if(cones.length === 0) return liveFail('Cone not shared', `The purple jack aimed its cones at the ${word}, and you were in none of them, so your partner <b>${partnerOf(st.me)}</b> took theirs alone, and its full damage most likely kills them. ${firstRule()}`, spotFirst(st.me));
           if(cones.length > 1) return liveFail('Two cones', `The purple jack aimed its cones at the ${word}, and you stood in <b>${cones.join(' and ')}</b>'s both. ${firstRule()}`, spotFirst(st.me));
+          // a cone's damage is split among everyone in it, so sharing the wrong one leaves your partner's to them alone
+          const partner = partnerOf(st.me);
+          if(cones[0] !== partner) return liveFail('Cone taken alone', `The purple jack aimed its cones at the ${word}. You stood in <b>${cones[0]}</b>'s cone rather than your partner <b>${partner}</b>'s, so ${partner} took theirs alone, and its full damage most likely kills them. ${firstRule()}`, spotFirst(st.me));
         }
       }
     }
@@ -820,15 +820,12 @@
       endFreePick();
       renderLive();
       fb.dataset.noUndo = '1';
-      const last = isFlame(st.me) ? LIVE.flame : kindOf(st.me) === 'bright' ? LIVE.drop : LIVE.towers;
-      const run = (since, due) => T.recapText(T.runRecap(st.track, since, due), due);
-      const legs = st.a5 === 'out-in' ? ['out', 'in'] : ['in', 'out'];
       showFeedback(fb, true, 'Superchain cleared',
         `You were where you needed to be at every beat.<ul>`
-        + `<li>First cluster at <b>${LIVE.first.toFixed(1)} s</b>: ${st.firstDist === 'donut' ? 'in' : 'out'}, ${st.firstForm === 'orange' ? 'spread' : 'paired'}; ${run(0, LIVE.first)}</li>`
-        + `<li>Impact lasers at <b>${LIVE.lasers.toFixed(1)} s</b>: shared in the ${GROUP[st.key]} group; ${run(LIVE.first, LIVE.lasers)}</li>`
-        + `<li>Last cluster at <b>${LIVE.third[0].toFixed(1)}</b> and <b>${LIVE.third[1].toFixed(1)} s</b>: ${legs[0]}, ${run(LIVE.lasers, LIVE.third[0])}; then ${legs[1]}, ${run(LIVE.third[0], LIVE.third[1])}</li>`
-        + `<li>${{ bright:'Tower dropped', strong:'Tower soaked', flame:'Heavensflame spread' }[isFlame(st.me) ? 'flame' : kindOf(st.me)]} by <b>${last.toFixed(1)} s</b>: ${run(LIVE.third[1], last)}</li></ul>`,
+        + `<li>First cluster at <b>${LIVE.first.toFixed(1)} s</b>: ${st.firstDist === 'donut' ? 'in' : 'out'}, ${st.firstForm === 'orange' ? 'spread' : 'paired'}</li>`
+        + `<li>Impact lasers at <b>${LIVE.lasers.toFixed(1)} s</b>: shared in the ${GROUP[st.key]} group</li>`
+        + `<li>Last cluster at <b>${LIVE.third[0].toFixed(1)}</b> and <b>${LIVE.third[1].toFixed(1)} s</b>: ${st.a5 === 'out-in' ? 'out, then in' : 'in, then out'}</li>`
+        + `<li>${{ bright:'Tower dropped', strong:'Tower soaked', flame:'Heavensflame spread' }[isFlame(st.me) ? 'flame' : kindOf(st.me)]} by <b>${(isFlame(st.me) ? LIVE.flame : kindOf(st.me) === 'bright' ? LIVE.drop : LIVE.towers).toFixed(1)} s</b></li></ul>`,
         'New pull ↻', () => newRound());
     }
 
@@ -860,7 +857,7 @@
         clock.t < LIVE.engrave[0] ? 'Superchain Theory I has gone off. The chains are drifting in.' : 'Nothing casting.', st.castSlots);
       document.getElementById('sc-liveNote').innerHTML = !clock.running && !st.over && clock.t <= LIVE.start
         ? '<span class="hint">Click to move as the fight unfolds: where you stand when each part goes off is what counts.</span>'
-        : (st.lockNote ? `<span class="sc-locked">${st.lockNote}</span>` : '');
+        : '';
     }
 
     function renderPick(){
@@ -1116,8 +1113,6 @@
     function livePick(p){
       if(st.over) return;
       moveTo(st.me, p);
-      st.lockNote = 'Moving to your spot';
-      renderLive();
     }
     function endFreePick(){ document.getElementById('sc-freeHits').innerHTML = ''; }
     // The click layer over the whole floor: a ghost marker follows the pointer, and the arrow keys move it.

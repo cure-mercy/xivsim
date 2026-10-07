@@ -33,7 +33,6 @@
     .p1-cast-bar{ grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; }
     .p1-cast-bar i{ display: block; height: 100%; background: var(--aether); transform-origin: left center; }
     .p1-idle{ font-size: 0.8rem; color: var(--mist-faint); }
-    .p1-locked{ font-size: 0.8rem; color: var(--good); }
     /* the mechanic resolving: wings and adds popping in, the cleave sweeping its half, White Flame bursting
        on the players it hits; the lasers themselves use the shared add-laser animation */
     .p1-fx-pop, .p1-fx-burst{ transform-box: fill-box; transform-origin: center; }
@@ -227,7 +226,7 @@
       (st.fxTimers || []).forEach(clearTimeout);
       st.fxTimers = [];
       st.live = pace === 'live';
-      st.fired = {}; st.over = false; st.passed = []; st.lastPick = null; st.litShown = {};
+      st.fired = {}; st.over = false; st.passed = []; st.litShown = {};
       document.getElementById('p1-fx').innerHTML = '';
       document.getElementById('p1-beams').innerHTML = '';
       clock.t = LIVE.start;
@@ -237,7 +236,7 @@
       document.getElementById('p1-start').parentNode.style.minHeight = '';
       // the most casts the strip ever shows at once, so it keeps that many rows throughout
       st.castSlots = Math.max(1, ...Array.from({ length: 300 }, (_, k) => liveRows(k * 0.1).length));
-      st.moves = {}; st.track = [];
+      st.moves = {};
       const start = startPositions();
       SLOTS.forEach(s => setAt(s, start[s]));
       render();
@@ -290,8 +289,6 @@
       const now = sceneNow(), from = posAt(s, now);
       const t0 = now + (delay === undefined ? STEP_OFF : delay);
       st.moves[s] = { from, to, t0, dur: Math.hypot(to[0] - from[0], to[1] - from[1]) / (st.live ? SPEED : STEP_SPEED) };
-      // your own runs against the clock, for the recap
-      if(st.live && s === st.me) st.track.push({ at: now, t0, dur: st.moves[s].dur });
       kickAnim();
     }
     function othersTo(pos, delay){ SLOTS.filter(s => s !== st.me).forEach(s => moveTo(s, pos[s], delay)); }
@@ -345,7 +342,7 @@
         drawAdds();
         pill(STEP_PILL[0]);
         instr(stepText(0));
-        if(!st.lastPick) freePick(posAt(st.me, t), pick);
+        freePick(posAt(st.me, t), pick);
       });
       at('fly0', LIVE.fly[0], () => drawAdds(st.firstWall));
       at('fly1', LIVE.fly[1], () => drawAdds(OTHER[st.firstWall]));
@@ -388,14 +385,11 @@
       lock();
       renderLive();
       fb.dataset.noUndo = '1';
-      // each part counts from when White Flame picks its targets, or the cleave where there is no wave
-      const due = [LIVE.lock[0], LIVE.cleave[1], LIVE.lock[2]];
-      const run = i => T.recapText(T.runRecap(st.track, i ? due[i - 1] : 0, due[i]), due[i]);
       showFeedback(fb, true, 'Paradeigma cleared',
         `You were in place for both waves of White Flame and clear of all three cleaves.<ul>`
-        + `<li>First wave and cleave at <b>${due[0].toFixed(1)} s</b>: ${run(0)}</li>`
-        + `<li>Second cleave at <b>${due[1].toFixed(1)} s</b>: on the safe side, ${run(1)}</li>`
-        + `<li>Second wave and third cleave at <b>${due[2].toFixed(1)} s</b>: ${run(2)}</li></ul>`,
+        + `<li>First wave and cleave at <b>${LIVE.cleave[0].toFixed(1)} s</b>: in place</li>`
+        + `<li>Second cleave at <b>${LIVE.cleave[1].toFixed(1)} s</b>: on the safe side, swapping</li>`
+        + `<li>Second wave and third cleave at <b>${LIVE.cleave[2].toFixed(1)} s</b>: in place</li></ul>`,
         'New pull ↻', () => newRound());
     }
 
@@ -418,7 +412,7 @@
         clock.t < LIVE.adds ? 'Paradeigma has gone off. Nothing to do yet.' : 'Nothing casting.', st.castSlots);
       document.getElementById('p1-liveNote').innerHTML = !clock.running && !st.over && clock.t <= LIVE.start
         ? '<span class="hint">Click to move as the fight unfolds: where you stand when each cleave and wave lands is what counts.</span>'
-        : (st.lastPick ? `<span class="p1-locked">Moving to your spot</span>` : '');
+        : '';
     }
 
     function setPace(p){
@@ -667,9 +661,7 @@
     // changing your mind until the cleave lands.
     function pick(p){
       if(st.live){
-        st.lastPick = p;
         moveTo(st.me, p);
-        renderLive();
         return;
       }
       lock();
