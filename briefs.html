@@ -1,0 +1,1265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Athena Mechanic Briefs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Space+Mono:wght@400;700&display=swap">
+<style>
+  :root{
+    color-scheme: light dark;
+    --paper:      #eef1f5;
+    --panel:      #ffffff;
+    --panel-2:    #f6f8fa;
+    --ink:        #151821;
+    --ink-2:      #3d4552;
+    --muted:      #667080;
+    --rule:       #d3dae3;
+    --rule-soft:  #e4e9ef;
+    --accent:     #1a5e7a;
+    --astral:     #b94e39;
+    --umbral:     #35659f;
+    --font-head: 'Archivo', 'Segoe UI', system-ui, sans-serif;
+    --font-body: 'Newsreader', Georgia, 'Times New Roman', serif;
+    --font-mono: 'Space Mono', 'Courier New', monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --paper:     #101319;
+      --panel:     #171b22;
+      --panel-2:   #1d222b;
+      --ink:       #e3e7ee;
+      --ink-2:     #bcc4d0;
+      --muted:     #8e98a7;
+      --rule:      #2a313c;
+      --rule-soft: #222832;
+      --accent:    #6ab4d0;
+      --astral:    #e08d75;
+      --umbral:    #86a9e4;
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --paper:     #101319;
+    --panel:     #171b22;
+    --panel-2:   #1d222b;
+    --ink:       #e3e7ee;
+    --ink-2:     #bcc4d0;
+    --muted:     #8e98a7;
+    --rule:      #2a313c;
+    --rule-soft: #222832;
+    --accent:    #6ab4d0;
+    --astral:    #e08d75;
+    --umbral:    #86a9e4;
+  }
+
+  *{ box-sizing: border-box; }
+  [hidden]{ display: none !important; }
+
+  body{
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .sheet{
+    max-width: 860px;
+    margin: 0 auto;
+    padding-block: 40px 72px;
+    padding-left: 20px;
+    padding-right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  .masthead{
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .stamp{
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .masthead h1{
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: clamp(1.9rem, 3.4vw + 0.8rem, 2.6rem);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .masthead p{ margin: 0; color: var(--ink-2); max-width: 62ch; }
+
+  .doc{
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .doc-head{
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    border-bottom: 1px solid var(--rule);
+  }
+  .doc-num{
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 1.45rem;
+    color: var(--panel);
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .doc-title{
+    padding: 17px 24px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  .doc-title h2{
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: 1.45rem;
+    letter-spacing: -0.01em;
+    margin: 0;
+    line-height: 1.15;
+  }
+  .doc-meta{
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  .doc-body{
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  section{ display: flex; flex-direction: column; gap: 11px; }
+  h3{
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+    font-weight: 700;
+  }
+  p{ margin: 0; max-width: 68ch; color: var(--ink-2); }
+  strong{ color: var(--ink); font-weight: 500; }
+
+  ul.beats{
+    margin: 0;
+    padding-left: 1.15em;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    color: var(--ink-2);
+    max-width: 70ch;
+  }
+  ol.beats{
+    margin: 0;
+    padding-left: 1.35em;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    color: var(--ink-2);
+    max-width: 70ch;
+  }
+  ol.beats > li::marker{
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--accent);
+  }
+
+  .scroll{ overflow-x: auto; }
+  table{
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 440px;
+    font-size: 0.9rem;
+  }
+  th{
+    text-align: left;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 0.67rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--rule);
+    padding: 0 14px 7px 0;
+  }
+  td{
+    vertical-align: top;
+    padding: 9px 14px 9px 0;
+    border-bottom: 1px solid var(--rule-soft);
+    color: var(--ink-2);
+  }
+  tr:last-child td{ border-bottom: none; }
+  td:first-child, th:first-child{ padding-left: 0; }
+  td.k{ color: var(--ink); font-weight: 500; white-space: nowrap; }
+
+  .astral{ color: var(--astral); font-weight: 500; }
+  .umbral{ color: var(--umbral); font-weight: 500; }
+  .phase{
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-top: 6px;
+  }
+  .phase span{
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .phase h2{
+    font-family: var(--font-head);
+    font-weight: 700;
+    font-size: 1.15rem;
+    margin: 0;
+    white-space: nowrap;
+  }
+  .phase::after{
+    content: "";
+    flex: 1;
+    align-self: center;
+    border-top: 1px solid var(--rule);
+  }
+
+  .note{
+    background: var(--panel-2);
+    border-left: 3px solid var(--rule);
+    padding: 11px 16px;
+    border-radius: 0 3px 3px 0;
+    font-size: 0.93rem;
+    max-width: 70ch;
+  }
+
+  footer{
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--muted);
+    border-top: 1px solid var(--rule);
+    padding-top: 16px;
+    line-height: 1.75;
+  }
+  footer a{ color: var(--accent); }
+
+  @media (max-width: 560px){
+    body{ font-size: 16px; }
+    .doc-body{ padding: 18px; }
+    .doc-head{ grid-template-columns: 42px minmax(0, 1fr); }
+    .doc-title{ padding: 14px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sheet">
+
+  <header class="masthead">
+    <div class="stamp">Pandæmonium · Anabaseios: The Twelfth Circle (Savage) · Athena</div>
+    <h1>Athena Mechanic Briefs</h1>
+    <p>Athena's mechanics in fight order, across both phases, each described twice: what the fight actually
+       does, and the strategy the party uses to answer it.</p>
+  </header>
+
+  <div class="phase"><span>Phase 1</span><h2>Athena</h2></div>
+
+  <!-- ============ 1 ============ -->
+  <article class="doc">
+    <div class="doc-head">
+      <div class="doc-num">1</div>
+      <div class="doc-title">
+        <h2>Paradeigma I</h2>
+        <div class="doc-meta">Paradeigma · White Flame · Trinity of Souls</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p><strong>Paradeigma</strong> summons four yellow crystals, each spawning an untargetable Anthropos add.
+           The adds all move to either the <strong>north or the south half</strong> of the arena, two on the west
+           side and two on the east.</p>
+        <ul class="beats">
+          <li>The adds fly out a pair at a time, one wall's pair about 5 seconds after the cast and the other's
+              5 seconds later, and fire <strong>White Flame</strong> in the same order, both adds on one wall
+              together and then both on the other: a line AoE at each of the <strong>two players nearest</strong> to them, dealing heavy
+              damage and Magic Vulnerability Up. That makes two sets of four lasers, which go off together with the <strong>first</strong> and the
+              <strong>third</strong> cleave.</li>
+          <li>Alongside it, <strong>Trinity of Souls</strong> lights three of Athena's wings in turn, each
+              telegraphing a half-room cleave on its own side, west or east. If a bottom wing glows first, she
+              rotates 180 degrees between cleaves, so the <strong>second</strong> cleave lands on the half opposite
+              its wing while the first and third land on theirs. The first use is <strong>always bottom to
+              top</strong>.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <p>Done without tank invulnerabilities, the party splits into its light parties: <strong>light party 1</strong>
+           (T1, H1, M1, R1) always baits the first wave and <strong>light party 2</strong> (T2, H2, M2, R2) the
+           second.</p>
+        <ol class="beats">
+          <li>Light party 1 goes to the adds' half and <strong>lines up</strong> down the middle of it to bait the
+              first wave: ranged by the wall, then healer, then melee, and the tank next to Athena. Each add then picks
+              the two players meant for it. Light party 2 <strong>stacks at max melee</strong> on the far side of
+              Athena, where no add is near.</li>
+          <li>After the first wave the light parties <strong>swap</strong>: light party 2 takes the same line-up and
+              baits the second wave, and light party 1 stacks at max melee on the far side.</li>
+          <li>Trinity of Souls always starts bottom to top here, so the safe side is <strong>opposite</strong> the
+              bottom wing, the <strong>same</strong> side as the middle wing, and <strong>opposite</strong> the top
+              wing. Everyone takes the line-up or the stack just on that side of the middle line. The pattern never
+              makes the party switch sides twice. The wings stop glowing once the cleaves start, so read all three
+              first.</li>
+        </ol>
+        <p class="note">Some groups skip the line-up: both tanks stand on the adds' half with
+           their invulnerabilities and take every laser, while everyone else stays on the other half.</p>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- ============ 2 ============ -->
+  <article class="doc">
+    <div class="doc-head">
+      <div class="doc-num">2</div>
+      <div class="doc-title">
+        <h2>Paradeigma II</h2>
+        <div class="doc-meta">Paradeigma · Engravement of Souls · Ray of Light</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p><strong>Paradeigma</strong> summons six untargetable Anthropos adds, four from blue crystals and two
+           from red. The blue adds take station near the four cardinals just off the wall, each pushed slightly
+           to one side of its edge centre.</p>
+        <ul class="beats">
+          <li><strong>Engravement of Souls</strong> marks four players. One support and one DPS take
+              <span class="astral">Astralbright Soul</span>; another support and DPS take
+              <span class="umbral">Umbralbright Soul</span>. When the debuff expires that player emits a small
+              AoE inflicting Magic Vulnerability Up and leaves an aspected tower behind.</li>
+          <li>The four players with no Soul are each <strong>tethered to one blue add</strong>. Two tethers are
+              light, two dark. Each add fires a line AoE down its tether whose damage falls off with distance,
+              so the tether has to be stretched. Taking it applies Magic Vulnerability Up and the
+              <strong>Tilt</strong> matching the tether colour.</li>
+          <li>A tower can only be soaked by a player holding the <strong>opposite aspect</strong> to the Soul
+              that dropped it. Left unsoaked it casts Unmitigated Explosion and wipes the raid. Soaking deals
+              minor damage and swaps the soaker's Tilt colour.</li>
+          <li>The two red-crystal adds appear at the north edge on either the <strong>first and third</strong>
+              or the <strong>second and fourth</strong> column of the arena, then fire an untelegraphed line AoE
+              (<strong>Ray of Light</strong>) straight down their column.</li>
+        </ul>
+        <p>The tether lasers and the towers resolve at the same moment. The columns fire shortly after.</p>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <ol class="beats">
+          <li>Tethered players <strong>stretch straight across the arena</strong>, through the boss's hitbox, which
+              both cuts the proximity damage and keeps the lasers off everyone else.</li>
+          <li>Because every add is offset from its edge centre, the four tethered players end up
+              <strong>one per quadrant</strong>. That turns the tower assignment into a quadrant sweep.</li>
+          <li><strong>Supports</strong> start at the north-east quadrant and sweep clockwise.
+              <strong>DPS</strong> start at the north-west and sweep counter-clockwise. Stop at the first
+              quadrant whose tethered player carries the <strong>opposite aspect to your own Soul</strong>,
+              stand there at max melee, and drop your tower for them.</li>
+          <li>The two sweeps run in opposite directions across the same two candidate quadrants, so a support and
+              a DPS hunting the same colour always land on different players. The two supports hold opposite Souls,
+              so they never compete either.</li>
+          <li>When the lasers land, the tethered players gain their Tilt and immediately
+              <strong>soak the tower beside them</strong>. Soul players can keep attacking at max melee until then.</li>
+          <li>Everyone then reads the red adds to the north and moves into a <strong>column without one</strong>.</li>
+        </ol>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- ============ 3 ============ -->
+  <article class="doc">
+    <div class="doc-head">
+      <div class="doc-num">3</div>
+      <div class="doc-title">
+        <h2>Superchain Theory I</h2>
+        <div class="doc-meta">Superchain Theory · Engravement of Souls · Impact lasers</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p>Four blue clusters spawn on the intercardinals. Each is chained to one or more objects at varying
+           chain lengths. Every object drifts toward its cluster and, on contact, makes that cluster fire an AoE
+           determined by the object's shape. <strong>Shorter chains resolve first</strong>; two objects on
+           equal-length chains resolve together.</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Object</th><th>What the cluster does</th></tr></thead>
+            <tbody>
+              <tr><td class="k">Green orb</td><td>Large point-blank centred on the cluster</td></tr>
+              <tr><td class="k">Blue donut</td><td>Donut AoE centred on the cluster</td></tr>
+              <tr><td class="k">Orange spiked ball</td><td>A narrow cone at every player, damage and Magic Vulnerability Up</td></tr>
+              <tr><td class="k">Purple jack</td><td>A narrow cone at either all DPS or all supports, split damage</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="beats">
+          <li><strong>Engravement of Souls</strong> splits the party by role group. One group takes a single
+              debuff each: <span class="astral">Astralbright</span>, <span class="umbral">Umbralbright</span>,
+              <span class="astral">Astralstrong</span> and <span class="umbral">Umbralstrong Soul</span>. The
+              other group takes two each: <strong>Heavensflame Soul</strong> plus an Astral or Umbral Tilt, two
+              of each Tilt.</li>
+          <li>The <strong>strong</strong> Souls call down a narrow split-damage line AoE on expiry, in their own
+              aspect: <span class="astral">Astral</span> is the <strong>dark</strong> one and
+              <span class="umbral">Umbral</span> the <strong>light</strong> one, so Astralstrong fires a dark
+              laser. It must be shared by four players, each of whom needs the <strong>opposite</strong> aspect,
+              so the dark laser is shared with Umbralbright Soul and the two Umbral Tilts.</li>
+          <li>The <strong>bright</strong> Souls drop aspected towers as in Paradeigma II.
+              <strong>Heavensflame Soul</strong> drops a medium AoE on the player when it expires.</li>
+          <li>Anyone who soaks a laser or tower ends up with a Tilt matching what they took; Tilts already held
+              swap colour.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <ol class="beats">
+          <li>Find the cluster with <strong>two short chains</strong>. It always carries one green orb or blue
+              donut plus one orange spiked ball or purple jack, so it answers a distance call and a formation
+              call at once: donut means in and green orb means out, orange means spread and purple means pair a
+              DPS with a support. The spots are relative to Athena, as for the lasers: facing her from the cluster,
+              the tanks stand in front, then melee, healers and ranged behind, the 1s on your right and the 2s on
+              your left. To pair, each DPS stacks with the support beside it (M1 with T1, M2 with T2, R1 with H1,
+              R2 with H2), midway between their two spots.</li>
+          <li>Read your debuffs during that first resolution. Whichever role group holds Heavensflame is
+              <strong>spreading at the end</strong>; the other group is on towers and lasers.</li>
+          <li>Rotate <strong>90 degrees</strong>, clockwise or counter-clockwise, to the cluster chained to a
+              lone blue donut. Stay close to dodge the donut and split into two laser groups. Sides here are
+              called <strong>from your own view, looking towards the boss</strong>.</li>
+        </ol>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Your side</th><th>Who stands there</th></tr></thead>
+            <tbody>
+              <tr><td class="k">Left</td><td><span class="astral">Astralstrong Soul</span> · <span class="umbral">Umbralbright Soul</span> · both Umbral Tilts</td></tr>
+              <tr><td class="k">Right</td><td><span class="umbral">Umbralstrong Soul</span> · <span class="astral">Astralbright Soul</span> · both Astral Tilts</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">The rule underneath: a laser can only be shared by the opposite family, so each strong
+           Soul stands with the group named opposite to itself, because it is their own laser being shared.
+           The sides follow the debuff icons: the figure on each Tilt leans to its side, Astral right and Umbral
+           left, and each strong Soul's laser aims to its side, Astral left and Umbral right.</p>
+        <ol class="beats" start="4">
+          <li>Rotate again <strong>in the same direction</strong> to the cluster chained to both a green orb and a
+              blue donut. The shorter chain lands first, making it either out then in, or in then out.</li>
+          <li>Drift toward final positions while dodging. The bright Souls drop their towers
+              <strong>on the two cardinals beside the last cluster, at max melee</strong>, keeping the same two
+              sides as the laser split:
+              facing the boss, Umbralbright on your left and Astralbright on your right.</li>
+          <li>The two players who held the strong Souls <strong>soak the tower opposite their Tilt</strong>. Each
+              strong Soul's own laser leaves it with that laser's Tilt, and each bright Soul drops a tower of its own
+              aspect, so Astralbright drops the tower <strong>Umbralstrong</strong> soaks and Umbralbright the one
+              <strong>Astralstrong</strong> soaks. Each pair already shared a laser group, so nobody crosses over:
+              everyone stays on the side they took for the laser. The strong Souls wait in the middle between the
+              two towers, just off it towards their own (further in by Athena when the green orb goes off last),
+              until the bright Soul's small AoE has gone off, then step in.</li>
+          <li>The four <strong>Heavensflame</strong> players spread well away from everyone else, in two pairs: the
+              melee (the tanks, when supports hold it) run through Athena all the way to the far side, and the
+              ranged (the healers) run back into the corner behind the last cluster, the 1s on the right and the
+              2s on the left as you face Athena from it. They never soak.</li>
+        </ol>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- ============ 4 ============ -->
+  <article class="doc" hidden>
+    <div class="doc-head">
+      <div class="doc-num">4</div>
+      <div class="doc-title">
+        <h2>Paradeigma III</h2>
+        <div class="doc-meta">Paradeigma · Engravement of Souls · Unnatural Enchainment · White Flame</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p>The arena is a <strong>two by four grid of rectangular tiles</strong>, which this mechanic finally makes
+           use of. <strong>Paradeigma</strong> summons six adds: four from blue crystals, which take the east and
+           west walls two per wall, and two from yellow crystals, which appear between tiles on opposite
+           intercardinals.</p>
+        <ul class="beats">
+          <li><strong>Engravement of Souls</strong> marks the four supports: one <strong>Quartered Soul</strong>,
+              one <strong>X-marked Soul</strong>, and two carrying the same bright Soul, either both Astralbright
+              or both Umbralbright. Quartered leaves a plus-shaped AoE and X-marked an X-shaped one, and both are
+              <strong>locked to true north</strong> regardless of which way the player faces.</li>
+          <li>All four DPS are <strong>tethered to the wall adds</strong>. Two tethers are light and two dark, and
+              both adds on the same wall carry the same colour.</li>
+          <li><strong>Unnatural Enchainment</strong> tethers four alternating tiles and destroys them at the end of
+              the cast; anyone still standing on one dies. Four platforms survive, one per row on alternating
+              columns, so the two middle platforms meet only at the arena centre.</li>
+          <li>A <strong>tower appears on each surviving platform</strong> and must be soaked by a tank or healer
+              before the cast ends, dealing damage and Magic Vulnerability Up. Any tower left unsoaked wipes the
+              raid.</li>
+          <li>Everyone receives <strong>Enchained Soul</strong> for the duration, which prevents jumping and so
+              confines each player to a single tile.</li>
+          <li>The two yellow-crystal adds each fire a <strong>White Flame</strong> line AoE that needs two players
+              to bait it.</li>
+        </ul>
+        <p>Raid damage runs heavy throughout, so the set needs mitigation and healing. On the Soul afterwards
+           restores the floor and lifts the chains.</p>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <p>Resolution is divided strictly by role, and because nobody can move between tiles, every position has
+           to be right the first time.</p>
+        <ol class="beats">
+          <li><strong>Quartered Soul</strong> takes the north-most platform and <strong>X-marked</strong> the
+              south-most. The two bright Souls take the middle two, ordered west to east by a priority such as
+              H1 &gt; T1 &gt; T2 &gt; H2. Each support soaks the plain tower on their own platform. On a middle
+              platform the tower sits in the outer half, right where the two DPS stretch their tethers, and their
+              lasers run east–west across it. Soak it from the tower's side <strong>away from the arena's
+              horizontal centre line</strong>, in the outer gap the two lasers leave, or a DPS laser clips the
+              support. This is easy to overlook.</li>
+          <li>Quartered drops its plus at the <strong>outer arena corner</strong>, where both arms run along the
+              walls and miss the middle. X-marked drops its X at the <strong>cardinal wall point</strong>, where
+              the arms run out to the corners instead. Both AoEs are <strong>delayed</strong>, so each support
+              then steps out of their own arms and stays out while they bait a White Flame, aiming it away from
+              the middle. An arm of the X runs straight through the southern add, so the X support baits from a
+              step towards the outer wall. The + support has the opposite danger: the northern add's other line
+              runs from it to the DPS baiting it, so they bait from behind the add, well clear of that line's
+              edge, rather than tucked in right beside the add.</li>
+          <li>DPS stretch their tether and cross to the <strong>middle platform on the far side from their wall</strong>,
+              so both DPS from one wall share a tile, and the distance blunts the proximity damage. Whichever of the
+              two adds lines up with the platform gives its player a <strong>straight</strong> tether: they stand at
+              the platform's <strong>horizontal centre, level with the add</strong>, so the laser runs dead
+              east–west. That is only just the minimum stretch the tether needs, so not a step closer to the add. The other has a
+              <strong>crossed</strong> tether and stands at the <strong>middle of the platform's outer edge</strong>:
+              top middle on the northern platform, bottom middle on the southern. Its laser angles across.</li>
+          <li>Each bright Soul compares their own aspect against the tether colour of the two DPS on their tile.
+              <strong>Matching</strong> colours cannot soak, so the tower goes on the arena-centre corner of the
+              tile, where it spills onto the other middle platform. <strong>Opposite</strong> colours can, so the
+              tower goes in the middle of their own tile, clear of the tether lasers.</li>
+          <li>Both bright Souls share one aspect and the two walls carry different colours, so
+              <strong>exactly one tower ends up at the centre and one stays on a platform</strong>, every time.</li>
+          <li>The DPS pair whose colour is opposite the towers takes both: the <strong>crossed</strong> tether
+              soaks the centre tower, the <strong>straight</strong> tether the one on their platform. The matching
+              pair leaves the towers alone and baits the other White Flame.</li>
+          <li>Supports who dropped a tower <strong>step aside</strong>, clear of every tower and of the plus and
+              X AoEs.</li>
+        </ol>
+        <p class="note">The support priority is a convention, not a rule of the fight. H1 &gt; T1 &gt; T2 &gt; H2
+           keeps each healer on their own side with the tanks adjusting around them, but other macro sets order
+           the same four seats differently, so agree it with your party first.</p>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- ============ 5 ============ -->
+  <article class="doc" hidden>
+    <div class="doc-head">
+      <div class="doc-num">5</div>
+      <div class="doc-title">
+        <h2>Palladion</h2>
+        <div class="doc-meta">Ultima Blade · Palladion · White Flame · Theos's Ultima</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p><strong>Ultima Blade</strong> arrives without a cast bar, hits the raid hard, compresses the floor into a
+           small <strong>octagon</strong> ringed by a lethal edge, and summons eight untargetable Anthropos adds.
+           The adds on the cardinals carry a <strong>purple</strong> sigil and those on the intercardinals a
+           <strong>yellow</strong> one. They fly off and return to the middle one per dash, in an order that changes
+           between pulls.</p>
+        <ul class="beats">
+          <li><strong>Palladion</strong> makes Athena untargetable and drops her on a random corner of the octagon.
+              That corner is <strong>relative north</strong> for the rest of the mechanic. Everyone takes a limit
+              cut marker numbered <strong>1 to 8</strong>.</li>
+          <li>She dashes to each number in sequence. The dash lays a line AoE along her path
+              (<strong>Shockwave</strong>) that deals proximity damage. On arrival she fires a split-damage
+              point-blank (<strong>Palladion</strong>) that has to be <strong>shared with a second player</strong>
+              and inflicts Magic Vulnerability Up, and she leaves a blue puddle that kills anyone who touches it.</li>
+          <li>The adds return to the middle one at a time. A <strong>purple</strong> glyph means
+              <strong>Clear Cut</strong>, a small 270 degree cone that can be ignored. A <strong>yellow</strong>
+              glyph means <strong>White Flame</strong>, a laser at each of the <strong>two nearest players</strong>.
+              The first four adds are two of each in a <strong>random order</strong>, and the last four return in
+              the <strong>reverse</strong> of that order, so there are four sets of lasers: two during dashes 1 to 4
+              and two during dashes 5 to 8.</li>
+          <li>After the eighth dash Athena returns to the middle, destroys the centre of the floor, and casts
+              <strong>Theos's Ultima</strong>, a raidwide split between everyone still alive. Deaths earlier in the
+              mechanic can turn it into a wipe.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <p>Numbers pair up as <strong>1+3, 2+4, 5+7 and 6+8</strong>. Each pair shares both of its point-blanks and
+           baits one set of lasers together, so the eight players reduce to four pairs doing the same job twice.
+           Every position below is relative to Athena's corner, and anyone neither dashing nor standing in for the
+           lasers stands against the wall.</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Pair</th><th>Starts</th><th>Job</th></tr></thead>
+            <tbody>
+              <tr><td class="k">1 + 3</td><td>South corner</td><td>Takes the first dashes where they stand, then trades with 5/7 and steps straight in for the third laser set</td></tr>
+              <tr><td class="k">2 + 4</td><td>North-east corner, or anywhere in the northern tiles off dash 1's path</td><td>Lets dash one land, steps into the corner Athena vacated for dash two, then trades with 6/8 and stands in for the fourth set once 1/3 have baited</td></tr>
+              <tr><td class="k">5 + 7</td><td>Close to the middle, west side</td><td>Stands in for the first laser set, holds at the wall until dash 3 or 4, then takes dashes five and seven packed just clockwise of 1/3's puddles</td></tr>
+              <tr><td class="k">6 + 8</td><td>South-east wall</td><td>Waits at the wall while 5/7 bait, steps in on the next dash, takes the second set, then takes dashes six and eight packed just clockwise of 2/4's puddles</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ol class="beats">
+          <li><strong>One pair always stands in</strong> close to the middle, on its own half (1/3/5/7 west,
+              2/4/6/8 east), in the bait order
+              <strong>5/7 → 6/8 → 1/3 → 2/4</strong>. Purple adds are ignored. When a yellow add appears, the pair
+              standing in spreads apart, takes one laser each and goes straight back out to the wall. The next pair
+              holds at the wall until then, so it can never be nearer the add than the baiters, and steps in on the
+              following dash, straight into the lasers if that add is yellow too. Nobody else should drift
+              inward.</li>
+          <li>The reversal is what makes this safe: each pair's set always falls while it is free of dashes, 5/7 on
+              dash 1 to 3, 6/8 on 2 to 4, 1/3 on 5 to 7 and 2/4 on 6 to 8. A pair still owed a dash steps in as soon
+              as its dashes are done, which is always before its set can come.</li>
+          <li>Only the first two dashes land in corners. Everyone Athena dashes to then moves <strong>clockwise to
+              just outside their own puddle</strong>, as close to it as they can, and their second dash lands there.
+              The puddles pack along the wall, <strong>1-3-5-7</strong> from the south corner and <strong>2-4-6-8</strong>
+              from Athena's, which keeps the rest of the wall free for later and cuts the walking.</li>
+          <li>Once a pair has taken both of its dashes it <strong>trades places</strong> with its bait pair, which
+              steps just clockwise of the last puddle to receive the next two dashes. 1/3 step straight in off
+              their dashes unless 6/8 are baiting on that very dash, in which case they wait at the wall first; 2/4
+              run clockwise along the wall until a puddle stops them and step in after 1/3 have baited. The two halves
+              mirror each other, so the same movement repeats four times.</li>
+          <li>After the last dash everyone edges north through the gaps between puddles and stacks for Theos's
+              Ultima.</li>
+        </ol>
+        <p class="note">Limit cut numbers are handed out without regard to role, so unlike the rest of the phase
+           this mechanic cannot be pre-assigned. The only thing worth agreeing beforehand is that relative north is
+           read off Athena's corner, not off the arena.</p>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- ============ 6 ============ -->
+  <article class="doc" hidden>
+    <div class="doc-head">
+      <div class="doc-num">6</div>
+      <div class="doc-title">
+        <h2>Superchain Theory II</h2>
+        <div class="doc-meta">Superchain Theory IIA and IIB · Trinity of Souls · Parthenos · Unnatural Enchainment</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p>The phase closes with two superchain sets. Both reuse the shape vocabulary from the first Superchain,
+           but each runs another mechanic across the top of it, and the second set decides the fight.</p>
+        <p><strong>IIA</strong> spawns three clusters at once, north, middle and south, all chained at the same
+           time. The middle always carries a short green orb, a medium blue donut and a long green orb, so the
+           middle of the room is <strong>out, then in, then out</strong>. North and south carry two shapes each,
+           one short and one long, drawn from a fixed pool:</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Shape</th><th>Where it can be</th></tr></thead>
+            <tbody>
+              <tr><td class="k">Short green orb</td><td>North or south, whichever does not hold the jack</td></tr>
+              <tr><td class="k">Short purple jack</td><td>North or south. This marks the opening cluster</td></tr>
+              <tr><td class="k">Long green orb</td><td>North or south</td></tr>
+              <tr><td class="k">Long spiked shape</td><td>North or south, orange or purple. This marks the finish</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Trinity of Souls</strong> runs alongside it. Three wings glow in sequence and each one marks
+           the half of the room it will cleave. IIA always glows bottom to top, which makes Athena spin 180
+           degrees between cleaves, so the <strong>second</strong> cleave lands on the half opposite its wing
+           while the first and third land on theirs. Apodialogos or Peridialogos follows immediately.</p>
+        <p><strong>IIB</strong> spawns in three waves instead. First two clusters inside the middle, north and
+           south, one chained to a blue donut and one to a green orb. Then east and west on medium chains, one a
+           green orb and one a spiked shape that is orange or purple, while Athena casts <strong>Paradeigma</strong>
+           and sends two red-crystal adds to the north. Last, north and south on long chains: one carries a lone
+           green orb, the other a <strong>green orb and an orange spiked ball</strong> together.
+           <strong>Parthenos</strong> lands between the first and second resolutions: an untelegraphed line
+           aimed at the tank holding her, baited exactly north to south straight down her hitbox, covering roughly the middle third of the floor, which
+           knocks back anyone caught in it. <strong>Unnatural Enchainment</strong> then destroys seven of the eight
+           floor tiles during the last resolution.</p>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <p><strong>IIA</strong> is three moves, and the whole read is available before the first one:</p>
+        <ol class="beats">
+          <li>Start at the cluster holding the <strong>short purple jack</strong> and pair up there, staying out of
+              the middle for its short green orb, and on the half of the room the first cleave spares. The pairs
+              line up from the arena centre outwards: T1 and M1 nearest the centre, then T2 and M2, H1 and R1, and
+              H2 and R2 furthest out, so the order runs south to north on the north cluster and north to south on
+              the south cluster.</li>
+          <li>Run <strong>into the middle</strong> for the donut, dodging the second cleave.</li>
+          <li>Finish at whichever cluster holds the <strong>long spiked shape</strong>, dodging the third cleave.
+              If your opening cluster's long chain was green, the spiked shape must be on the far one, so run
+              straight through; if it was orange or purple, turn around and come back. <strong>Orange spreads,
+              purple pairs.</strong> Melee should stay clear of the middle's long green orb while resolving it.</li>
+        </ol>
+        <p><strong>IIB</strong> is slower and reads one wave at a time:</p>
+        <ol class="beats">
+          <li>Open <strong>inside the donut</strong>, on whichever of the two inner clusters carries it.</li>
+          <li>Leave toward <strong>east or west</strong>, whichever holds the spiked shape. Either flank clears
+              Parthenos, which the tank baits exactly north to south, but staying on the donut leaves you in its lane.
+              Resolve the shape there: orange spreads to clock positions, purple pairs a DPS with a support, both
+              taken relative to the boss.</li>
+          <li>While standing in that resolution, find the <strong>columns without a red add</strong> in the north.
+              Their columns fire next, the same four columns as in Paradeigma II.</li>
+          <li>Finish at the cluster carrying <strong>both a green orb and an orange spiked ball</strong>, and take
+              it <strong>out and spread</strong>: off the cluster for the point-blank, apart from each other for
+              the cones.</li>
+          <li>The surviving tile is always one of the <strong>four beside that final cluster</strong>, so you know
+              which half of the floor to watch before the tethers appear. Step onto it straight out of the spread,
+              while the cast is still running.</li>
+        </ol>
+        <p class="note">Athena then casts On the Soul twice, takes two more autos, and goes untargetable for a hard
+           enrage. Her health has to be gone before that, so this set is both the last mechanic to survive and the
+           last chance to push damage.</p>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- only the mechanics unlocked in the trainer are shown: remove hidden to bring the rest back -->
+  <div class="phase" hidden><span>Phase 2</span><h2>Pallas Athena</h2></div>
+
+  <!-- ============ 7 ============ -->
+  <article class="doc" hidden>
+    <div class="doc-head">
+      <div class="doc-num">7</div>
+      <div class="doc-title">
+        <h2>Gaiaochos I</h2>
+        <div class="doc-meta">Gaiaochos · Summon Darkness · Missing Link · Demi Parhelion · Geocentrism · Divine Excoriation</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p>Pallas Athena opens with Ultima and a double <strong>Palladian Grasp</strong> on the main tank, which the
+           tanks swap. <strong>Gaiaochos</strong> then deals heavy raid damage, compresses the floor into a small
+           circle and gives everyone <strong>Ascended</strong>, which shrinks their model and slows movement.
+           Sprint and similar speed effects cancel the slow.</p>
+        <ul class="beats">
+          <li><strong>Summon Darkness</strong> places three untargetable adds past the edge, each on a different
+              cardinal or intercardinal line through the middle. Each charges a line AoE, <strong>Ultima Ray</strong>,
+              down its line, so one line, with no add at either end, stays safe.</li>
+          <li>Everyone gets an overhead chain marker, and <strong>Missing Link</strong> then tethers each DPS to a
+              random support. The chain has to be broken by distance before it resolves, or both players take heavy
+              damage and Damage Down.</li>
+          <li><strong>Demi Parhelion</strong> drops nine circular telegraphs in a three by three grid with gaps
+              between them. <strong>Geocentrism</strong> shows how they will spread through the boss's tentacles.
+              Tentacles wrapped north and south spread them into columns, leaving two narrow columns safe; east and
+              west into rows, leaving two narrow rows safe; around the equator into a donut, leaving a narrow ring
+              safe. The spread blasts linger for a few seconds.</li>
+          <li>At the same time every player is marked for <strong>Divine Excoriation</strong>, a small AoE with Magic
+              Vulnerability Up, so the party has to be fully spread inside the safe ground.</li>
+          <li><strong>Ultima</strong> follows, removing Ascended and restoring the floor.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <ol class="beats">
+          <li>Stack in the middle for Gaiaochos and find the safe line: the one of the four with no add on it.</li>
+          <li>As soon as Missing Link appears, run apart along that line. <strong>Supports</strong> take the end
+              that lies between <strong>west and north-east</strong>, <strong>DPS</strong> the end between
+              <strong>east and south-west</strong>. Every chain breaks at once, and both groups are clear of the other
+              three lines. Then come back to the middle.</li>
+          <li>Read the tentacles and spread into the safe ground by <strong>quadrant</strong>: T1 and M1 north-west,
+              T2 and M2 north-east, H1 and R1 south-west, H2 and R2 south-east.</li>
+          <li>For rows and columns, the support in each quadrant takes the inside of the safe strip and the DPS the
+              outside. For the donut, the ring reads clockwise from north as T2, M2, H2, R2, R1, H1, M1, T1.</li>
+          <li>Hold still until the blasts have faded. The Divine Excoriation AoEs are small, so the spots can be
+              tightened if needed.</li>
+        </ol>
+        <p class="note">The quadrant seating is Icy Veins'. The tank buster before Gaiaochos is normally taken with a
+           tank swap, saving invulnerabilities for the second Palladian Grasp at the end of Pangenesis.</p>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- ============ 8 ============ -->
+  <article class="doc" hidden>
+    <div class="doc-head">
+      <div class="doc-num">8</div>
+      <div class="doc-title">
+        <h2>The Classical Concepts I</h2>
+        <div class="doc-meta">The Classical Concepts · Shackled Together · Fusion Burst · Implode · Palladian Ray</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p><strong>The Classical Concepts</strong> hits the raid hard and puts a symbol over every head: a blue
+           <strong>✕</strong>, purple <strong>square</strong>, red <strong>circle</strong> or green
+           <strong>triangle</strong>. Each symbol goes to two players, one with <strong>Alpha Target</strong> and one
+           with <strong>Beta Target</strong>. A few seconds later the symbols vanish and each pair is joined by
+           <strong>Shackled Together</strong>. If the two drift too far apart, both die instantly.</p>
+        <ul class="beats">
+          <li>Twelve shapes appear in a grid of <strong>four columns and three rows</strong>: four blue icosahedrons
+              (Concept of Water), four red pyramids (Concept of Fire) and four yellow cubes (Concept of Earth).
+              Every column holds exactly one blue. Every blue touches at least one red and one yellow directly
+              beside it, but never two of each.</li>
+          <li>Each red and each yellow then tethers to a blue next to it and fuses with it
+              (<strong>Fusion Burst</strong>), wiping the raid. A player standing in the tether intercepts it
+              instead and takes <strong>Aspect Effect</strong>, moderate damage plus Magic Vulnerability Up. Every
+              layout has exactly one arrangement that blocks all eight tethers, and a failed attempt shows the
+              correct tethers before the wipe.</li>
+          <li>All twelve shapes then <strong>Implode</strong>, a point-blank around each with only a brief
+              telegraph. The shapes sit close enough that the only clear ground inside the grid is the gap between
+              four of them.</li>
+          <li><strong>Palladian Ray</strong> drives a tentacle into the west and the east of the floor. Each fires a
+              lingering cone at its <strong>four nearest players</strong>, inflicting Magic Vulnerability Up.
+              Taking a second cone, or staying in your own after it fires, kills.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <p>Symbols pick the column and debuffs pick the shape, so every spot is fixed by two things a player can
+           read in the first second. The common assignment is <strong>BPOG</strong>, west to east:</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Symbol</th><th>Column</th><th>Tentacle</th></tr></thead>
+            <tbody>
+              <tr><td class="k">Blue ✕</td><td>1, westmost</td><td>West</td></tr>
+              <tr><td class="k">Purple square</td><td>2</td><td>West</td></tr>
+              <tr><td class="k">Red circle</td><td>3</td><td>East</td></tr>
+              <tr><td class="k">Green triangle</td><td>4, eastmost</td><td>East</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ol class="beats">
+          <li>Walk to your column together with your partner. <strong>Alpha</strong> stands between the column's
+              blue and a <strong>red pyramid</strong> beside it, <strong>Beta</strong> between the blue and a
+              <strong>yellow cube</strong>. The fight does not care which debuff blocks which colour. The split
+              only makes the two of you pick different shapes.</li>
+          <li>Often two shapes of your colour touch your blue. Take the one <strong>no other blue can use</strong>.
+              Its twin is the only option left for a neighbouring column's blue, so it is already spoken for.</li>
+          <li>When the shackles expire, step out of the Implode into a <strong>gap between four shapes</strong> on
+              your tentacle's side, Alpha in the northern gap and Beta in the southern one. Waiting there already
+              shows which way you will bait.</li>
+          <li>Bait Palladian Ray from <strong>your own column</strong>, Alpha north of the tentacle and Beta south
+              of it. The four cones fan out into an X with clear wedges between them, and none points across the
+              middle at the other group. Once your cone has hit, <strong>step sideways out of it</strong>, then
+              regroup for Ultima and Crush Helm.</li>
+        </ol>
+        <p class="note">Icy Veins also describes a <strong>1234</strong> reading of the symbols by stroke count:
+           circle, ✕, triangle, square. It orders the columns differently from BPOG, so the party has to agree on
+           one. The Alpha-north, Beta-south rule for the tentacles comes from the wiki. Some groups bait the cones
+           by body language instead, which works but leaves room for two players to pick the same spot.</p>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- ============ 9 ============ -->
+  <article class="doc" hidden>
+    <div class="doc-head">
+      <div class="doc-num">9</div>
+      <div class="doc-title">
+        <h2>Caloric Theory I</h2>
+        <div class="doc-meta">Caloric Theory · Close Caloric · Pyrefaction · Atmosfaction · Ekpyrosis</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p><strong>Caloric Theory</strong> hits the raid hard. During the cast one random support and one random
+           DPS carry an orange <strong>beacon</strong>, and when it ends one of the two is hit with a small
+           split-damage AoE that needs at least two players in it. A blue grid appears on the floor to help with
+           positioning, and every player takes a set of debuffs.</p>
+        <ul class="beats">
+          <li><strong>Close Caloric</strong> is on everyone. It gains a stack for roughly every 9 yalms walked,
+              slightly more than the diagonal of one grid rectangle, and for every fire stack taken. A player who
+              reaches five stacks, or dies while holding it, explodes and wipes the raid.</li>
+          <li>Four players take <strong>Pyrefaction</strong> (fire) and start at one stack. When it expires they
+              release <strong>Pyre Pulse</strong>, a small AoE that must be shared with one player who does not
+              have fire.</li>
+          <li>The other four take <strong>Atmosfaction</strong> (wind) and start at two stacks. The two beacon
+              players are always among them. When it expires they release <strong>Dynamic Atmosphere</strong>, a
+              circular AoE around them that spares only its owner and knocks back and kills anyone else caught
+              in it.</li>
+          <li>The first fire stacks go off together. Two of the four fire players then receive Pyrefaction a
+              second time and need two new partners from the players left with nothing, while the wind debuffs run
+              out around them.</li>
+          <li><strong>Ekpyrosis</strong> follows. Two proximity markers sit on one pair of opposite walls, and
+              four exaflares start on the other pair in alternating lanes. After the proximity hit and the first
+              exaflare, every player takes a large AoE with Magic Vulnerability Up, then the remaining exaflares
+              march across the floor.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <p>Icy Veins' method fixes everyone's opening spot from the beacons alone, then solves each move with a
+           short rotation so nobody walks further than the grid allows. It uses waymarks A to D in a small
+           diamond around the middle, with 1 and 2 further out to the west and east.</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Player</th><th>Opening spot</th></tr></thead>
+            <tbody>
+              <tr><td class="k">Beaconed support</td><td>D, on the grid line just inside the waymark</td></tr>
+              <tr><td class="k">Beaconed DPS</td><td>B, on the grid line just inside the waymark</td></tr>
+              <tr><td class="k">Support counterpart</td><td>A, the same job as the beaconed support in the other light party</td></tr>
+              <tr><td class="k">DPS counterpart</td><td>C, the same job as the beaconed DPS in the other light party</td></tr>
+              <tr><td class="k">Everyone else</td><td>The middle, between all four waymarks</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ol class="beats">
+          <li>When the debuffs land, each of the four middle players walks out to a partner with the
+              <strong>other</strong> element. <strong>Supports pick first, then DPS.</strong> Light party 1 checks
+              D, C, B, A, counter-clockwise; light party 2 checks A, B, C, D, clockwise. Skip anyone already
+              taken, and walk in a straight line.</li>
+          <li>After the first stacks the wind players leave: <strong>A one row north</strong>, <strong>C one row
+              south</strong>, and <strong>D and B out toward waymarks 1 and 2</strong>, just past the middle of the
+              rectangle. That walk is their fourth stack, so they do not move again.</li>
+          <li>The fire players left on A and C restack onto B or D. Each goes <strong>clockwise</strong>, A to B
+              and C to D, unless the player there has the same state, both carrying fire or both clear. Then they
+              go counter-clockwise. B and D hold still, so every second stack pairs one fire with one clear
+              player.</li>
+          <li>Done correctly, <strong>every player ends on four Close Caloric stacks</strong>, one short of the
+              wipe. Nobody moves again until it fades and Ekpyrosis starts casting.</li>
+          <li>For <strong>Ekpyrosis</strong>, go to the walls the exaflares start from, into the gap between the
+              two lanes. Exaflares on the north and south walls: <strong>tanks and melee north, healers and ranged
+              south</strong>. On the west and east walls: <strong>light party 1 west, light party 2 east</strong>.
+              Dodge the first exaflare, then spread along the wall in the same order as the
+              <strong>Gaiaochos</strong> Geocentrism spread: on the north and south walls like its rows (M1, T1, T2, M2
+              west to east, and R1, H1, H2, R2), on the west and east walls like its columns (M1, T1, H1, R1 north to
+              south, and M2, T2, H2, R2). After the hits, weave back to the middle between the rest.</li>
+        </ol>
+        <p class="note">The wiki describes the same pairings without fixed waymarks. Icy Veins places the Ekpyrosis spreads in the same order as the
+           Geocentrism spread in Gaiaochos, which gives each player an exact position along the wall.</p>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- ============ 10 ============ -->
+  <article class="doc" hidden>
+    <div class="doc-head">
+      <div class="doc-num">10</div>
+      <div class="doc-title">
+        <h2>Pangenesis</h2>
+        <div class="doc-meta">Pangenesis · Unstable Factor · Pantheos · Factor In · Palladian Grasp</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p><strong>Pangenesis</strong> deals heavy raidwide damage, split between everyone alive, and hands out
+           debuffs at random, regardless of role:</p>
+        <div class="scroll">
+          <table>
+            <thead><tr><th>Players</th><th>Debuffs</th></tr></thead>
+            <tbody>
+              <tr><td class="k">Two</td><td>Nothing</td></tr>
+              <tr><td class="k">Two</td><td>1 stack of Unstable Factor</td></tr>
+              <tr><td class="k">Two</td><td>2 stacks, plus a 16-second Astral Tilt or Umbral Tilt, one of each</td></tr>
+              <tr><td class="k">Two</td><td>2 stacks, plus a 20-second Astral Tilt or Umbral Tilt, one of each</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="beats">
+          <li><strong>Unstable Factor</strong> has to be fully gone before it expires, or its holder explodes and
+              wipes the raid. Two players standing together <strong>mix</strong>: their stacks are added, halved
+              and rounded down for both. A player with no stacks can never gain one, so 2 and 0 leaves 1 and 0,
+              and 1 and 0 leaves both clear. <strong>Stable System</strong> blocks mixing for the first few seconds.</li>
+          <li>Clearing your last stack gives <strong>Critical Factor</strong> and leaves a slime behind. Players who
+              never had stacks never get it.</li>
+          <li><strong>Pantheos</strong> spawns ten two-player towers in three sets, working inward from the side
+              walls. First one tower per side, one light and one dark. Then two per side, where the
+              <strong>north</strong> tower is the <strong>opposite</strong> colour of that side's first tower and
+              the <strong>south</strong> tower the <strong>same</strong>. The third set repeats that pattern closer
+              to the middle.</li>
+          <li>Each tower needs one player whose Tilt fits it and one player with no Tilt. <strong>Astral Tilt
+              soaks light towers and Umbral Tilt soaks dark towers.</strong> Soaking removes the Tilt that was used,
+              then gives one of the two players, at random, the Tilt that matches the tower: a light tower hands
+              out Umbral Tilt and a dark tower Astral Tilt.</li>
+          <li>Afterwards every slime tethers a random player with a tether that can be taken over, and hits its
+              holder with <strong>Factor In</strong>, a huge AoE that kills anyone carrying Critical Factor. At the
+              same time the main tank is marked for the two-hit <strong>Palladian Grasp</strong>, which cleaves
+              their half of the room.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <p>The party lines up in a pre-assigned <strong>conga line</strong> during the cast, with the main tank
+           taking Palladian Grasp at the far east end. That line decides every side, and every tower after that
+           follows from what the player just did.</p>
+        <ol class="beats">
+          <li><strong>No-stack</strong> players step forward and <strong>1-stack</strong> players step back. In each
+              pair the westmost goes <strong>west</strong> and the eastmost <strong>east</strong>. No-stack players
+              take the <strong>first tower</strong> on their side; 1-stack players wait <strong>outside</strong>,
+              near where the second south tower will spawn. The 2-stack players stay in the line.</li>
+          <li>When the first towers appear, each 2-stack player goes to the side whose tower their Tilt soaks. The
+              <strong>16-second</strong> Tilt soaks that tower with the no-stack player. The
+              <strong>20-second</strong> Tilt waits outside and mixes with the 1-stack player, saving its Tilt for
+              the next set.</li>
+          <li>Second set: the two who soaked the first tower take the <strong>north</strong> tower on their side,
+              and the two who waited outside take the <strong>south</strong> one. Both towers are the colour the
+              pair's Tilt now fits.</li>
+          <li>Third set: if the second tower gave <strong>you</strong> a Tilt, <strong>swap rows</strong>; if not,
+              <strong>stay in your row</strong>. Every third-set tower ends up with exactly one fitting Tilt and one
+              clear player, and every stack is gone by the end.</li>
+          <li>Stack tightly inside every tower, so each soak is also a mix.</li>
+          <li>The two no-stack players take the slime tethers, <strong>three each</strong>: the west one to the
+              north-west corner, the east one north, just east of the middle, staying close enough to step west.
+              The main tank takes Palladian Grasp on the <strong>east half</strong> with an invulnerability, and
+              everyone else waits <strong>south of the middle on the west half</strong>.</li>
+        </ol>
+        <p class="note">The conga line order is up to the party. What matters is that it is fixed before the pull and
+           that the main tank sits at the east end, so they are always the eastmost of any pair and stay on the
+           Palladian Grasp side.</p>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- ============ 11 ============ -->
+  <article class="doc" hidden>
+    <div class="doc-head">
+      <div class="doc-num">11</div>
+      <div class="doc-title">
+        <h2>The Classical Concepts II</h2>
+        <div class="doc-meta">The Classical Concepts · Panta Rhei · Fusion Burst · Palladian Ray · Implode</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p><strong>The Classical Concepts</strong> returns with massive raid damage and opens exactly like the first
+           time: symbols, Alpha and Beta Target, Shackled Together pairs, and the twelve shapes whose tethers have to
+           be blocked.</p>
+        <ul class="beats">
+          <li><strong>Panta Rhei</strong> is a slow cast that makes every shape vanish and reappear rotated
+              <strong>180 degrees</strong> around the middle of the grid, mirrored north to south and west to east at
+              once. The tethers only resolve after it finishes, so players must already be standing on the new
+              positions. The shackles still punish anyone who drifts too far from their partner on the way.</li>
+          <li><strong>Palladian Ray</strong> works as before: a tentacle in the west and one in the east, each firing a
+              lingering cone at its four nearest players.</li>
+          <li>Unlike the first time, the shapes <strong>Implode after the cones</strong> have started going off, so
+              players have to dodge out of the lingering cones into ground that is also clear of every
+              point-blank.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <ol class="beats">
+          <li>Find your blocking spot exactly as in the first Classical Concepts: your symbol picks the column, your
+              target picks the shape, and the shape no other blue can use settles any ambiguity.</li>
+          <li>During Panta Rhei, walk to that spot's <strong>mirror image</strong> through the middle of the grid.
+              The rotated layout has exactly the rotated solution, so every pair doing this blocks every tether.
+              Move slowly with your partner; in Party Finder a jump is a common signal that you are ready.</li>
+          <li>Icy Veins offers a second method: solve the <strong>opposite</strong> column's blue from the start
+              and mirror that spot into your own column. It takes more thinking but much less walking across the
+              arena while shackled.</li>
+          <li>Once the tethers appear, pre-position for Palladian Ray: columns 1 and 2 west, 3 and 4 east, Alpha
+              north and Beta south. Panta Rhei has mirrored every pair across the grid, so the column order is
+              <strong>reversed</strong> from the first time: west to east green triangle, red circle, purple square,
+              blue ✕.</li>
+          <li>After your cone hits, step out of it into ground clear of every cone and of every shape's Implode:
+              a gap between four shapes that no cone crosses, or the edge of the floor away from the cones.</li>
+        </ol>
+        <p class="note">Icy Veins notes that the sides and south of the floor are always safe from this final
+           combination with its baiting formation. With the drill's bait spots, the inner columns' cones cross
+           the south middle, so the drill only accepts ground that its cones actually leave clear.</p>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- ============ 12 ============ -->
+  <article class="doc" hidden>
+    <div class="doc-head">
+      <div class="doc-num">12</div>
+      <div class="doc-title">
+        <h2>Caloric Theory II</h2>
+        <div class="doc-meta">Caloric Theory · Atmosfaction · Close Caloric · Entropifaction · Entropic Excess</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p><strong>Caloric Theory</strong> returns after Ultima and Crush Helm with the same blue grid and heavy raid
+           damage, but a different set of debuffs. During the cast seven players get a <strong>green</strong> marker
+           and one gets a <strong>red</strong> marker. When it ends every player releases a medium AoE around
+           themselves, so the party has to be spread already.</p>
+        <ul class="beats">
+          <li>Everyone gets <strong>Atmosfaction</strong>, which works as before: when it expires it knocks back
+              and kills anyone else inside its circle. It resolves at the very end of the mechanic.</li>
+          <li>Green players start on <strong>two</strong> stacks of Close Caloric and the red player on
+              <strong>three</strong>. Walking roughly 9 yalms still adds a stack, so anyone who walks more than
+              about 18 yalms, two rectangle diagonals, reaches five and wipes the raid.</li>
+          <li>One random green-marked player, never the red one, gets <strong>Entropifaction</strong> with eight stacks. Each time a stack falls
+              it drops a large circular AoE, <strong>Entropic Excess</strong>, on its holder's current spot. It
+              passes to another player on contact, along with its remaining stacks, and the previous holder gets
+              <strong>Entropy Resistance</strong>, so it can never come back to them. Its holder carries a fiery
+              overhead marker.</li>
+          <li><strong>Ekpyrosis</strong> follows, with either of its two patterns, and works as in the first
+              Caloric Theory.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <p>The party pre-assigns a spread on the grid intersections: one player in the <strong>middle</strong>, six
+           in a <strong>hexagon</strong> one rectangle diagonal out, and the eighth one diagonal further
+           <strong>south-east</strong>. Ranged DPS usually take the middle and the extra south-east spot.</p>
+        <ol class="beats">
+          <li>Take your spread spot during the cast, exactly on the intersection. If the <strong>red</strong>
+              marker lands on anyone other than the middle player, those two <strong>swap</strong>. The red player
+              then sits in the middle for the whole mechanic.</li>
+          <li>Entropifaction is handed <strong>clockwise</strong> round the seven outside players, never to the
+              middle. As soon as its AoE appears under you, walk in a straight line to the next outside player and
+              touch them.</li>
+          <li>When the next AoE appears under the two of you, the new holder walks on to the next player, and the
+              passer steps <strong>outward</strong>. The usual spot is straight out into the gap between the spot
+              they came from and the one they are standing on, but any spot works that clears this AoE and every
+              later one, stays out of everyone's Atmosfaction, and keeps the passer's whole walk under 18 yalms.</li>
+          <li>The last outside player has nobody left to pass to. They carry it to the spot the
+              <strong>first holder</strong> started from, which is empty by then, and stay there for its final
+              drop.</li>
+          <li>Nobody walks more than two diagonals, so every outside player finishes on <strong>four</strong>
+              Close Caloric stacks and the middle player stays on three. Everyone is spread when Atmosfaction goes
+              off.</li>
+        </ol>
+        <p class="note">Which slot takes which spread spot is up to the party; the guides only ask for ranged DPS in
+           the middle and the extra spot. The drill seats T1 north, M2 north-east, H2 south-east, R2 far
+           south-east, T2 south, H1 south-west, M1 north-west and R1 in the middle, matching the jobs in Icy Veins'
+           diagram.</p>
+      </section>
+
+    </div>
+  </article>
+
+  <!-- ============ 13 ============ -->
+  <article class="doc" hidden>
+    <div class="doc-head">
+      <div class="doc-num">13</div>
+      <div class="doc-title">
+        <h2>Gaiaochos II</h2>
+        <div class="doc-meta">Gaiaochos · Summon Darkness · Missing Link · Demi Parhelion · Geocentrism · Divine Excoriation · Ultima Blow</div>
+      </div>
+    </div>
+
+    <div class="doc-body">
+
+      <section>
+        <h3>How the mechanic works</h3>
+        <p>The last mechanic before the enrage. <strong>Gaiaochos</strong> hits the raid, shrinks the floor to a small
+           circle again and gives everyone <strong>Ascended</strong>, and the first Gaiaochos's pieces return in a new
+           order.</p>
+        <ul class="beats">
+          <li><strong>Summon Darkness</strong> puts a single add on an <strong>intercardinal</strong>. Its line fires
+              across that whole diagonal, leaving the other two intercardinal corners safe.</li>
+          <li><strong>Demi Parhelion</strong> and <strong>Geocentrism</strong> follow at once, together with
+              <strong>Missing Link</strong>, which chains every DPS to a support until distance breaks it. This time
+              the tentacles only ever show <strong>rows or columns</strong>, leaving two narrow lanes clear.</li>
+          <li>As the line and the blasts go off, everyone is hit by <strong>Divine Excoriation</strong>, a small
+              AoE that punishes anyone standing too close to another player.</li>
+          <li><strong>Summon Darkness</strong> is then cast twice more. Each time four adds appear and tether all
+              four players of one role. Each tethered player has <strong>Magic Vulnerability Up</strong> and is hit
+              by <strong>Ultima Blow</strong>, a line from their add that has to be shared by one other player. A
+              player caught in two lines dies. <strong>Ultima</strong> follows each set, and the second set tethers
+              the other role.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>How it is solved</h3>
+        <ol class="beats">
+          <li>Stack in the middle. Note where the add is and which two corners its diagonal leaves safe, then read
+              the tentacles: rows or columns.</li>
+          <li>When Missing Link appears, <strong>supports run to the north safe corner</strong> and <strong>DPS to
+              the south one</strong>, each staying inside the narrow row or column. The two groups end up far apart,
+              which breaks every chain.</li>
+          <li>Spread along that lane for Divine Excoriation. <strong>Healers and ranged stay in the corner</strong>,
+              and <strong>tanks and melee move further in</strong>.</li>
+          <li>For each Ultima Blow set, the tethered players take their tether <strong>straight across to the
+              opposite wall</strong> from their add. All four lines then run through the middle and fan apart at
+              the walls.</li>
+          <li>Each tethered player's partner (as in phase one) stands on that line, <strong>just in front of
+              them</strong> or <strong>out by their add</strong>. Too far in towards the middle, the lines crowd
+              together and a blocker takes two. A tank can instead stand in the middle with an invulnerability if
+              someone is dead.</li>
+        </ol>
+        <p class="note">The guides disagree on how many adds each tether set shows: eight at the edge in Icy Veins, four
+           on the Console Games Wiki. The drill shows four, one on each line through the middle, so no two tethers
+           share a line. It pairs partners as T1 with M1, T2 with M2, H1 with R1 and H2 with R2, and orders each spread
+           lane from the corner as H1, H2, T1, T2 and R1, R2, M1, M2, accepting either spot of your job.</p>
+      </section>
+
+    </div>
+  </article>
+
+  <footer>
+    Sources: Icy Veins, <a href="https://www.icy-veins.com/ffxiv/the-twelfth-circle-savage-part-one-raid-guide">The Twelfth Circle (Savage) part one</a>
+    and <a href="https://www.icy-veins.com/ffxiv/the-twelfth-circle-savage-part-two-raid-guide">part two</a> raid guides ·
+    Console Games Wiki, <a href="https://ffxiv.consolegameswiki.com/wiki/Anabaseios:_The_Twelfth_Circle_(Savage)">Anabaseios: The Twelfth Circle (Savage)</a><br>
+    Unofficial fan documentation. Not affiliated with Square Enix.
+  </footer>
+
+</div>
+
+</body>
+</html>

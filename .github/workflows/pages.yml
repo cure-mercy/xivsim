@@ -1,8 +1,5 @@
-# Publishes the trainer to GitHub Pages.
-#
-# index.html is written to be published as a claude.ai artifact, whose host wraps it in the document head
-# (doctype, charset, viewport). GitHub Pages serves files as they are, so this build adds that head in
-# front of the same index.html, and copies the rest of the site alongside it unchanged.
+# Publishes the trainer to GitHub Pages. The site is the repository as it is, with no build step; the upload
+# leaves out .git and .github.
 #
 # One-time setup: in the repository's Settings → Pages, set "Source" to "GitHub Actions".
 
@@ -10,7 +7,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -28,22 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build the site
-        run: |
-          mkdir _site
-          cp -r assets css js mechanics _site/
-          {
-            echo '<!doctype html>'
-            echo '<html lang="en">'
-            echo '<head>'
-            echo '<meta charset="utf-8">'
-            echo '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
-            cat index.html
-          } > _site/index.html
-
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: .
 
   deploy:
     needs: build

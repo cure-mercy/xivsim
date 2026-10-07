@@ -29,9 +29,8 @@
 }
 
 *{ box-sizing: border-box; }
-/* The page brings its own basics rather than leaning on a host's reset: hosted as a claude.ai artifact it
-   gets one, served as plain files (GitHub Pages) it does not. Without this rule every drill's panel shows
-   at once, since .layout's display beats the browser's own [hidden] style. */
+/* Without this rule every drill's panel shows at once, since .layout's display beats the browser's own
+   [hidden] style. */
 [hidden]{ display: none !important; }
 :root{ color-scheme: dark; }
 
