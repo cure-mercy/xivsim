@@ -116,3 +116,11 @@ td.wrap{ white-space: normal; min-width: 260px; }
 .tip .t-row b{ font-weight: 650; }
 .tip .t-row span{ color: var(--ink-2); }
 .tip .t-key{ width: 12px; height: 2px; background: var(--series); align-self: center; }
+
+/* passphrase screen */
+.unlock{ display: grid; gap: 8px; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+.unlock label{ color: var(--ink-2); font-size: 13px; }
+.unlock label.check{ display: flex; gap: 6px; align-items: center; }
+.unlock input[type=password]{ font: inherit; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.unlock button.primary{ font: inherit; font-weight: 600; color: #fff; background: var(--series); border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; justify-self: start; }
+.unlock button.primary:disabled{ opacity: 0.6; cursor: progress; }

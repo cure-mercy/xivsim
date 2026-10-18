@@ -170,8 +170,35 @@ The theme follows the system and can be switched with the button (or `?theme=lig
 link).
 
 The page needs a web server because it loads `data.json`; opening `index.html` straight from disk will not
-work. `site/data.json` holds player names and who caused which mistake, so it is git-ignored; whether and where
-to publish the site is a separate decision (the `tools/` folder is left out of the GitHub Pages deploy).
+work. `site/data.json` holds player names and who caused which mistake, so it is git-ignored, and `tools/` is
+left out of the GitHub Pages deploy.
+
+### Publishing with a passphrase
+
+GitHub Pages sites are public, so the published copy carries its data encrypted and asks for a passphrase:
+
+```
+python tools/scorecard/build_site.py [<report link> ...] --publish
+```
+
+This writes `stats/` at the repository root: the three page files and `data.enc.json`, the data compressed and
+encrypted with AES-256-GCM under a key derived from the passphrase (PBKDF2-SHA256, 600,000 rounds). The
+plaintext `data.json` is never copied there. The passphrase is asked for twice (or read from
+`SCORECARD_PASSPHRASE`) and must be at least 12 characters; several unrelated words are best, since anyone can
+download the encrypted file and try passphrases offline. Encrypting needs Node (`encrypt_data.js`); the browser
+decrypts with its built-in Web Crypto, which works on https and on localhost. After a check that the result
+decrypts, commit and push `stats/`; the existing Pages workflow deploys it with the rest of the repository, at
+`/stats/` under the trainer's address. Run `--publish` again after adding reports.
+
+Readers enter the passphrase once per browser session (unless they untick "Remember"); the Lock button forgets
+it. The page is marked `noindex` and is not linked from the trainer. What this does not give you: individual
+accounts. Everyone shares one passphrase, so changing it (and publishing again) is the only way to revoke
+access.
+
+**Undoing or moving it.** Nothing outside `stats/` depends on the published copy: delete `stats/` and push to take
+it down. The page itself does not care where it is hosted: on any static host, upload `stats/` as it is; on a
+host with its own login, upload `site/` with the plaintext `data.json` instead, and the passphrase prompt never
+appears (the page only asks when `data.json` is missing and `data.enc.json` is there).
 
 ## Files
 
@@ -182,7 +209,8 @@ to publish the site is a separate decision (the `tools/` folder is left out of t
 | `fflogs.py` | FFLogs v2 client: token, rate-limit waits, paged events, batched tables |
 | `benchmark.json` | Benchmark snapshot used for the damage and uptime comparisons |
 | `build_benchmark.py` | Rebuilds `benchmark.json` |
-| `build_site.py` | Adds reports to the website's data (`site/data.json`) |
+| `build_site.py` | Adds reports to the website's data (`site/data.json`); `--publish` writes the passphrase-protected copy to `stats/` |
+| `encrypt_data.js` | Encrypts the data for `--publish` (Node) |
 | `site/` | The website: `index.html`, `style.css`, `app.js`, and the generated `data.json` (git-ignored) |
 | `.cache/` | Downloaded reports, the API token and benchmark progress (git-ignored) |
 
