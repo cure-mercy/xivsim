@@ -103,8 +103,8 @@ def infer_light_parties(pulls):
             for ws in by.values():
                 if len(ws) == 1: c[ws[0]] += 1
     lp1 = {w for w, _ in c1.most_common(4)}
-    lp2 = {w for w, n in c2.most_common() if w not in lp1}
-    return lp1, set(list(lp2)[:4]) if len(lp2) > 4 else lp2
+    lp2 = [w for w, n in c2.most_common() if w not in lp1][:4]   # keep the count order, not set order, before cutting to four
+    return lp1, set(lp2)
 
 
 def para1(p, lp):
@@ -115,7 +115,7 @@ def para1(p, lp):
         t = min(e["t"] for e in hs); dead = p.dead_by(t - 0.5)
         cnt = collections.Counter(e["who"] for e in hs)
         exp = {x for x in lp[w - 1] if x in p.job and x not in dead}
-        missing = [x for x in exp if x not in cnt]
+        missing = [x for x in sorted(exp) if x not in cnt]
         extra = [x for x in cnt if x not in exp] + [x for x, n in cnt.items() if n >= 2 and x in exp]
         if missing:
             out.append(fault(t, "Paradeigma I", missing, extra, f"not in the White Flame line-up (wave {w}); the laser went to {', '.join(extra) or 'someone else'}", "high" if extra else "medium"))
@@ -229,10 +229,10 @@ def para3(p):
     spos = {e["who"]: e["pos"] for e in sh if e["pos"]}
     if sh or wipe:
         t = sh[0]["t"] if sh else 214.4; dead = p.dead_by(t - 0.3); got = {e["who"] for e in sh}
-        for w in supports_all - got:
+        for w in sorted(supports_all - got):
             if w in dead: out.append(fault(t, "Paradeigma III", [w], wipe, f"{w} was already dead, so their platform tower went unsoaked (Electrify)", "consequence", chain=[w]))
             else: out.append(fault(t, "Paradeigma III", [w], wipe | {w}, "did not soak their platform tower (Electrify)", "high"))
-        for w in got - supports: out.append(fault(t, "Paradeigma III", [w], [w], "a DPS soaked a support tower", "medium"))
+        for w in sorted(got - supports): out.append(fault(t, "Paradeigma III", [w], [w], "a DPS soaked a support tower", "medium"))
         # two supports in one tower leave another empty: blame whoever does not belong on that platform
         role = {**{w: "+" for w in sup["Quartered"]}, **{w: "X" for w in sup["X-Marked"]}, **{w: "bright" for w, _ in bright}}
         by_tower = collections.defaultdict(list)
@@ -294,8 +294,8 @@ def para3(p):
     if wf:
         t = wf[0]["t"]; dead = p.dead_by(t - 0.3); hit = collections.Counter(e["who"] for e in wf)
         exp_all = set(sup["Quartered"]) | set(sup["X-Marked"]) | set(match); exp = exp_all - dead
-        missing = [w for w in exp if w not in hit]; extra = [w for w in hit if w not in exp]
-        gone = [w for w in exp_all & dead]
+        missing = [w for w in sorted(exp) if w not in hit]; extra = [w for w in hit if w not in exp]
+        gone = sorted(exp_all & dead)
         if extra and gone and not missing:   # a baiter was already dead, so their laser found someone else
             out.append(fault(t, "Paradeigma III", gone, extra, f"White Flame went to {', '.join(extra)} because {', '.join(gone)} (a baiter) was already dead", "consequence", chain=gone))
         elif missing: out.append(fault(t, "Paradeigma III", missing, extra, f"did not bait their White Flame; it hit {', '.join(extra) or 'someone else'}", "high" if extra else "medium"))
@@ -368,7 +368,7 @@ def superchain1(p):
             dead = p.dead_by(t - 0.3)
             for nm, ws in exp.items():
                 got = {e["who"] for e in lt if e["name"] == nm}
-                for w in ws - got - dead: out.append(fault(t, "Superchain I", [w], got, f"missed their {nm} share (fewer players split it)", "medium"))
+                for w in sorted(ws - got - dead): out.append(fault(t, "Superchain I", [w], got, f"missed their {nm} share (fewer players split it)", "medium"))
     # Heavensflame spread
     hh = p.hits("Theos's Holy", 145.5, 149)
     by = collections.defaultdict(list)

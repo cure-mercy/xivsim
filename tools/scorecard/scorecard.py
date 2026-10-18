@@ -39,27 +39,46 @@ AB = {"Paladin": "PLD", "Warrior": "WAR", "DarkKnight": "DRK", "Gunbreaker": "GN
 G_MIST, G_WIPE, G_DMG, G_UP = (0.30, 0.60), (0.10, 0.20), (-0.05, -0.12), (-0.5, -1.5)
 CASCADE_GAP = 15                 # deaths closer together than this (seconds) belong to the same collapse
 MISTAKE_AFTER_WIPE = 2           # mistakes are counted up to this long after the one that decided the wipe
-# first-mistake causes, grouped for the summary; the last group of each tuple says whether it is "stood in it"
-CAUSES = [("Trinity of Souls", "Trinity of Souls: on the cleaved side", True), ("green orb", "Green orb (Superchain)", True),
-          ("Ray of Light", "Ray of Light column", True), ("donut", "Donut (Superchain)", True),
-          ("White Flame line-up", "Missed White Flame bait", False), ("did not bait their White Flame", "Missed White Flame bait", False),
-          ("White Flame", "White Flame line", True), ("platform tower", "Support tower left empty (Electrify)", False),
-          ("same tower", "Support tower left empty (Electrify)", False), ("tower", "Tower error", False), ("soaked", "Tower error", False),
-          ("tether laser", "Tether laser", True), ("laser group", "Superchain laser group", False), ("share", "Superchain laser group", False),
-          ("Heavensflame", "Heavensflame spread", False), ("orange cone", "Orange cone overlap", True), ("purple jack", "Purple pair", False),
-          ("Soul AoE", "Soul AoE", True), ("Soul in", "Tower error", False), ("dash line", "Palladion dash line", True),
-          ("destroyed tile", "Destroyed tile", True), ("auto-attacks", "Tank death to auto-attacks", False)]
+# causes, grouped for the summaries: (text in the classifier's cause, label, short form for the focus bullets)
+CAUSES = [("Trinity of Souls", "Trinity of Souls: on the cleaved side", "Trinity side"), ("green orb", "Green orb (Superchain)", "green orb"),
+          ("Ray of Light", "Ray of Light column", "Ray of Light"), ("donut", "Donut (Superchain)", "donut"),
+          ("White Flame line-up", "Missed White Flame bait", "missed White Flame bait"),
+          ("did not bait their White Flame", "Missed White Flame bait", "missed White Flame bait"), ("White Flame", "White Flame line", "White Flame line"),
+          ("tether laser", "Tether laser", "tether laser"), ("laser group", "Superchain laser group", "laser group"),
+          ("share", "Superchain laser group", "laser group"), ("Heavensflame", "Heavensflame spread", "Heavensflame"),
+          ("orange cone", "Orange cone overlap", "orange cone"), ("purple jack", "Purple pair", "purple pair"), ("Soul AoE", "Soul AoE", "Soul AoE"),
+          ("the + ", "+ / X placement", "+/X"), ("the X ", "+ / X placement", "+/X"), ("arms of", "+ / X placement", "+/X"),
+          ("dash line", "Palladion dash line", "dash line"), ("destroyed tile", "Destroyed tile", "destroyed tile"),
+          ("auto-attacks", "Tank death to auto-attacks", "tank autos")]
+# tower failures, labelled by mechanic and by what went wrong; the first match wins
+TOWERS = [(("platform tower", "same tower"), "support tower left empty (Electrify)", "support tower"),
+          (("DPS soaked a support tower",), "DPS in a support tower", "DPS in support tower"),
+          (("died before dropping",), "Soul died before dropping their tower", "dead Soul's tower"),
+          (("wrong quadrant", "sweep", "two towers dropped", "dropped their Soul"), "Soul tower in the wrong quadrant", "tower quadrant"),
+          (("wrong side",), "tower dropped on the wrong side", "tower side"),
+          (("own tile instead", "at the centre instead"), "bright tower placed wrong", "tower placement"),
+          (("before the bright Soul",), "stepped into the tower too early", "tower too early"),
+          (("did not soak", "unsoaked because", "soaker could not", "cause unclear"), "tower not soaked", "tower not soaked"),
+          (("soaked", "stepped into"), "wrong player in a tower", "wrong soaker")]
+MECH_SHORT = {"Paradeigma II": "P2", "Superchain I": "SC1", "Paradeigma III": "P3"}
 
 
-SHORT = {"Trinity of Souls: on the cleaved side": "Trinity side", "Green orb (Superchain)": "green orb", "Ray of Light column": "Ray of Light",
-         "Donut (Superchain)": "donut", "Missed White Flame bait": "missed White Flame bait", "White Flame line": "White Flame line",
-         "Tower error": "tower", "Support tower left empty (Electrify)": "support tower", "Tether laser": "tether laser", "Superchain laser group": "laser group", "Heavensflame spread": "Heavensflame",
-         "Orange cone overlap": "orange cone", "Purple pair": "purple pair", "Soul AoE": "Soul AoE", "Palladion dash line": "dash line"}
+def cause_label(text, mech=""):
+    """Summary label for a classifier cause; tower failures are named with their mechanic."""
+    text = text.split("after their earlier")[-1].split("; earlier")[0]
+    if "tower" in text or "Soul in" in text:
+        for keys, kind, _ in TOWERS:
+            if any(k in text for k in keys):
+                return f"{mech}: {kind}" if mech in MECH_SHORT else "Tower: " + kind
+    return next((lab for key, lab, _ in CAUSES if key in text), "Other")
 
 
-def cause_label(text):
-    text = text.split("after their earlier")[-1]
-    return next(((lab, stood) for key, lab, stood in CAUSES if key in text), ("Other", False))
+def short_label(label):
+    mech, _, kind = label.partition(": ")
+    if kind and (mech in MECH_SHORT or mech == "Tower"):
+        short = next((sh for _, k, sh in TOWERS if k == kind), kind)
+        return f"{MECH_SHORT.get(mech, '')} {short}".strip()
+    return next((sh for _, lab, sh in CAUSES if lab == label), label)
 
 
 # ---------- fetching ----------
@@ -116,12 +135,12 @@ def first_mistake(data, f):
 # ---------- analysis ----------
 def mistakes_of(res):
     """Every distinct mistake in a pull: classifier entries with a culprit that are not just fallout of an earlier
-    mistake, one per culprit per 2 s (a bait that kills four players is one mistake). Yields (culprit, t, cause)."""
+    mistake, one per culprit per 2 s (a bait that kills four players is one mistake). Yields (culprit, t, cause, mechanic)."""
     out = []
     for r in res:
         if r.get("derived") or not r["culprits"]: continue
         for c in r["culprits"]:
-            if not any(m[0] == c and abs(m[1] - r["t"]) <= 2 for m in out): out.append((c, r["t"], r["cause"]))
+            if not any(m[0] == c and abs(m[1] - r["t"]) <= 2 for m in out): out.append((c, r["t"], r["cause"], r["mechanic"]))
     return out
 
 
@@ -149,24 +168,31 @@ def analyse(group, data, bench):
     lp = infer_light_parties(pulls)
     attended, nmist, mcauses = collections.Counter(), collections.Counter(), collections.defaultdict(collections.Counter)
     nwipe, wcauses = collections.Counter(), collections.defaultdict(collections.Counter)
-    pull_causes, wipe_causes, conf = collections.Counter(), collections.Counter(), collections.Counter()
-    for p, f in zip(pulls, data["fights"]):
+    all_causes, wipe_causes, conf = collections.Counter(), collections.Counter(), collections.Counter()
+    pull_rows = []                   # one record per pull, for build_site.py
+    for n, (p, f) in enumerate(zip(pulls, data["fights"]), 1):
         for pid in f["friendlyPlayers"]:
             if pid in names: attended[names[pid]] += 1
         res, _ = classify(p, lp)
+        row = dict(n=n, id=f["id"], dur=round((f["endTime"] - f["startTime"]) / 1000, 1), boss=f.get("bossPercentage"), kill=bool(f.get("kill")),
+                   first=round(first_mistake(data, f)[0], 1), deaths=sum(1 for r in res if r["kind"] == "death"), wipe=None, mistakes=[],
+                   players=sorted(names[pid] for pid in f["friendlyPlayers"] if pid in names))
+        pull_rows.append(row)
         if not res: continue
         first = [r for r in res if r["t"] <= res[0]["t"] + 1.5]
         conf.update(r["confidence"] for r in first)
-        lead = next((r for r in first if r["culprits"]), None)
-        pull_causes[cause_label(lead["cause"]) if lead else ("Unclear", False)] += 1
         cul, trig = wipe_of(res) if not f.get("kill") else ([], None)
         if not f.get("kill"):
-            wipe_causes[cause_label(trig["cause"]) if trig else ("Unclear", False)] += 1
-            for c in cul: nwipe[c] += 1; wcauses[c][cause_label(trig["cause"])[0]] += 1
+            wipe_causes[cause_label(trig["cause"], trig["mechanic"]) if trig else "Unclear"] += 1
+            for c in cul: nwipe[c] += 1; wcauses[c][cause_label(trig["cause"], trig["mechanic"])] += 1
+            if trig: row["wipe"] = dict(culprits=cul, t=round(trig["t"], 1), mechanic=trig["mechanic"],
+                                        label=cause_label(trig["cause"], trig["mechanic"]), cause=trig["cause"])
         # every mistake while the pull was still alive; what happens during the collapse is forced or noise
         cutoff = trig["t"] + MISTAKE_AFTER_WIPE if trig else float("inf")
-        for c, t, cause in mistakes_of(res):
-            if t <= cutoff: nmist[c] += 1; mcauses[c][cause_label(cause)[0]] += 1
+        for c, t, cause, mech in mistakes_of(res):
+            if t <= cutoff:
+                lab = cause_label(cause, mech); nmist[c] += 1; mcauses[c][lab] += 1; all_causes[lab] += 1
+                row["mistakes"].append(dict(who=c, t=round(t, 1), mechanic=mech, label=lab, cause=cause))
     segs = [first_mistake(data, f)[0] for f in data["fights"]]
     samples = collections.defaultdict(list)
     for rows in data["tables"].values():
@@ -186,14 +212,18 @@ def analyse(group, data, bench):
                                 mistakes=nmist[name], mrate=nmist[name] / attended[name], mcauses=mcauses[name].most_common(3),
                                 wipes=nwipe[name], wrate=nwipe[name] / attended[name], wcauses=wcauses[name].most_common(3), samples=len(xs),
                                 best_quarter=top, avg=st.mean(xs) if xs else None, peer=vs["peer"], fast=vs["fast"], uptime=up,
-                                uptime_diff=up - bench["pools"]["peer"]["role_uptime"][ROLE.get(job, "Melee")] if up else None))
+                                uptime_diff=up - bench["pools"]["peer"]["role_uptime"][ROLE.get(job, "Melee")] if up else None,
+                                mcauses_all=dict(mcauses[name]), wcauses_all=dict(wcauses[name]),
+                                clean_pulls=[dict(n=next(r["n"] for r in pull_rows if str(r["id"]) == fid), rdps=round(y["rdps"]), uptime=round(y["active"], 1))
+                                             for fid, rows in data["tables"].items() for y in rows if y["name"] == name and y["job"] == job]))
     boss = bench["hp_checkpoints"]["boss_hp"]
     hp = {c["mechanic"]: sorted(100 * (1 - v[c["mechanic"]] / boss) for v in data["hp"].values() if c["mechanic"] in v)
           for c in bench["hp_checkpoints"]["mechanics"]}
     return dict(group=group, code=data["code"], hp=hp, date=datetime.datetime.fromtimestamp(data["startTime"] / 1000), pulls=len(data["fights"]),
                 kills=sum(1 for f in data["fights"] if f.get("kill")), best=min(f["bossPercentage"] for f in data["fights"]),
                 longest=max((f["endTime"] - f["startTime"]) / 1000 for f in data["fights"]), clean2=sum(s >= WINDOW for s in segs),
-                party=st.mean(party) if party else None, causes=pull_causes, wipe_causes=wipe_causes, coverage=conf, lp=lp, players=players)
+                party=st.mean(party) if party else None, causes=all_causes, wipe_causes=wipe_causes, coverage=conf, lp=lp, players=players,
+                pull_rows=pull_rows)
 
 
 # ---------- output ----------
@@ -298,23 +328,21 @@ def render(groups, bench):
     if allgood: t += [f"✓ across the board: {', '.join(allgood)}", ""]
     causes = collections.Counter()
     for g in groups: causes.update(g["causes"])
-    npulls = sum(causes.values())
-    t.append(f"First mistake ({npulls} pulls)")
-    t += [f" {n:>3} {lab}" for (lab, _), n in causes.most_common()]
-    stood = sum(n for (lab, s), n in causes.items() if s)
-    if npulls: t.append(f"→ {stood} of {npulls} first mistakes ({100 * stood / npulls:.0f}%) were \"stood in it\", not a missed assignment.")
+    nmist = sum(causes.values())
+    t.append(f"All mistakes ({nmist}, until each pull was lost)")
+    t += [f" {n:>3} {lab}" for lab, n in causes.most_common()]
     wc = collections.Counter()
     for g in groups: wc.update(g["wipe_causes"])
     if wc:
-        t += ["", f"What wiped us ({sum(wc.values())} wipes)"] + [f" {n:>3} {lab}" for (lab, _), n in wc.most_common()]
+        t += ["", f"What wiped us ({sum(wc.values())} wipes)"] + [f" {n:>3} {lab}" for lab, n in wc.most_common()]
     focus = collections.OrderedDict()   # one bullet per player: wipes, mistakes, then uptime and damage
     for p in sorted(allp, key=lambda p: (-p["wrate"], -p["mrate"])):
         gm, gw, gd, gu = grades(p)
         parts = focus.setdefault(p["name"], [])
         if gw == "!" and not any(x.startswith("wipes") for x in parts):
-            parts.append(f"wipes {p['wipes']} of {p['pulls']} (" + ", ".join(f"{SHORT.get(lab, lab)} ×{n}" for lab, n in p["wcauses"]) + ")")
+            parts.append(f"wipes {p['wipes']} of {p['pulls']} (" + ", ".join(f"{short_label(lab)} ×{n}" for lab, n in p["wcauses"]) + ")")
         if gm == "!" and not any(x.startswith("mistakes") for x in parts):
-            parts.append(f"mistakes {p['mrate']:.2f} a pull (" + ", ".join(f"{SHORT.get(lab, lab)} ×{n}" for lab, n in p["mcauses"]) + ")")
+            parts.append(f"mistakes {p['mrate']:.2f} a pull (" + ", ".join(f"{short_label(lab)} ×{n}" for lab, n in p["mcauses"]) + ")")
         if gu == "!": parts.append(f"uptime {p['uptime']:.1f}% (clearers {bench['pools']['peer']['role_uptime'][p['role']]:.1f}%)")
         if gd == "!": parts.append(f"{AB.get(p['job'])} damage {100 * p['fast'][0]:.0f}% vs fast clears".replace("-", "−")
                                    + (" (1–2 clearers, rough)" if p["fast"][1] < 3 else ""))

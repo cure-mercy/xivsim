@@ -91,7 +91,7 @@ Superchain II sets), the boss HP a group has to be at or below when the mechanic
 With one group it is a single table; with several, each mechanic gets a line of targets with the groups two to
 a line underneath, so it fits a Discord message without wrapping.
 
-The takeaways message lists who is ✓ in every column, what each pull's first mistake was, what wiped us, a focus
+The takeaways message lists who is ✓ in every column, what all the mistakes were, what wiped us, a focus
 bullet for each player with a !, and how many players are at or above peer clears.
 
 Damage is only measured on pulls with no death or Damage Down before 2:00, and always over the same
@@ -143,6 +143,36 @@ A full rebuild reads several thousand report pages and can use an hour or more o
 waits out the rate limit by itself and caches its progress in `.cache/benchmark/`, so it can be stopped and
 resumed.
 
+## The website (draft)
+
+`site/` is a static website that shows the same analysis visually and lets you drill down from raid days to a
+day's groups to a group's players. Add reports to it, then serve the folder:
+
+```
+python tools/scorecard/build_site.py <report link> [<report link> ...]
+python -m http.server -d tools/scorecard/site 8000          then open http://localhost:8000
+```
+
+`build_site.py` runs the scorecard's analysis and adds the reports to `site/data.json`, grouping them into raid
+days by the date they were logged. A report already in the data is analysed again (handy after a classifier
+change); new reports on a day are named G1, G2, … in the order given, or pass `--names "Static A,Static B"`.
+`--remove <code>` drops a report; `--refresh` downloads reports again.
+
+| Page | What it shows |
+|---|---|
+| Raid days | Trends across days (best boss HP, pulls clean through 2:00, mistakes per pull, party DPS against peer and fast clears) and a table of days |
+| Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group |
+| Group | The player scorecard, every pull's length with its first mistake and what lost it, boss HP checkpoints, and heatmaps of mistakes and wipes by player |
+| Player | Mistakes per pull, wipes, damage against clearers and uptime; mistakes by cause; rDPS on every clean pull; every mistake with its pull and time; the player across raid days |
+
+Every chart has a Table button for the same numbers as a table and shows details on hover or keyboard focus.
+The theme follows the system and can be switched with the button (or `?theme=light` / `?theme=dark` in the
+link).
+
+The page needs a web server because it loads `data.json`; opening `index.html` straight from disk will not
+work. `site/data.json` holds player names and who caused which mistake, so it is git-ignored; whether and where
+to publish the site is a separate decision (the `tools/` folder is left out of the GitHub Pages deploy).
+
 ## Files
 
 | File | Purpose |
@@ -152,6 +182,8 @@ resumed.
 | `fflogs.py` | FFLogs v2 client: token, rate-limit waits, paged events, batched tables |
 | `benchmark.json` | Benchmark snapshot used for the damage and uptime comparisons |
 | `build_benchmark.py` | Rebuilds `benchmark.json` |
+| `build_site.py` | Adds reports to the website's data (`site/data.json`) |
+| `site/` | The website: `index.html`, `style.css`, `app.js`, and the generated `data.json` (git-ignored) |
 | `.cache/` | Downloaded reports, the API token and benchmark progress (git-ignored) |
 
 The folder is left out of the GitHub Pages site by the deploy workflow.
