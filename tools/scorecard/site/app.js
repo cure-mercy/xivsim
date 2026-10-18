@@ -468,6 +468,7 @@ function notFound() {
 
 // ---------- routing, theme, boot ----------
 function route() {
+  if (LOCKED) return;   // the passphrase screen stays until it is unlocked
   hideTip();
   const app = document.getElementById("app"); app.replaceChildren();
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
@@ -496,7 +497,71 @@ function setupTheme() {
 let resizeTimer = null;
 addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(route, 200); });
 addEventListener("hashchange", route);
-setupTheme();
-fetch("data.json").then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => { DATA = d; route(); })
-  .catch(() => { document.getElementById("app").replaceChildren(el("h1", {}, "No data yet"),
-    el("p", { class: "lede" }, "data.json is missing. Run tools/scorecard/build_site.py with report links, then serve this folder with python -m http.server.")); });
+// ---------- data: plaintext data.json (private hosting) or data.enc.json behind a passphrase (public hosting) ----------
+let LOCKED = false;
+const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const b64e = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const sessionKeyName = env => `p12s-key:${env.salt}`;
+async function deriveKey(pass, env) {   // must match encrypt_data.js
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt: b64d(env.salt), iterations: env.iterations, hash: "SHA-256" }, base,
+    { name: "AES-GCM", length: 256 }, true, ["decrypt"]);
+}
+async function openEnvelope(env, key) {
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64d(env.iv) }, key, b64d(env.data));
+  let stream = new Blob([plain]).stream();
+  if (env.compressed === "gzip") stream = stream.pipeThrough(new DecompressionStream("gzip"));
+  return JSON.parse(await new Response(stream).text());
+}
+async function unlock(env) {
+  if (!window.crypto || !crypto.subtle) throw new Error("This page has to be opened over https (or on localhost) to decrypt its data.");
+  if (env.compressed === "gzip" && !window.DecompressionStream) throw new Error("This browser is too old to open the data; please update it.");
+  try {   // a key remembered earlier in this browser session
+    const raw = sessionStorage.getItem(sessionKeyName(env));
+    if (raw) return await openEnvelope(env, await crypto.subtle.importKey("raw", b64d(raw), "AES-GCM", true, ["decrypt"]));
+  } catch (e) { try { sessionStorage.removeItem(sessionKeyName(env)); } catch (e2) {} }
+  crumbs([["Locked", null]]);
+  return new Promise(resolve => {
+    const input = el("input", { type: "password", id: "pass", autocomplete: "current-password", required: true });
+    const remember = el("input", { type: "checkbox", id: "remember", checked: true });
+    const msg = el("p", { class: "note", role: "status" });
+    const btn = el("button", { type: "submit", class: "primary" }, "Unlock");
+    const form = el("form", { class: "unlock" },
+      el("label", { for: "pass" }, "Passphrase"), input,
+      el("label", { class: "check" }, remember, " Remember for this browser session"), btn, msg);
+    form.addEventListener("submit", async e => {
+      e.preventDefault(); btn.disabled = true; msg.textContent = "Unlocking…";
+      try {
+        const key = await deriveKey(input.value, env), data = await openEnvelope(env, key);
+        if (remember.checked) try { sessionStorage.setItem(sessionKeyName(env), b64e(await crypto.subtle.exportKey("raw", key))); } catch (e2) {}
+        resolve(data);
+      } catch (err) { msg.textContent = "That passphrase does not open the data."; btn.disabled = false; input.select(); }
+    });
+    document.getElementById("app").replaceChildren(el("h1", {}, "Locked"),
+      el("p", { class: "lede" }, "The scorecards are encrypted. Enter the raid's passphrase to open them; it never leaves this browser."), form);
+    input.focus();
+  });
+}
+function lockAgain() {
+  try { for (const k of Object.keys(sessionStorage)) if (k.startsWith("p12s-key:")) sessionStorage.removeItem(k); } catch (e) {}
+  location.reload();
+}
+async function boot() {
+  setupTheme();
+  document.getElementById("lock").addEventListener("click", lockAgain);
+  try {
+    let r = await fetch("data.json", { cache: "no-store" });
+    if (r.ok) DATA = await r.json();
+    else {
+      r = await fetch("data.enc.json", { cache: "no-store" });
+      if (!r.ok) throw new Error("data.json is missing. Run tools/scorecard/build_site.py with report links, then serve this folder with python -m http.server.");
+      LOCKED = true; DATA = await unlock(await r.json()); LOCKED = false;
+      document.getElementById("lock").hidden = false;
+    }
+    route();
+  } catch (e) {
+    LOCKED = false;
+    document.getElementById("app").replaceChildren(el("h1", {}, "Cannot open the data"), el("p", { class: "lede" }, e.message || String(e)));
+  }
+}
+boot();
