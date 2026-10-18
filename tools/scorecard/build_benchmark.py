@@ -26,6 +26,10 @@ CACHE = fflogs.CACHE / "benchmark"
 ZONE = 54                          # Anabaseios
 MIN_S, MAX_S, PEER_S = 330, 470, 430
 MAIN_STAT = (3400, 3560)
+ENRAGE_S = 458                     # the slowest clears seen end at 7:38-7:39
+# when each major mechanic's cast begins, seconds into the pull (the timeline is fixed)
+CHECKPOINTS = [("Paradeigma II", 55.4), ("Superchain I", 112.4), ("Paradeigma III", 193.9), ("Palladion", 284.0),
+               ("Superchain II (1st)", 349.0), ("Superchain II (2nd)", 399.1)]
 POT = {"tank": 0.1042 / 1.1042, "dps": 0.1057 / 1.1057}
 LEVEL92 = ["High Thunder", "High Thunder II", "Flare Star", "Solar Bahamut", "Sunflare", "Lux Solaris", "Necrotize", "Vice of Thorns",
            "Grand Impact", "Prefulgence", "Star Prism", "Rainbow Drip", "Ouroboros", "Leaping Opo", "Rising Raptor", "Pouncing Coeurl",
@@ -117,6 +121,33 @@ def kill_players(k):
     return out, party
 
 
+def kill_hp(k):
+    """Boss HP % left when each mechanic starts, from the party's damage up to that moment over the kill's total."""
+    def get():
+        f = fflogs.gql('query($c:String!){reportData{report(code:$c){fights(fightIDs:[%d]){startTime endTime}}}}' % k["fight"],
+                       {"c": k["code"]})["reportData"]["report"]["fights"][0]
+        s, e = f["startTime"], f["endTime"]
+        ts = fflogs.tables(k["code"], [(s, s + int(t * 1000)) for _, t in CHECKPOINTS] + [(s, e)])
+        return [sum(y["total"] for y in t["entries"]) for t in ts]
+    d = cached(f"hp_{k['code']}_{k['fight']}", get)
+    return d[-1], [100 * (1 - x / d[-1]) for x in d[:-1]]
+
+
+def checkpoints(kills):
+    """Per mechanic, the HP % a kill at enrage (break-even) and 13 s earlier (comfortable) has left, from a line fitted
+    through every benchmark kill: HP % at the mechanic against the kill's length."""
+    rows = [(k["dur"], *kill_hp(k)) for k in kills]
+    out = []
+    for i, (name, t) in enumerate(CHECKPOINTS):
+        xs = [r[0] for r in rows]; ys = [r[2][i] for r in rows]
+        mx, my = st.mean(xs), st.mean(ys)
+        b = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sum((x - mx) ** 2 for x in xs); a = my - b * mx
+        r = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / (sum((x - mx) ** 2 for x in xs) * sum((y - my) ** 2 for y in ys)) ** .5
+        out.append(dict(mechanic=name, start_s=t, breakeven=round(a + b * ENRAGE_S, 1), comfortable=round(a + b * (ENRAGE_S - 13), 1),
+                        kills_median=round(st.median(ys), 1), fit_r=round(r, 2)))
+    return dict(boss_hp=round(st.median(r[1] for r in rows)), enrage_s=ENRAGE_S, kills=len(rows), mechanics=out)
+
+
 def build(kills):
     res = {"built": datetime.date.today().isoformat(), "pools": {},
            "method": "Savage P1 (Athena) clears from FFLogs, level 90, no level-92+ abilities, logger main stat 3400-3560 (capped gear). "
@@ -138,6 +169,7 @@ def build(kills):
                                   role_uptime={r: round(st.mean(v), 2) for r, v in roles.items()},
                                   jobs={j: dict(rdps=round(st.mean(x["rdps"] for x in v)), ndps=round(st.mean(x["ndps"] for x in v)),
                                                 uptime=round(st.mean(x["uptime"] for x in v), 2), players=len(v)) for j, v in jobs.items()})
+    res["hp_checkpoints"] = checkpoints(kills)
     return res
 
 
@@ -145,7 +177,14 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--since", default="2025-01-01"); ap.add_argument("--until", default=datetime.date.today().isoformat())
     ap.add_argument("--out", default=str(HERE / "benchmark.json"))
+    ap.add_argument("--checkpoints-only", action="store_true", help="only recompute the boss HP checkpoints for the kills already in --out")
     a = ap.parse_args()
+    if a.checkpoints_only:
+        res = json.loads(Path(a.out).read_text())
+        kills = [dict(k, fight=k["fight"]) for k in res["kills"]]
+        res["hp_checkpoints"] = checkpoints(kills)
+        Path(a.out).write_text(json.dumps(res, indent=1))
+        print(json.dumps(res["hp_checkpoints"], indent=1)); return
     since, until = datetime.date.fromisoformat(a.since), datetime.date.fromisoformat(a.until)
     cand = scan(since, until)
     print(f"{len(cand)} kills at level 90 speed; checking level and gear", file=sys.stderr)

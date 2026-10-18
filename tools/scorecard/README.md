@@ -66,6 +66,20 @@ rough.
 
 The thresholds are constants at the top of `scorecard.py` (`G_MIST`, `G_DMG`, `G_UP`).
 
+### Boss HP checkpoints
+
+A second table shows, for each major mechanic (Paradeigma II, Superchain I, Paradeigma III, Palladion and both
+Superchain II sets), the boss HP a group has to be at or below when the mechanic's cast begins:
+
+| Column | Meaning |
+|---|---|
+| Clear | On pace to kill exactly at enrage (~7:38). |
+| Comfy | On pace to kill about 13 seconds earlier. |
+| Group cells | Best / median HP % of the pulls that reached the mechanic, and how many did. ✓ best at Comfy or better, ~ at Clear or better, ! behind. |
+
+With one group it is a single table; with several, each mechanic gets a line of targets with the groups two to
+a line underneath, so it fits a Discord message without wrapping.
+
 The takeaways message lists who is ✓ in every column, what ended the pulls, a focus bullet for each player
 with a !, and how many players are at or above peer clears.
 
@@ -101,10 +115,14 @@ lower-gear runs are left out, tincture damage is removed, and players who died b
 job's value is the average over distinct players, kept separately for peer clears (7:10 or slower) and fast
 ones.
 
+It also holds the boss HP checkpoints. For each mechanic, a line is fitted through every benchmark kill: the
+HP % left when the mechanic began against how long the kill took. Clear is that line at 7:38, Comfy at 7:25.
+
 The file is a snapshot. To rebuild it:
 
 ```
 python tools/scorecard/build_benchmark.py [--since 2025-01-01] [--until 2026-10-18] [--out FILE]
+python tools/scorecard/build_benchmark.py --checkpoints-only     # only refit the HP checkpoints, same kills
 ```
 
 A full rebuild reads several thousand report pages and can use an hour or more of the API's hourly budget; it

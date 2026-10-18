@@ -5,7 +5,8 @@
 Each link is one raid group (G1, G2, ... in the order given). For every Savage P1 pull it finds the first
 mistake (a death or Damage Down), attributes it with classifier.py against the party strategy in briefs.html,
 and measures 0:00-2:00 damage and GCD uptime on the pulls that stayed clean that long. Players are compared
-with other clears on the same job (benchmark.json; rebuild it with build_benchmark.py).
+with other clears on the same job, and each group's boss HP at the start of every major mechanic with the HP
+a clear needs there (both from benchmark.json; rebuild it with build_benchmark.py).
 
 Options:
     --refresh   fetch the reports again instead of using .cache/ (for logs that were still being uploaded)
@@ -57,9 +58,23 @@ def cause_label(text):
 
 
 # ---------- fetching ----------
-def fetch(code, refresh):
+def fetch_hp(data, bench):
+    """Party damage up to each checkpoint's start, for every pull that lasted that long."""
+    cps = bench["hp_checkpoints"]["mechanics"]
+    jobs = [(f, i) for f in data["fights"] for i, c in enumerate(cps) if (f["endTime"] - f["startTime"]) / 1000 >= c["start_s"]]
+    tabs = fflogs.tables(data["code"], [(f["startTime"], f["startTime"] + int(cps[i]["start_s"] * 1000)) for f, i in jobs])
+    data["hp"] = collections.defaultdict(dict)
+    for (f, i), t in zip(jobs, tabs): data["hp"][str(f["id"])][cps[i]["mechanic"]] = sum(y["total"] for y in t["entries"])
+
+
+def fetch(code, refresh, bench):
     cf = fflogs.CACHE / f"report_{code}.json"
-    if cf.exists() and not refresh: return json.loads(cf.read_text())
+    if cf.exists() and not refresh:
+        data = json.loads(cf.read_text())
+        if "hp" not in data:
+            print(f"  {code}: fetching boss HP at the checkpoints", file=sys.stderr)
+            fetch_hp(data, bench); cf.write_text(json.dumps(data))
+        return data
     meta = fflogs.gql('''query($c:String!){reportData{report(code:$c){title startTime
         masterData{actors(type:"Player"){id name subType} abilities{gameID name}}
         fights(encounterID:91){id startTime endTime kill bossPercentage difficulty friendlyPlayers}}}}''', {"c": code})["reportData"]["report"]
@@ -78,6 +93,8 @@ def fetch(code, refresh):
     data["tables"] = {str(f["id"]): [dict(name=y["name"], job=y["type"], total=y["total"], rdps=y["totalRDPS"] / WINDOW,
                                          ndps=y["totalNDPS"] / WINDOW, active=y["activeTime"] / (10 * WINDOW))
                                     for y in t["entries"] if y["type"] in ROLE] for f, t in zip(clean, tabs)}
+    print(f"  {code}: fetching boss HP at the checkpoints", file=sys.stderr)
+    fetch_hp(data, bench)
     fflogs.CACHE.mkdir(exist_ok=True); cf.write_text(json.dumps(data))
     return data
 
@@ -130,7 +147,10 @@ def analyse(group, data, bench):
                                 rate=caused[name] / attended[name], causes=causes[name].most_common(3), samples=len(xs),
                                 best_quarter=top, avg=st.mean(xs) if xs else None, peer=vs["peer"], fast=vs["fast"], uptime=up,
                                 uptime_diff=up - bench["pools"]["peer"]["role_uptime"][ROLE.get(job, "Melee")] if up else None))
-    return dict(group=group, code=data["code"], date=datetime.datetime.fromtimestamp(data["startTime"] / 1000), pulls=len(data["fights"]),
+    boss = bench["hp_checkpoints"]["boss_hp"]
+    hp = {c["mechanic"]: sorted(100 * (1 - v[c["mechanic"]] / boss) for v in data["hp"].values() if c["mechanic"] in v)
+          for c in bench["hp_checkpoints"]["mechanics"]}
+    return dict(group=group, code=data["code"], hp=hp, date=datetime.datetime.fromtimestamp(data["startTime"] / 1000), pulls=len(data["fights"]),
                 kills=sum(1 for f in data["fights"] if f.get("kill")), best=min(f["bossPercentage"] for f in data["fights"]),
                 longest=max((f["endTime"] - f["startTime"]) / 1000 for f in data["fights"]), clean2=sum(s >= WINDOW for s in segs),
                 party=st.mean(party) if party else None, causes=pull_causes, coverage=conf, lp=lp, players=players)
@@ -168,6 +188,33 @@ def pack(title, sections, limit=1990):
     return ["```\n" + (f"{title} ({i}/{n})" if n > 1 else title) + "\n" + "\n".join(m) + "\n```" for i, m in enumerate(msgs, 1)]
 
 
+def checkpoint_sections(groups, bench):
+    """Where each group was when every major mechanic began, against the HP a clear needs there."""
+    hc = bench["hp_checkpoints"]
+    lines = [f"Be at or below these HP % when the mechanic starts (enrage ~{mmss(hc['enrage_s'])}).",
+             f"Clear = on pace to kill at enrage, Comfy = ~13 s to spare ({hc['kills']} clears fitted).",
+             "Group cells: best / median of the pulls that got there (number of pulls).",
+             "✓ best at Comfy or better   ~ at Clear or better   ! behind", ""]
+    def cell(g, c):
+        v = g["hp"].get(c["mechanic"], [])
+        if not v: return "not reached"
+        gr = "✓" if v[0] <= c["comfortable"] else ("~" if v[0] <= c["breakeven"] else "!")
+        return f"{v[0]:.1f} / {st.median(v):.1f} ({len(v)}) {gr}"
+    if len(groups) == 1:
+        rows = [f"{'Mechanic':<19} Start | Clear  Comfy | Ours"]
+        rows += [f"{c['mechanic']:<19} {mmss(c['start_s']):>5} | {c['breakeven']:4.1f}%  {c['comfortable']:4.1f}% | {cell(groups[0], c)}"
+                 for c in hc["mechanics"]]
+        return [lines, rows]
+    # several groups: stacked, two groups per line, so it fits a Discord message without wrapping
+    secs = [lines]
+    for c in hc["mechanics"]:
+        sec = [f"{c['mechanic']} ({mmss(c['start_s'])})   Clear {c['breakeven']:.1f}%  Comfy {c['comfortable']:.1f}%"]
+        cells = [f"{g['group']} {cell(g, c):<21}" for g in groups]
+        sec += ["  " + "  ".join(cells[i:i + 2]).rstrip() for i in range(0, len(cells), 2)]
+        secs.append(sec)
+    return secs
+
+
 def render(groups, bench):
     multi = len(groups) > 1
     allp = [p for g in groups for p in g["players"]]
@@ -200,6 +247,7 @@ def render(groups, bench):
             lines.append(f" {p['name'][:18]:<19}{AB.get(p['job'], p['job'][:3])}{' ' + p['group'] if multi else ''} |{100 * p['rate']:4.0f}% {gm} | {dmg} | {up}")
         sections.append(lines)
     out = pack(f"**P12S P1 — Player scorecard, {date}**", sections)
+    out += pack(f"**P12S P1 — Boss HP checkpoints, {date}**", checkpoint_sections(groups, bench))
     # takeaways
     t = []
     allgood = sorted({p["name"] for p in allp if grades(p) == ("✓", "✓", "✓")})
@@ -243,7 +291,7 @@ def main():
     for i, link in enumerate(a.links, 1):
         code = fflogs.report_code(link)
         print(f"G{i}: {code}", file=sys.stderr)
-        groups.append(analyse(f"G{i}", fetch(code, a.refresh), bench))
+        groups.append(analyse(f"G{i}", fetch(code, a.refresh, bench), bench))
     msgs = render(groups, bench)
     sys.stdout.reconfigure(encoding="utf-8")
     print("\n\n".join(msgs))
