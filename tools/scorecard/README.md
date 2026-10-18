@@ -1,8 +1,9 @@
 # P12S P1 scorecard
 
 Turns FFLogs reports of P12S phase 1 (Athena, Savage) progression into per-player scorecards, printed as
-messages ready to paste into Discord. For every player it shows how often they caused the mistake that ended a
-pull, how their damage compares with players from other groups' clears on the same job, and their GCD uptime.
+messages ready to paste into Discord. For every player it shows how many mistakes they make, how many wipes
+they caused, how their damage compares with players from other groups' clears on the same job, and their GCD
+uptime.
 
 ## Usage
 
@@ -50,7 +51,8 @@ The header gives each group's pull count, best boss HP, longest pull, how many p
 
 | Column | Meaning |
 |---|---|
-| Mistakes | Share of the player's pulls where they caused the first mistake (a death or Damage Down). Being killed by someone else's error does not count. |
+| Mistakes | The player's mistakes per pull: every death or Damage Down they caused, not just a pull's first. A mistake that kills several players counts once, and deaths that are only fallout of the player's own earlier mistake are not counted again. Being killed by someone else's error does not count. Mistakes are counted until the pull is lost; the collapse after that is not. |
+| Wipes | Share of the player's pulls where their mistake is what lost the pull (see below). |
 | vs Peer | rDPS over 0:00–2:00, averaged over the player's best quarter of clean pulls, against the average player on the same job in clears of 7:10 or slower. |
 | vs Fast | The same against clears faster than 7:10. |
 | Uptime | Active GCD time over 0:00–2:00, against clearers of the same role. |
@@ -58,13 +60,22 @@ The header gives each group's pull count, best boss HP, longest pull, how many p
 Grades: ✓ good, ~ ok, ! worth focusing on. `*` marks a comparison against only one or two clearers, which is
 rough.
 
-| Grade | Mistakes | Damage vs fast clears | Uptime vs clearers |
-|---|---|---|---|
-| ✓ | 10% or less | within 5% | within 0.5 points |
-| ~ | 20% or less | within 12% | within 1.5 points |
-| ! | more | more | more |
+| Grade | Mistakes per pull | Wipes | Damage vs fast clears | Uptime vs clearers |
+|---|---|---|---|---|
+| ✓ | 0.30 or fewer | 10% or less | within 5% | within 0.5 points |
+| ~ | 0.60 or fewer | 20% or less | within 12% | within 1.5 points |
+| ! | more | more | more | more |
 
-The thresholds are constants at the top of `scorecard.py` (`G_MIST`, `G_DMG`, `G_UP`).
+With eight players and one wipe a pull, a fair share of the wipes is 12.5%. The thresholds are constants at the
+top of `scorecard.py` (`G_MIST`, `G_WIPE`, `G_DMG`, `G_UP`).
+
+### Who lost the pull
+
+Pulls run until the whole party is dead, so every pull that is not a kill is a wipe. The collapse is the last run
+of deaths with less than 15 seconds between them (`CASCADE_GAP`); earlier deaths the group recovered from do not
+count. A mass death in the collapse (four or more players to one ability within 3 seconds, such as a tower
+explosion or Electrify) decides the wipe; otherwise the collapse's first death with a culprit does. When a tower
+went unsoaked because its soaker was already dead, the wipe goes to whoever caused that death.
 
 ### Boss HP checkpoints
 
@@ -80,8 +91,8 @@ Superchain II sets), the boss HP a group has to be at or below when the mechanic
 With one group it is a single table; with several, each mechanic gets a line of targets with the groups two to
 a line underneath, so it fits a Discord message without wrapping.
 
-The takeaways message lists who is ✓ in every column, what ended the pulls, a focus bullet for each player
-with a !, and how many players are at or above peer clears.
+The takeaways message lists who is ✓ in every column, what each pull's first mistake was, what wiped us, a focus
+bullet for each player with a !, and how many players are at or above peer clears.
 
 Damage is only measured on pulls with no death or Damage Down before 2:00, and always over the same
 0:00–2:00 window, so every player is compared on the same opener and the same mechanics.
@@ -97,11 +108,14 @@ any others within 1.5 seconds.
 | Paradeigma I | Which light party baits each White Flame wave is learned from the group's own pulls. A missing baiter is blamed, not the players their laser hits instead. Trinity of Souls hits are the victim's. |
 | Paradeigma II | The quadrant sweep (supports clockwise from north-east, DPS counter-clockwise from north-west) says where each Soul should drop its tower. Checks wrong quadrant, two towers stacked, a tower nobody soaked, the wrong soaker, unstretched tethers, and players standing in a tether laser or Soul AoE. Ray of Light hits are the victim's. |
 | Superchain I | Purple pairs and orange cones, the two laser groups (by Soul and Tilt), the Heavensflame spread, and the final towers. Green orb and donut hits are the victim's. |
-| Paradeigma III | Support towers, DPS tether lasers clipping supports, whether each bright tower went to the centre corner or its own tile, the White Flame baits and the opposite-colour soakers. |
+| Paradeigma III | Support towers: a support missing from their tower, or two supports in one, leaves a tower empty and Electrify wipes the raid; the support who does not belong on that platform is blamed (Quartered north, X-Marked south, bright Souls in the middle). The + and X: dropped from the wrong platform, or the owner not stepping out of their own arms. DPS tether lasers that are unstretched or clip a support. Whether each bright tower went to the centre corner or its own tile, the White Flame baits (the + and X supports and the same-colour DPS pair), and the opposite-colour soakers. |
 | Later mechanics | Generic rules only: standing in an avoidable AoE is the victim's mistake. |
 
-A death that follows the same player's earlier mistake is counted as part of that mistake. Anything the rules
-cannot explain is left unattributed rather than guessed.
+A death that follows the same player's earlier mistake is counted as part of that mistake. When a mechanic
+fails because the player who should have done it was already dead (an unsoaked tower, a bait that found
+someone else), the blame passes to whoever caused that death. A player who dies to a hit that was theirs to
+take is marked as healing or mitigation, with no culprit. Anything the rules cannot explain is left
+unattributed rather than guessed.
 
 The classifier assumes the group plays the strategy in the briefs: the line-up for Paradeigma I rather than
 tank invulnerabilities, the quadrant sweep, and the Paradeigma III placements. A group that plays a mechanic

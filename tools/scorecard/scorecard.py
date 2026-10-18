@@ -2,9 +2,10 @@
 
     python tools/scorecard/scorecard.py <report link> [<report link> ...]
 
-Each link is one raid group (G1, G2, ... in the order given). For every Savage P1 pull it finds the first
-mistake (a death or Damage Down), attributes it with classifier.py against the party strategy in briefs.html,
-and measures 0:00-2:00 damage and GCD uptime on the pulls that stayed clean that long. Players are compared
+Each link is one raid group (G1, G2, ... in the order given). For every Savage P1 pull it attributes each death
+and Damage Down with classifier.py against the party strategy in briefs.html, counts every player's mistakes and
+works out whose mistake lost the pull, and measures 0:00-2:00 damage and GCD uptime on the pulls that stayed
+clean that long. Players are compared
 with other clears on the same job, and each group's boss HP at the start of every major mechanic with the HP
 a clear needs there (both from benchmark.json; rebuild it with build_benchmark.py).
 
@@ -33,13 +34,17 @@ ROLE = {"Paladin": "Tank", "Warrior": "Tank", "DarkKnight": "Tank", "Gunbreaker"
 AB = {"Paladin": "PLD", "Warrior": "WAR", "DarkKnight": "DRK", "Gunbreaker": "GNB", "WhiteMage": "WHM", "Scholar": "SCH", "Astrologian": "AST",
       "Sage": "SGE", "Monk": "MNK", "Dragoon": "DRG", "Ninja": "NIN", "Samurai": "SAM", "Reaper": "RPR", "Viper": "VPR", "Bard": "BRD",
       "Machinist": "MCH", "Dancer": "DNC", "BlackMage": "BLM", "Summoner": "SMN", "RedMage": "RDM", "Pictomancer": "PCT"}
-# grade thresholds: mistakes (share of pulls), damage vs fast clears, uptime points vs peer clearers of the role
-G_MIST, G_DMG, G_UP = (0.10, 0.20), (-0.05, -0.12), (-0.5, -1.5)
+# grade thresholds: mistakes per pull, share of pulls whose wipe the player caused, damage vs fast clears, uptime points
+# vs peer clearers of the role. With eight players and one wipe a pull, a fair share of the wipes is 12.5%.
+G_MIST, G_WIPE, G_DMG, G_UP = (0.30, 0.60), (0.10, 0.20), (-0.05, -0.12), (-0.5, -1.5)
+CASCADE_GAP = 15                 # deaths closer together than this (seconds) belong to the same collapse
+MISTAKE_AFTER_WIPE = 2           # mistakes are counted up to this long after the one that decided the wipe
 # first-mistake causes, grouped for the summary; the last group of each tuple says whether it is "stood in it"
 CAUSES = [("Trinity of Souls", "Trinity of Souls: on the cleaved side", True), ("green orb", "Green orb (Superchain)", True),
           ("Ray of Light", "Ray of Light column", True), ("donut", "Donut (Superchain)", True),
           ("White Flame line-up", "Missed White Flame bait", False), ("did not bait their White Flame", "Missed White Flame bait", False),
-          ("White Flame", "White Flame line", True), ("tower", "Tower error", False), ("soaked", "Tower error", False),
+          ("White Flame", "White Flame line", True), ("platform tower", "Support tower left empty (Electrify)", False),
+          ("same tower", "Support tower left empty (Electrify)", False), ("tower", "Tower error", False), ("soaked", "Tower error", False),
           ("tether laser", "Tether laser", True), ("laser group", "Superchain laser group", False), ("share", "Superchain laser group", False),
           ("Heavensflame", "Heavensflame spread", False), ("orange cone", "Orange cone overlap", True), ("purple jack", "Purple pair", False),
           ("Soul AoE", "Soul AoE", True), ("Soul in", "Tower error", False), ("dash line", "Palladion dash line", True),
@@ -48,7 +53,7 @@ CAUSES = [("Trinity of Souls", "Trinity of Souls: on the cleaved side", True), (
 
 SHORT = {"Trinity of Souls: on the cleaved side": "Trinity side", "Green orb (Superchain)": "green orb", "Ray of Light column": "Ray of Light",
          "Donut (Superchain)": "donut", "Missed White Flame bait": "missed White Flame bait", "White Flame line": "White Flame line",
-         "Tower error": "tower", "Tether laser": "tether laser", "Superchain laser group": "laser group", "Heavensflame spread": "Heavensflame",
+         "Tower error": "tower", "Support tower left empty (Electrify)": "support tower", "Tether laser": "tether laser", "Superchain laser group": "laser group", "Heavensflame spread": "Heavensflame",
          "Orange cone overlap": "orange cone", "Purple pair": "purple pair", "Soul AoE": "Soul AoE", "Palladion dash line": "dash line"}
 
 
@@ -109,14 +114,42 @@ def first_mistake(data, f):
 
 
 # ---------- analysis ----------
+def mistakes_of(res):
+    """Every distinct mistake in a pull: classifier entries with a culprit that are not just fallout of an earlier
+    mistake, one per culprit per 2 s (a bait that kills four players is one mistake). Yields (culprit, t, cause)."""
+    out = []
+    for r in res:
+        if r.get("derived") or not r["culprits"]: continue
+        for c in r["culprits"]:
+            if not any(m[0] == c and abs(m[1] - r["t"]) <= 2 for m in out): out.append((c, r["t"], r["cause"]))
+    return out
+
+
+def wipe_of(res):
+    """Who lost the pull. The collapse is the last run of deaths with less than CASCADE_GAP seconds between them.
+    A mass death in it (four or more players to one ability within 3 s, like a tower explosion or Electrify)
+    decides the wipe; otherwise its first death with a culprit does, or failing that the last attributed death
+    before it. Earlier deaths the group recovered from do not count. Returns (culprits, the deciding entry)."""
+    deaths = [r for r in res if r["kind"] == "death"]
+    if not deaths: return [], None
+    i = len(deaths) - 1
+    while i > 0 and deaths[i]["t"] - deaths[i - 1]["t"] <= CASCADE_GAP: i -= 1
+    collapse = deaths[i:]
+    mass = next((r for r in collapse if r["culprits"] and
+                 sum(1 for q in collapse if q["ability"] == r["ability"] and 0 <= q["t"] - r["t"] <= 3) >= 4), None)
+    trig = mass or next((r for r in collapse if r["culprits"]), None) or next((r for r in reversed(deaths[:i]) if r["culprits"]), None)
+    return (trig["culprits"], trig) if trig else ([], None)
+
+
 def analyse(group, data, bench):
     names = {a["id"]: a["name"] for a in data["masterData"]["actors"] if a["subType"] in ROLE}
     rep = {"masterData": data["masterData"], "deaths": data["deaths"]}
     ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"]}
     pulls = [Pull(data["code"], f, rep, ev) for f in data["fights"]]
     lp = infer_light_parties(pulls)
-    attended, caused, causes = collections.Counter(), collections.Counter(), collections.defaultdict(collections.Counter)
-    pull_causes, conf = collections.Counter(), collections.Counter()
+    attended, nmist, mcauses = collections.Counter(), collections.Counter(), collections.defaultdict(collections.Counter)
+    nwipe, wcauses = collections.Counter(), collections.defaultdict(collections.Counter)
+    pull_causes, wipe_causes, conf = collections.Counter(), collections.Counter(), collections.Counter()
     for p, f in zip(pulls, data["fights"]):
         for pid in f["friendlyPlayers"]:
             if pid in names: attended[names[pid]] += 1
@@ -124,10 +157,16 @@ def analyse(group, data, bench):
         if not res: continue
         first = [r for r in res if r["t"] <= res[0]["t"] + 1.5]
         conf.update(r["confidence"] for r in first)
-        for c in {c for r in first for c in r["culprits"]}:
-            causes[c][cause_label(next(r for r in first if c in r["culprits"])["cause"])[0]] += 1; caused[c] += 1
         lead = next((r for r in first if r["culprits"]), None)
         pull_causes[cause_label(lead["cause"]) if lead else ("Unclear", False)] += 1
+        cul, trig = wipe_of(res) if not f.get("kill") else ([], None)
+        if not f.get("kill"):
+            wipe_causes[cause_label(trig["cause"]) if trig else ("Unclear", False)] += 1
+            for c in cul: nwipe[c] += 1; wcauses[c][cause_label(trig["cause"])[0]] += 1
+        # every mistake while the pull was still alive; what happens during the collapse is forced or noise
+        cutoff = trig["t"] + MISTAKE_AFTER_WIPE if trig else float("inf")
+        for c, t, cause in mistakes_of(res):
+            if t <= cutoff: nmist[c] += 1; mcauses[c][cause_label(cause)[0]] += 1
     segs = [first_mistake(data, f)[0] for f in data["fights"]]
     samples = collections.defaultdict(list)
     for rows in data["tables"].values():
@@ -143,8 +182,9 @@ def analyse(group, data, bench):
             vs = {pool: (top / bench["pools"][pool]["jobs"][job]["rdps"] - 1, bench["pools"][pool]["jobs"][job]["players"])
                   if top and job in bench["pools"][pool]["jobs"] else None for pool in ("peer", "fast")}
             up = st.mean(y["active"] for y in v) if v else None
-            players.append(dict(group=group, name=name, job=job, role=ROLE.get(job, "Melee"), pulls=attended[name], caused=caused[name],
-                                rate=caused[name] / attended[name], causes=causes[name].most_common(3), samples=len(xs),
+            players.append(dict(group=group, name=name, job=job, role=ROLE.get(job, "Melee"), pulls=attended[name],
+                                mistakes=nmist[name], mrate=nmist[name] / attended[name], mcauses=mcauses[name].most_common(3),
+                                wipes=nwipe[name], wrate=nwipe[name] / attended[name], wcauses=wcauses[name].most_common(3), samples=len(xs),
                                 best_quarter=top, avg=st.mean(xs) if xs else None, peer=vs["peer"], fast=vs["fast"], uptime=up,
                                 uptime_diff=up - bench["pools"]["peer"]["role_uptime"][ROLE.get(job, "Melee")] if up else None))
     boss = bench["hp_checkpoints"]["boss_hp"]
@@ -153,7 +193,7 @@ def analyse(group, data, bench):
     return dict(group=group, code=data["code"], hp=hp, date=datetime.datetime.fromtimestamp(data["startTime"] / 1000), pulls=len(data["fights"]),
                 kills=sum(1 for f in data["fights"] if f.get("kill")), best=min(f["bossPercentage"] for f in data["fights"]),
                 longest=max((f["endTime"] - f["startTime"]) / 1000 for f in data["fights"]), clean2=sum(s >= WINDOW for s in segs),
-                party=st.mean(party) if party else None, causes=pull_causes, coverage=conf, lp=lp, players=players)
+                party=st.mean(party) if party else None, causes=pull_causes, wipe_causes=wipe_causes, coverage=conf, lp=lp, players=players)
 
 
 # ---------- output ----------
@@ -164,8 +204,9 @@ def grade(v, cuts, higher_better=True):
 
 
 def grades(p):
-    return (grade(-p["rate"], (-G_MIST[0], -G_MIST[1])), grade(p["fast"][0] if p["fast"] else None, G_DMG),
-            grade(p["uptime_diff"], G_UP))
+    """(mistakes, wipes, damage, uptime)"""
+    return (grade(-p["mrate"], (-G_MIST[0], -G_MIST[1])), grade(-p["wrate"], (-G_WIPE[0], -G_WIPE[1])),
+            grade(p["fast"][0] if p["fast"] else None, G_DMG), grade(p["uptime_diff"], G_UP))
 
 
 def pct(t):
@@ -176,7 +217,7 @@ def pct(t):
 def mmss(s): return f"{int(s // 60)}:{int(s % 60):02d}"
 
 
-def pack(title, sections, limit=1990):
+def pack(title, sections, limit=1940):
     """Pack sections (lists of lines that belong together) into ```-fenced messages under Discord's limit."""
     msgs, cur = [], []
     size = lambda lines: len(title) + 12 + sum(len(l) + 1 for l in lines)
@@ -225,46 +266,55 @@ def render(groups, bench):
                     f"{mmss(g['longest'])} | clean through 2:00: {g['clean2']} of {g['pulls']}")
         if g["party"]: head.append((f"{g['group']}: " if multi else "") + f"Party DPS 0:00–2:00: {g['party'] / 1e3:.1f}k "
                                    f"(peer clears ~{bench['pools']['peer']['party_dps_median'] / 1e3:.0f}k, fast clears ~{bench['pools']['fast']['party_dps_median'] / 1e3:.0f}k)")
-    legend = ["", "Mistakes = share of your pulls where YOU caused the first mistake, judged",
-              "           against our strategy. Being killed by someone else's error doesn't count.",
+    legend = ["", "Mistakes = your mistakes per pull, judged against our strategy (every one,",
+              "           not just the first). Being killed by someone else's error doesn't count.",
+              "           Counted until the pull is lost; the collapse after that is not.",
+              "Wipes   = share of your pulls where your mistake is what lost the pull",
               "Peer/Fast = rDPS 0:00–2:00 from your best quarter of clean pulls vs the",
               "           average clearer on your job (peer = 7:10–7:40 clears, fast = under 7:10)",
               "Uptime  = active GCD time 0:00–2:00 vs clearers of your role",
               "Grades:  ✓ good   ~ ok   ! focus        * = only 1–2 clearers to compare with",
-              f"Mistakes ✓ ≤{100 * G_MIST[0]:.0f}% ~ ≤{100 * G_MIST[1]:.0f}% | Dmg vs fast ✓ within {-100 * G_DMG[0]:.0f}% ~ within {-100 * G_DMG[1]:.0f}% | "
-              f"Uptime ✓ within {-G_UP[0]} pt ~ within {-G_UP[1]} pt", ""]
-    colhead = f"Player              Job{' Grp' if multi else ''} | Mistakes | vs Peer vs Fast   | Uptime"
+              f"Mistakes ✓ ≤{G_MIST[0]:.2f} ~ ≤{G_MIST[1]:.2f} a pull | Wipes ✓ ≤{100 * G_WIPE[0]:.0f}% ~ ≤{100 * G_WIPE[1]:.0f}%",
+              f"Dmg vs fast ✓ within {-100 * G_DMG[0]:.0f}% ~ within {-100 * G_DMG[1]:.0f}% | Uptime ✓ within {-G_UP[0]} pt ~ within {-G_UP[1]} pt", ""]
+    colhead = f"Player              Job{' Grp' if multi else ''} | Mistakes | Wipes  | vs Peer vs Fast   | Uptime"
     sections = [head + legend + [colhead]]
     for role in ROLES:
-        rr = sorted((p for p in allp if p["role"] == role), key=lambda p: (p["rate"], p["name"]))
+        rr = sorted((p for p in allp if p["role"] == role), key=lambda p: (p["wrate"], p["mrate"], p["name"]))
         if not rr: continue
         lines = [role]
         for p in rr:
-            gm, gd, gu = grades(p)
+            gm, gw, gd, gu = grades(p)
             dmg = (f"{pct(p['peer'])} {pct(p['fast'])} {gd}" if (p["peer"] or p["fast"]) else
                    (f"  no {AB.get(p['job'], p['job'])} clears    " if p["samples"] else "  no clean 2:00 pull"))
             up = f"{p['uptime']:4.1f}% {gu}" if p["uptime"] is not None else "   –   "
-            lines.append(f" {p['name'][:18]:<19}{AB.get(p['job'], p['job'][:3])}{' ' + p['group'] if multi else ''} |{100 * p['rate']:4.0f}% {gm} | {dmg} | {up}")
+            lines.append(f" {p['name'][:18]:<19}{AB.get(p['job'], p['job'][:3])}{' ' + p['group'] if multi else ''} | {p['mrate']:5.2f} {gm}  |"
+                         f"{100 * p['wrate']:4.0f}% {gw} | {dmg} | {up}")
         sections.append(lines)
     out = pack(f"**P12S P1 — Player scorecard, {date}**", sections)
     out += pack(f"**P12S P1 — Boss HP checkpoints, {date}**", checkpoint_sections(groups, bench))
     # takeaways
     t = []
-    allgood = sorted({p["name"] for p in allp if grades(p) == ("✓", "✓", "✓")})
+    allgood = sorted({p["name"] for p in allp if grades(p) == ("✓", "✓", "✓", "✓")})
     if allgood: t += [f"✓ across the board: {', '.join(allgood)}", ""]
     causes = collections.Counter()
     for g in groups: causes.update(g["causes"])
     npulls = sum(causes.values())
-    t.append(f"What ended our pulls (first mistake, {npulls} pulls)")
+    t.append(f"First mistake ({npulls} pulls)")
     t += [f" {n:>3} {lab}" for (lab, _), n in causes.most_common()]
     stood = sum(n for (lab, s), n in causes.items() if s)
-    if npulls: t.append(f"→ {stood} of {npulls} pulls ({100 * stood / npulls:.0f}%) ended on \"stood in it\", not on a missed assignment.")
-    focus = collections.OrderedDict()   # one bullet per player: mistakes, then uptime and damage
-    for p in sorted(allp, key=lambda p: -p["rate"]):
-        gm, gd, gu = grades(p)
+    if npulls: t.append(f"→ {stood} of {npulls} first mistakes ({100 * stood / npulls:.0f}%) were \"stood in it\", not a missed assignment.")
+    wc = collections.Counter()
+    for g in groups: wc.update(g["wipe_causes"])
+    if wc:
+        t += ["", f"What wiped us ({sum(wc.values())} wipes)"] + [f" {n:>3} {lab}" for (lab, _), n in wc.most_common()]
+    focus = collections.OrderedDict()   # one bullet per player: wipes, mistakes, then uptime and damage
+    for p in sorted(allp, key=lambda p: (-p["wrate"], -p["mrate"])):
+        gm, gw, gd, gu = grades(p)
         parts = focus.setdefault(p["name"], [])
+        if gw == "!" and not any(x.startswith("wipes") for x in parts):
+            parts.append(f"wipes {p['wipes']} of {p['pulls']} (" + ", ".join(f"{SHORT.get(lab, lab)} ×{n}" for lab, n in p["wcauses"]) + ")")
         if gm == "!" and not any(x.startswith("mistakes") for x in parts):
-            parts.append(f"mistakes {100 * p['rate']:.0f}% (" + ", ".join(f"{SHORT.get(lab, lab)} ×{n}" for lab, n in p["causes"]) + ")")
+            parts.append(f"mistakes {p['mrate']:.2f} a pull (" + ", ".join(f"{SHORT.get(lab, lab)} ×{n}" for lab, n in p["mcauses"]) + ")")
         if gu == "!": parts.append(f"uptime {p['uptime']:.1f}% (clearers {bench['pools']['peer']['role_uptime'][p['role']]:.1f}%)")
         if gd == "!": parts.append(f"{AB.get(p['job'])} damage {100 * p['fast'][0]:.0f}% vs fast clears".replace("-", "−")
                                    + (" (1–2 clearers, rough)" if p["fast"][1] < 3 else ""))
