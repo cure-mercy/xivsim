@@ -1,0 +1,534 @@
+{
+ "built": "2026-10-18",
+ "method": "Savage P1 (Athena) clears from FFLogs, 2025-01 to 2026-10, level 90, no level-92+ abilities, logger main stat 3400-3560 (capped gear). rDPS/nDPS over 0:00-2:00 with pots stripped (+10.57% DPS/healer, +10.42% tank for the Medicated window); deaths before 2:00 excluded. Job values are averages of distinct players. peer = kills at 7:10 or slower, fast = faster.",
+ "pools": {
+  "peer": {
+   "kills": 24,
+   "kill_median_s": 453,
+   "jobs": {
+    "Dancer": {
+     "rdps": 11760,
+     "ndps": 9514,
+     "uptime": 97.64,
+     "players": 7
+    },
+    "Ninja": {
+     "rdps": 12810,
+     "ndps": 11866,
+     "uptime": 98.09,
+     "players": 5
+    },
+    "Sage": {
+     "rdps": 7498,
+     "ndps": 7498,
+     "uptime": 96.9,
+     "players": 2
+    },
+    "Reaper": {
+     "rdps": 11467,
+     "ndps": 10894,
+     "uptime": 96.94,
+     "players": 1
+    },
+    "Paladin": {
+     "rdps": 8328,
+     "ndps": 8328,
+     "uptime": 98.54,
+     "players": 5
+    },
+    "Warrior": {
+     "rdps": 8356,
+     "ndps": 8356,
+     "uptime": 97.48,
+     "players": 5
+    },
+    "BlackMage": {
+     "rdps": 13282,
+     "ndps": 13282,
+     "uptime": 97.03,
+     "players": 5
+    },
+    "Astrologian": {
+     "rdps": 7477,
+     "ndps": 5922,
+     "uptime": 97.18,
+     "players": 5
+    },
+    "Scholar": {
+     "rdps": 7303,
+     "ndps": 6200,
+     "uptime": 97.92,
+     "players": 6
+    },
+    "DarkKnight": {
+     "rdps": 7736,
+     "ndps": 7736,
+     "uptime": 97.96,
+     "players": 5
+    },
+    "Dragoon": {
+     "rdps": 13481,
+     "ndps": 12296,
+     "uptime": 97.93,
+     "players": 1
+    },
+    "WhiteMage": {
+     "rdps": 6827,
+     "ndps": 6827,
+     "uptime": 96.6,
+     "players": 1
+    },
+    "Samurai": {
+     "rdps": 13151,
+     "ndps": 13151,
+     "uptime": 97.5,
+     "players": 2
+    },
+    "Pictomancer": {
+     "rdps": 13063,
+     "ndps": 12029,
+     "uptime": 97.15,
+     "players": 1
+    },
+    "Monk": {
+     "rdps": 13477,
+     "ndps": 12555,
+     "uptime": 97.81,
+     "players": 4
+    },
+    "RedMage": {
+     "rdps": 11682,
+     "ndps": 10800,
+     "uptime": 97.67,
+     "players": 1
+    },
+    "Viper": {
+     "rdps": 12009,
+     "ndps": 12009,
+     "uptime": 97.81,
+     "players": 3
+    },
+    "Gunbreaker": {
+     "rdps": 8109,
+     "ndps": 8109,
+     "uptime": 98.32,
+     "players": 1
+    }
+   },
+   "role_uptime": {
+    "Tank": 98.02,
+    "Healer": 97.42,
+    "Melee": 97.81,
+    "Ranged": 97.64,
+    "Caster": 97.14
+   },
+   "party_dps_median": 82765
+  },
+  "fast": {
+   "kills": 21,
+   "kill_median_s": 400,
+   "jobs": {
+    "Dancer": {
+     "rdps": 13085,
+     "ndps": 10722,
+     "uptime": 97.41,
+     "players": 8
+    },
+    "Ninja": {
+     "rdps": 14428,
+     "ndps": 13434,
+     "uptime": 98.04,
+     "players": 2
+    },
+    "Sage": {
+     "rdps": 8366,
+     "ndps": 8366,
+     "uptime": 97.69,
+     "players": 4
+    },
+    "Reaper": {
+     "rdps": 13272,
+     "ndps": 12666,
+     "uptime": 98.33,
+     "players": 5
+    },
+    "Paladin": {
+     "rdps": 9209,
+     "ndps": 9209,
+     "uptime": 98.39,
+     "players": 5
+    },
+    "Warrior": {
+     "rdps": 9487,
+     "ndps": 9487,
+     "uptime": 98.25,
+     "players": 6
+    },
+    "BlackMage": {
+     "rdps": 14605,
+     "ndps": 14605,
+     "uptime": 95.5,
+     "players": 1
+    },
+    "Astrologian": {
+     "rdps": 7952,
+     "ndps": 6376,
+     "uptime": 97.8,
+     "players": 4
+    },
+    "Summoner": {
+     "rdps": 14500,
+     "ndps": 13486,
+     "uptime": 97.8,
+     "players": 3
+    },
+    "Viper": {
+     "rdps": 15103,
+     "ndps": 15103,
+     "uptime": 97.36,
+     "players": 3
+    },
+    "WhiteMage": {
+     "rdps": 7958,
+     "ndps": 7958,
+     "uptime": 96.17,
+     "players": 3
+    },
+    "Scholar": {
+     "rdps": 8675,
+     "ndps": 7472,
+     "uptime": 98.11,
+     "players": 5
+    },
+    "Samurai": {
+     "rdps": 15804,
+     "ndps": 15804,
+     "uptime": 97.86,
+     "players": 2
+    },
+    "Machinist": {
+     "rdps": 13844,
+     "ndps": 13844,
+     "uptime": 98.4,
+     "players": 2
+    },
+    "DarkKnight": {
+     "rdps": 9152,
+     "ndps": 9152,
+     "uptime": 98.15,
+     "players": 5
+    },
+    "RedMage": {
+     "rdps": 12637,
+     "ndps": 11635,
+     "uptime": 97.84,
+     "players": 4
+    },
+    "Dragoon": {
+     "rdps": 15665,
+     "ndps": 14580,
+     "uptime": 98.27,
+     "players": 2
+    },
+    "Gunbreaker": {
+     "rdps": 9808,
+     "ndps": 9808,
+     "uptime": 97.55,
+     "players": 3
+    },
+    "Monk": {
+     "rdps": 13668,
+     "ndps": 12768,
+     "uptime": 97.6,
+     "players": 3
+    },
+    "Pictomancer": {
+     "rdps": 15546,
+     "ndps": 14545,
+     "uptime": 98.08,
+     "players": 1
+    }
+   },
+   "role_uptime": {
+    "Tank": 98.15,
+    "Healer": 97.56,
+    "Melee": 97.93,
+    "Ranged": 97.61,
+    "Caster": 97.59
+   },
+   "party_dps_median": 94849
+  }
+ },
+ "kills": [
+  {
+   "code": "Za342LyX8HgdFqNW",
+   "fight": 12,
+   "dur": 459.0,
+   "day": "2025-02-18"
+  },
+  {
+   "code": "Za342LyX8HgdFqNW",
+   "fight": 34,
+   "dur": 414.5,
+   "day": "2025-02-18"
+  },
+  {
+   "code": "T7vAcV18MDzpWKRr",
+   "fight": 7,
+   "dur": 440.5,
+   "day": "2025-03-09"
+  },
+  {
+   "code": "61tDcxB8ALCnvRbq",
+   "fight": 4,
+   "dur": 412.9,
+   "day": "2025-03-06"
+  },
+  {
+   "code": "VJ9DcZ4XzTKbwrqM",
+   "fight": 23,
+   "dur": 458.5,
+   "day": "2025-04-14"
+  },
+  {
+   "code": "wk7c14jF9ZxWrhCy",
+   "fight": 1,
+   "dur": 450.3,
+   "day": "2025-04-21"
+  },
+  {
+   "code": "wk7c14jF9ZxWrhCy",
+   "fight": 27,
+   "dur": 460.0,
+   "day": "2025-04-21"
+  },
+  {
+   "code": "fyHnGPRktCWXKzJL",
+   "fight": 6,
+   "dur": 397.3,
+   "day": "2025-06-07"
+  },
+  {
+   "code": "AgbpDvYf7Wra6KzC",
+   "fight": 14,
+   "dur": 411.3,
+   "day": "2025-07-13"
+  },
+  {
+   "code": "V761Hq2jzcdwZrhL",
+   "fight": 5,
+   "dur": 403.4,
+   "day": "2025-07-08"
+  },
+  {
+   "code": "AQCKLyTWZnDPV2a4",
+   "fight": 5,
+   "dur": 403.4,
+   "day": "2025-07-08"
+  },
+  {
+   "code": "QTFPdbrcNy9J1Ltv",
+   "fight": 14,
+   "dur": 390.8,
+   "day": "2025-08-17"
+  },
+  {
+   "code": "VJLzTvth9cbpg68k",
+   "fight": 4,
+   "dur": 397.9,
+   "day": "2025-09-14"
+  },
+  {
+   "code": "JDzktrB7xyq3YcvG",
+   "fight": 2,
+   "dur": 399.8,
+   "day": "2025-10-05"
+  },
+  {
+   "code": "JDzktrB7xyq3YcvG",
+   "fight": 32,
+   "dur": 389.5,
+   "day": "2025-10-05"
+  },
+  {
+   "code": "dT2ZxLMbYq7RprfH",
+   "fight": 4,
+   "dur": 387.3,
+   "day": "2025-11-09"
+  },
+  {
+   "code": "dT2ZxLMbYq7RprfH",
+   "fight": 17,
+   "dur": 402.5,
+   "day": "2025-11-09"
+  },
+  {
+   "code": "m94cWtV3fD7JKTdZ",
+   "fight": 5,
+   "dur": 386.0,
+   "day": "2025-11-16"
+  },
+  {
+   "code": "m94cWtV3fD7JKTdZ",
+   "fight": 22,
+   "dur": 390.5,
+   "day": "2025-11-16"
+  },
+  {
+   "code": "NRrZkzHWTLqa2tYf",
+   "fight": 26,
+   "dur": 420.6,
+   "day": "2025-12-15"
+  },
+  {
+   "code": "C2GZKRmALta3XWDw",
+   "fight": 5,
+   "dur": 389.3,
+   "day": "2025-12-13"
+  },
+  {
+   "code": "C2GZKRmALta3XWDw",
+   "fight": 30,
+   "dur": 397.0,
+   "day": "2025-12-13"
+  },
+  {
+   "code": "zrbvA9CNPxdMjpQc",
+   "fight": 39,
+   "dur": 365.5,
+   "day": "2025-12-12"
+  },
+  {
+   "code": "Dz342bxGYTwABfmN",
+   "fight": 1,
+   "dur": 436.3,
+   "day": "2026-05-31"
+  },
+  {
+   "code": "Kkz4tWamQhvnYdLg",
+   "fight": 1,
+   "dur": 436.3,
+   "day": "2026-05-31"
+  },
+  {
+   "code": "NtAV8LQKT12WRgDm",
+   "fight": 14,
+   "dur": 455.4,
+   "day": "2026-05-29"
+  },
+  {
+   "code": "TYnrvZfBAbq9w1Vj",
+   "fight": 14,
+   "dur": 455.4,
+   "day": "2026-05-29"
+  },
+  {
+   "code": "TYnrvZfBAbq9w1Vj",
+   "fight": 37,
+   "dur": 416.7,
+   "day": "2026-05-29"
+  },
+  {
+   "code": "mhvDqbjF2VTwnBk7",
+   "fight": 12,
+   "dur": 455.4,
+   "day": "2026-05-29"
+  },
+  {
+   "code": "KtAxXbhHfkc3wTCR",
+   "fight": 7,
+   "dur": 457.4,
+   "day": "2026-05-26"
+  },
+  {
+   "code": "YjA2GRdCm6H8bg9V",
+   "fight": 14,
+   "dur": 427.8,
+   "day": "2026-05-24"
+  },
+  {
+   "code": "gv3njx46N8mCHkcz",
+   "fight": 1,
+   "dur": 459.0,
+   "day": "2026-06-07"
+  },
+  {
+   "code": "LDHv2BwkGJdxNrzC",
+   "fight": 1,
+   "dur": 459.0,
+   "day": "2026-06-07"
+  },
+  {
+   "code": "MC8HyjbtFpWTgZLa",
+   "fight": 4,
+   "dur": 448.8,
+   "day": "2026-06-28"
+  },
+  {
+   "code": "942DXPpYhx3WJR1K",
+   "fight": 4,
+   "dur": 448.8,
+   "day": "2026-06-27"
+  },
+  {
+   "code": "AcWJVtf9TNFMpxmy",
+   "fight": 12,
+   "dur": 425.8,
+   "day": "2026-07-12"
+  },
+  {
+   "code": "AHYxQchdXK4zGWty",
+   "fight": 3,
+   "dur": 438.2,
+   "day": "2026-07-05"
+  },
+  {
+   "code": "AHYxQchdXK4zGWty",
+   "fight": 26,
+   "dur": 457.4,
+   "day": "2026-07-05"
+  },
+  {
+   "code": "9dG7p2J4wt6NfVbj",
+   "fight": 1,
+   "dur": 443.9,
+   "day": "2026-07-26"
+  },
+  {
+   "code": "dtrZK6fB8aXmApRJ",
+   "fight": 1,
+   "dur": 443.9,
+   "day": "2026-07-26"
+  },
+  {
+   "code": "JHvBr2hdbDNnMCA3",
+   "fight": 1,
+   "dur": 438.5,
+   "day": "2026-08-17"
+  },
+  {
+   "code": "JHvBr2hdbDNnMCA3",
+   "fight": 23,
+   "dur": 440.2,
+   "day": "2026-08-17"
+  },
+  {
+   "code": "RWAdCKYxtnQDBPqm",
+   "fight": 8,
+   "dur": 447.0,
+   "day": "2026-08-16"
+  },
+  {
+   "code": "6wT4F3NYCdj8gDyG",
+   "fight": 7,
+   "dur": 456.2,
+   "day": "2026-09-13"
+  },
+  {
+   "code": "JY9j1Dd4L3KCkxqA",
+   "fight": 2,
+   "dur": 455.2,
+   "day": "2026-09-16"
+  }
+ ]
+}

@@ -1,5 +1,5 @@
 # Publishes the trainer to GitHub Pages. The site is the repository as it is, with no build step, less the
-# tests; the upload leaves out .git and .github itself.
+# tests and the offline tools; the upload leaves out .git and .github itself.
 #
 # One-time setup: in the repository's Settings → Pages, set "Source" to "GitHub Actions".
 
@@ -25,8 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Leave out the tests
-        run: rm -rf tests .gitignore
+      - name: Leave out the tests and tools
+        run: rm -rf tests tools .gitignore
 
       - uses: actions/upload-pages-artifact@v3
         with:
