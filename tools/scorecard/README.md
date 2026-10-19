@@ -95,7 +95,9 @@ appears (the page only asks when `data.json` is missing and `data.enc.json` is t
 | Raid days | Tiles: pulls, best pull, furthest seen (the longest pull, the mechanic it reached, its day, group and pull), latest day, mistakes per pull; the burndown; trends across days (how far pulls got, pulls clean through each mechanic, mistakes per pull and per minute, damage lost to mistakes, party DPS against the clears) and a table of days |
 | Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group |
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
-| Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes and their cost by cause; rDPS on every clean pull; every mistake with its pull and time; the player across raid days (mistakes per pull and per minute in pulls) |
+| Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull; every mistake with its pull and time; the player across raid days (mistakes per pull and per minute in pulls) |
+
+The player page's "What their mistakes cost" card (boss HP lost to deaths they caused, by cause) is hidden for now: set `SHOW_MISTAKE_COST` in `site/app.js` to `true` to bring it back.
 
 Every chart has a Table button for the same numbers as a table and shows details on hover or keyboard focus.
 The theme follows the system and can be switched with the button (or `?theme=light` / `?theme=dark` in the
@@ -239,7 +241,8 @@ right away, in 98% of our pulls), which none of the 12 WHM clears (2025-03 to 20
 The card lists the flagged differences and shows the reference opener next to their usual one (red: a skill the other
 doesn't have); its table view has the per-skill counts and first casts. Dancer steps count as one step, since they come
 in a random order. Opener damage is nDPS over 0:00-0:20 (tinctures removed), from pulls the player was alive through,
-against the clears playing the reference opener and against all clears on the job. For the latter, clears with The
+against the clears playing the reference opener and against all clears on the job. The card's title carries the same colour dot as the opener tile, from the latter: green from −5%, yellow from −12%,
+red below. For the latter, clears with The
 Echo are left out; a job with fewer than three other samples includes them, damage divided by 1.2, and the card says so.
 
 ### Abilities
@@ -249,6 +252,16 @@ the rotation checks (0:00-0:55 against clears that move through Paradeigma I). G
 own GCD speed, since a slower GCD from gear fits fewer casts without any mistake. The difference is worth the player's
 own average damage per cast (DoT ticks included). It overlaps with the GCD gaps: those say when time was lost, this
 says which casts it cost.
+
+**Grades on the Rotation and Abilities cards.** Each card's title carries a colour dot for the potential gain against
+the clears as a share of the player's DPS: green under 5%, yellow under 15%, red from 15%.
+- **Rotation:** the costed checks added up.
+- **Abilities:** net, so extra casts of one skill offset missing casts of another (counting only shortfalls would
+  inflate it: casting more of one skill usually means casting less of another).
+
+The two overlap, so they are graded apart, never added. Over our 175 player-days, rotation splits 127 / 39 / 9
+(green / yellow / red) and abilities 93 / 57 / 25. Healers come out highest (median 10.8% on abilities), partly from
+healing GCDs our groups need.
 
 ### Pulls
 
