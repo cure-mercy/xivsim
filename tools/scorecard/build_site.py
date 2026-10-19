@@ -2,6 +2,7 @@
 
     python tools/scorecard/build_site.py <report link> [<report link> ...] [--refresh] [--names "G1,G2,..."]
     python tools/scorecard/build_site.py --remove <report code>
+    python tools/scorecard/build_site.py --reanalyse              (after a classifier or label change)
     python tools/scorecard/build_site.py [links ...] --publish [DIR]
     python -m http.server -d tools/scorecard/site 8000          then open http://localhost:8000
 
@@ -79,6 +80,7 @@ def main():
     ap.add_argument("--refresh", action="store_true", help="refetch reports instead of using the cache")
     ap.add_argument("--names", help="comma-separated group names for the links, in order")
     ap.add_argument("--remove", nargs="+", metavar="CODE", help="remove these reports from the site data")
+    ap.add_argument("--reanalyse", action="store_true", help="analyse every report already on the site again (after a classifier or label change)")
     ap.add_argument("--publish", nargs="?", const=str(PUBLISH_DIR), metavar="DIR",
                     help=f"also write the passphrase-protected copy for public hosting (default {PUBLISH_DIR})")
     a = ap.parse_args()
@@ -87,7 +89,11 @@ def main():
     for code in a.remove or []:
         print(f"removed {code}" if site["reports"].pop(code, None) else f"{code} was not in the data", file=sys.stderr)
     names = a.names.split(",") if a.names else []
-    for i, link in enumerate(a.links):
+    links = list(a.links)
+    if a.reanalyse:   # every report already on the site, from the cache, keeping its group name
+        given = {fflogs.report_code(l) for l in links}
+        links += [c for c in sorted(site["reports"], key=lambda c: (site["reports"][c]["day"], site["reports"][c]["group"])) if c not in given]
+    for i, link in enumerate(links):
         code = fflogs.report_code(link)
         data = S.fetch(code, a.refresh, bench)
         day = datetime.datetime.fromtimestamp(data["startTime"] / 1000).date().isoformat()

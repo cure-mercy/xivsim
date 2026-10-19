@@ -37,7 +37,7 @@ const JOB = { Paladin: "PLD", Warrior: "WAR", DarkKnight: "DRK", Gunbreaker: "GN
   BlackMage: "BLM", Summoner: "SMN", RedMage: "RDM", Pictomancer: "PCT" };
 const ROLES = ["Tank", "Healer", "Melee", "Ranged", "Caster"];
 
-// grades: ✓ good, ~ ok, ! focus; thresholds come from the scorecard (data.benchmark.grades)
+// grades: green good, yellow ok, red focus; thresholds come from the scorecard (data.benchmark.grades)
 function grade(kind, v) {
   if (v == null) return null;
   const [good, ok] = DATA.benchmark.grades[kind];
@@ -47,7 +47,8 @@ function grade(kind, v) {
 }
 function gradeChip(g) {
   if (!g) return "";
-  return el("span", { class: `g ${g}`, title: { good: "good", ok: "ok", bad: "focus" }[g] }, { good: "✓", ok: "~", bad: "!" }[g]);
+  const word = { good: "good", ok: "ok", bad: "focus" }[g];   // the dot is the mark; the word is for hover and screen readers
+  return el("span", { class: `g ${g}`, title: word }, el("span", { class: "sr-only" }, word));
 }
 
 // ---------- data shaping ----------
@@ -253,7 +254,9 @@ function checkpointChart(hp) {
       svg.append(sv("circle", { class: "mark", cx: X(db), cy: y, r: 5, fill: "var(--series)", stroke: "var(--surface)", "stroke-width": 2 }));
       if (dm > hi || db > hi) svg.append(sv("text", { x: X(hi) - 2, y: y - 8, "text-anchor": "end" }, `+${Math.round(Math.max(dm, db))}`));
       const g = best <= c.comfortable ? "good" : best <= c.breakeven ? "ok" : "bad";
-      svg.append(sv("text", { class: "val", x: width - 4, y: y + 4, "text-anchor": "end" }, `${best.toFixed(1)}% ${{ good: "✓", ok: "~", bad: "!" }[g]}`));
+      const dot = sv("circle", { cx: width - 6, cy: y, r: 4, fill: `var(--${{ good: "good", ok: "warn", bad: "bad" }[g]})` });
+      dot.append(sv("title", {}, { good: "at Comfy or better", ok: "at Clear or better", bad: "behind" }[g]));
+      svg.append(sv("text", { class: "val", x: width - 16, y: y + 4, "text-anchor": "end" }, `${best.toFixed(1)}%`), dot);
       const ahead = d => d <= 0 ? `${(-d).toFixed(1)} ahead` : `${d.toFixed(1)} behind`;
       const hit = sv("rect", { class: "hit", x: lab, y: y - rh / 2, width: w + valW, height: rh });
       hover(hit, `${c.mechanic} (starts ${mmss(c.start_s)})`, [[`${best.toFixed(1)}%`, `best (${ahead(db)})`], [`${med.toFixed(1)}%`, `median (${ahead(dm)})`],
@@ -268,7 +271,10 @@ const checkpointLegend = () => [
   el("span", {}, el("i", { style: "width:10px;height:10px;border-radius:50%;border:2px solid var(--series)" }), "median"),
   el("span", {}, el("i", { style: "width:18px;height:10px;border-radius:3px;background:var(--zone)" }), "Comfy zone"),
   el("span", {}, el("i", { style: "width:1px;height:12px;background:var(--ink-2)" }), "Clear: on pace to kill at enrage"),
-  el("span", {}, "right: best HP · ✓ at Comfy · ~ at Clear · ! behind"),
+  el("span", {}, "right: best HP"),
+  el("span", {}, el("i", { style: "width:8px;height:8px;border-radius:50%;background:var(--good)" }), "at Comfy"),
+  el("span", {}, el("i", { style: "width:8px;height:8px;border-radius:50%;background:var(--warn)" }), "at Clear"),
+  el("span", {}, el("i", { style: "width:8px;height:8px;border-radius:50%;background:var(--bad)" }), "behind"),
 ];
 function checkpointTable(hp) {
   return tableOf(["Mechanic", "Starts", "Clear", "Comfy", "Best", "Median", "Pulls"],

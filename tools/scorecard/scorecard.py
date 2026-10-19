@@ -60,23 +60,29 @@ TOWERS = [(("platform tower", "same tower"), "support tower left empty (Electrif
           (("before the bright Soul",), "stepped into the tower too early", "tower too early"),
           (("did not soak", "unsoaked because", "soaker could not", "cause unclear"), "tower not soaked", "tower not soaked"),
           (("soaked", "stepped into"), "wrong player in a tower", "wrong soaker")]
+# tether laser failures (Paradeigma II and III), labelled the same way
+TETHERS = [(("not stretched",), "tether not stretched far enough", "tether stretch"),
+           (("clipped them",), "tether laser clipped a soaking support", "tether clipped support"),
+           (("stood in", "two DPS tether"), "stood in another player's tether laser", "tether path")]
+GROUPED = (("tether laser", TETHERS, "Tether"), ("tower", TOWERS, "Tower"), ("Soul in", TOWERS, "Tower"))
 MECH_SHORT = {"Paradeigma II": "P2", "Superchain I": "SC1", "Paradeigma III": "P3"}
 
 
 def cause_label(text, mech=""):
-    """Summary label for a classifier cause; tower failures are named with their mechanic."""
+    """Summary label for a classifier cause; tether and tower failures are named with their mechanic."""
     text = text.split("after their earlier")[-1].split("; earlier")[0]
-    if "tower" in text or "Soul in" in text:
-        for keys, kind, _ in TOWERS:
-            if any(k in text for k in keys):
-                return f"{mech}: {kind}" if mech in MECH_SHORT else "Tower: " + kind
+    for trigger, table, generic in GROUPED:   # tethers first: "clipped ... soak from the tower's outer side" is a tether failure
+        if trigger in text:
+            for keys, kind, _ in table:
+                if any(k in text for k in keys):
+                    return f"{mech}: {kind}" if mech in MECH_SHORT else f"{generic}: {kind}"
     return next((lab for key, lab, _ in CAUSES if key in text), "Other")
 
 
 def short_label(label):
     mech, _, kind = label.partition(": ")
-    if kind and (mech in MECH_SHORT or mech == "Tower"):
-        short = next((sh for _, k, sh in TOWERS if k == kind), kind)
+    if kind and (mech in MECH_SHORT or mech in ("Tower", "Tether")):
+        short = next((sh for _, k, sh in TOWERS + TETHERS if k == kind), kind)
         return f"{MECH_SHORT.get(mech, '')} {short}".strip()
     return next((sh for _, lab, sh in CAUSES if lab == label), label)
 
@@ -227,10 +233,23 @@ def analyse(group, data, bench):
 
 
 # ---------- output ----------
-def grade(v, cuts, higher_better=True):
-    if v is None: return " "
+GOOD, OK, BAD, NONE = "🟢", "🟡", "🔴", "  "   # the circles are two columns wide in Discord's monospace font
+
+
+def grade(v, cuts):
+    if v is None: return NONE
     good, ok = cuts
-    return "✓" if v >= good else ("~" if v >= ok else "!")
+    return GOOD if v >= good else (OK if v >= ok else BAD)
+
+
+def vlen(text):
+    """Width in a Discord code block: the coloured circles take two columns."""
+    return len(text) + sum(text.count(c) for c in (GOOD, OK, BAD))
+
+
+def vpad(text, width, right=False):
+    pad = " " * max(0, width - vlen(text))
+    return pad + text if right else text + pad
 
 
 def grades(p):
@@ -250,7 +269,8 @@ def mmss(s): return f"{int(s // 60)}:{int(s % 60):02d}"
 def pack(title, sections, limit=1940):
     """Pack sections (lists of lines that belong together) into ```-fenced messages under Discord's limit."""
     msgs, cur = [], []
-    size = lambda lines: len(title) + 12 + sum(len(l) + 1 for l in lines)
+    u16 = lambda t: len(t.encode("utf-16-le")) // 2   # Discord counts the circles as two characters
+    size = lambda lines: u16(title) + 12 + sum(u16(l) + 1 for l in lines)
     for sec in sections:
         if cur and size(cur + sec) > limit: msgs.append(cur); cur = []
         cur += sec
@@ -265,11 +285,11 @@ def checkpoint_sections(groups, bench):
     lines = [f"Be at or below these HP % when the mechanic starts (enrage ~{mmss(hc['enrage_s'])}).",
              f"Clear = on pace to kill at enrage, Comfy = ~13 s to spare ({hc['kills']} clears fitted).",
              "Group cells: best / median of the pulls that got there (number of pulls).",
-             "✓ best at Comfy or better   ~ at Clear or better   ! behind", ""]
+             f"{GOOD} best at Comfy or better   {OK} at Clear or better   {BAD} behind", ""]
     def cell(g, c):
         v = g["hp"].get(c["mechanic"], [])
         if not v: return "not reached"
-        gr = "✓" if v[0] <= c["comfortable"] else ("~" if v[0] <= c["breakeven"] else "!")
+        gr = GOOD if v[0] <= c["comfortable"] else (OK if v[0] <= c["breakeven"] else BAD)
         return f"{v[0]:.1f} / {st.median(v):.1f} ({len(v)}) {gr}"
     if len(groups) == 1:
         rows = [f"{'Mechanic':<19} Start | Clear  Comfy | Ours"]
@@ -280,7 +300,7 @@ def checkpoint_sections(groups, bench):
     secs = [lines]
     for c in hc["mechanics"]:
         sec = [f"{c['mechanic']} ({mmss(c['start_s'])})   Clear {c['breakeven']:.1f}%  Comfy {c['comfortable']:.1f}%"]
-        cells = [f"{g['group']} {cell(g, c):<21}" for g in groups]
+        cells = [f"{g['group']} " + vpad(cell(g, c), 22) for g in groups]
         sec += ["  " + "  ".join(cells[i:i + 2]).rstrip() for i in range(0, len(cells), 2)]
         secs.append(sec)
     return secs
@@ -303,29 +323,33 @@ def render(groups, bench):
               "Peer/Fast = rDPS 0:00–2:00 from your best quarter of clean pulls vs the",
               "           average clearer on your job (peer = 7:10–7:40 clears, fast = under 7:10)",
               "Uptime  = active GCD time 0:00–2:00 vs clearers of your role",
-              "Grades:  ✓ good   ~ ok   ! focus        * = only 1–2 clearers to compare with",
-              f"Mistakes ✓ ≤{G_MIST[0]:.2f} ~ ≤{G_MIST[1]:.2f} a pull | Wipes ✓ ≤{100 * G_WIPE[0]:.0f}% ~ ≤{100 * G_WIPE[1]:.0f}%",
-              f"Dmg vs fast ✓ within {-100 * G_DMG[0]:.0f}% ~ within {-100 * G_DMG[1]:.0f}% | Uptime ✓ within {-G_UP[0]} pt ~ within {-G_UP[1]} pt", ""]
-    colhead = f"Player              Job{' Grp' if multi else ''} | Mistakes | Wipes  | vs Peer vs Fast   | Uptime"
-    sections = [head + legend + [colhead]]
+              f"Grades:  {GOOD} good   {OK} ok   {BAD} focus        * = only 1–2 clearers to compare with",
+              f"Mistakes {GOOD} ≤{G_MIST[0]:.2f} {OK} ≤{G_MIST[1]:.2f} a pull | Wipes {GOOD} ≤{100 * G_WIPE[0]:.0f}% {OK} ≤{100 * G_WIPE[1]:.0f}%",
+              f"Dmg vs fast {GOOD} within {-100 * G_DMG[0]:.0f}% {OK} within {-100 * G_DMG[1]:.0f}% | "
+              f"Uptime {GOOD} within {-G_UP[0]} pt {OK} within {-G_UP[1]} pt", ""]
+    # cells first, so every column can be padded to its widest entry
+    rows_by_role = {}
     for role in ROLES:
         rr = sorted((p for p in allp if p["role"] == role), key=lambda p: (p["wrate"], p["mrate"], p["name"]))
-        if not rr: continue
-        lines = [role]
         for p in rr:
             gm, gw, gd, gu = grades(p)
             dmg = (f"{pct(p['peer'])} {pct(p['fast'])} {gd}" if (p["peer"] or p["fast"]) else
-                   (f"  no {AB.get(p['job'], p['job'])} clears    " if p["samples"] else "  no clean 2:00 pull"))
-            up = f"{p['uptime']:4.1f}% {gu}" if p["uptime"] is not None else "   –   "
-            lines.append(f" {p['name'][:18]:<19}{AB.get(p['job'], p['job'][:3])}{' ' + p['group'] if multi else ''} | {p['mrate']:5.2f} {gm}  |"
-                         f"{100 * p['wrate']:4.0f}% {gw} | {dmg} | {up}")
-        sections.append(lines)
+                   (f"no {AB.get(p['job'], p['job'])} clears" if p["samples"] else "no clean 2:00 pull"))
+            up = f"{p['uptime']:4.1f}% {gu}" if p["uptime"] is not None else "–"
+            who = f" {p['name'][:18]:<19}{AB.get(p['job'], p['job'][:3])}{' ' + p['group'] if multi else ''}"
+            rows_by_role.setdefault(role, []).append((who, [f"{p['mrate']:.2f} {gm}", f"{100 * p['wrate']:.0f}% {gw}", dmg, up]))
+    heads = ["Mistakes", "Wipes", "vs Peer vs Fast", "Uptime"]
+    widths = [max([vlen(h)] + [vlen(cells[i]) for rows in rows_by_role.values() for _, cells in rows]) for i, h in enumerate(heads)]
+    colhead = f"{'Player':<20}Job{' Grp' if multi else ''} | " + " | ".join(vpad(h, w) for h, w in zip(heads, widths))
+    sections = [head + legend + [colhead]]
+    for role, rows in rows_by_role.items():
+        sections.append([role] + [who + " | " + " | ".join(vpad(c, w, right=True) for c, w in zip(cells, widths)) for who, cells in rows])
     out = pack(f"**P12S P1 — Player scorecard, {date}**", sections)
     out += pack(f"**P12S P1 — Boss HP checkpoints, {date}**", checkpoint_sections(groups, bench))
     # takeaways
     t = []
-    allgood = sorted({p["name"] for p in allp if grades(p) == ("✓", "✓", "✓", "✓")})
-    if allgood: t += [f"✓ across the board: {', '.join(allgood)}", ""]
+    allgood = sorted({p["name"] for p in allp if grades(p) == (GOOD, GOOD, GOOD, GOOD)})
+    if allgood: t += [f"{GOOD} across the board: {', '.join(allgood)}", ""]
     causes = collections.Counter()
     for g in groups: causes.update(g["causes"])
     nmist = sum(causes.values())
@@ -339,12 +363,12 @@ def render(groups, bench):
     for p in sorted(allp, key=lambda p: (-p["wrate"], -p["mrate"])):
         gm, gw, gd, gu = grades(p)
         parts = focus.setdefault(p["name"], [])
-        if gw == "!" and not any(x.startswith("wipes") for x in parts):
+        if gw == BAD and not any(x.startswith("wipes") for x in parts):
             parts.append(f"wipes {p['wipes']} of {p['pulls']} (" + ", ".join(f"{short_label(lab)} ×{n}" for lab, n in p["wcauses"]) + ")")
-        if gm == "!" and not any(x.startswith("mistakes") for x in parts):
+        if gm == BAD and not any(x.startswith("mistakes") for x in parts):
             parts.append(f"mistakes {p['mrate']:.2f} a pull (" + ", ".join(f"{short_label(lab)} ×{n}" for lab, n in p["mcauses"]) + ")")
-        if gu == "!": parts.append(f"uptime {p['uptime']:.1f}% (clearers {bench['pools']['peer']['role_uptime'][p['role']]:.1f}%)")
-        if gd == "!": parts.append(f"{AB.get(p['job'])} damage {100 * p['fast'][0]:.0f}% vs fast clears".replace("-", "−")
+        if gu == BAD: parts.append(f"uptime {p['uptime']:.1f}% (clearers {bench['pools']['peer']['role_uptime'][p['role']]:.1f}%)")
+        if gd == BAD: parts.append(f"{AB.get(p['job'])} damage {100 * p['fast'][0]:.0f}% vs fast clears".replace("-", "−")
                                    + (" (1–2 clearers, rough)" if p["fast"][1] < 3 else ""))
     bullets = [f"• {n}: " + "; ".join(parts) for n, parts in focus.items() if parts]
     if bullets: t += ["", "Focus points"] + bullets

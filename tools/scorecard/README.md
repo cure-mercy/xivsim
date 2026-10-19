@@ -57,14 +57,14 @@ The header gives each group's pull count, best boss HP, longest pull, how many p
 | vs Fast | The same against clears faster than 7:10. |
 | Uptime | Active GCD time over 0:00–2:00, against clearers of the same role. |
 
-Grades: ✓ good, ~ ok, ! worth focusing on. `*` marks a comparison against only one or two clearers, which is
+Grades are coloured dots: 🟢 good, 🟡 ok, 🔴 worth focusing on. `*` marks a comparison against only one or two clearers, which is
 rough.
 
 | Grade | Mistakes per pull | Wipes | Damage vs fast clears | Uptime vs clearers |
 |---|---|---|---|---|
-| ✓ | 0.30 or fewer | 10% or less | within 5% | within 0.5 points |
-| ~ | 0.60 or fewer | 20% or less | within 12% | within 1.5 points |
-| ! | more | more | more | more |
+| 🟢 | 0.30 or fewer | 10% or less | within 5% | within 0.5 points |
+| 🟡 | 0.60 or fewer | 20% or less | within 12% | within 1.5 points |
+| 🔴 | more | more | more | more |
 
 With eight players and one wipe a pull, a fair share of the wipes is 12.5%. The thresholds are constants at the
 top of `scorecard.py` (`G_MIST`, `G_WIPE`, `G_DMG`, `G_UP`).
@@ -86,12 +86,12 @@ Superchain II sets), the boss HP a group has to be at or below when the mechanic
 |---|---|
 | Clear | On pace to kill exactly at enrage (~7:38). |
 | Comfy | On pace to kill about 13 seconds earlier. |
-| Group cells | Best / median HP % of the pulls that reached the mechanic, and how many did. ✓ best at Comfy or better, ~ at Clear or better, ! behind. |
+| Group cells | Best / median HP % of the pulls that reached the mechanic, and how many did. 🟢 best at Comfy or better, 🟡 at Clear or better, 🔴 behind. |
 
 With one group it is a single table; with several, each mechanic gets a line of targets with the groups two to
 a line underneath, so it fits a Discord message without wrapping.
 
-The takeaways message lists who is ✓ in every column, what all the mistakes were, what wiped us, a focus
+The takeaways message lists who is 🟢 in every column, what all the mistakes were, what wiped us, a focus
 bullet for each player with a !, and how many players are at or above peer clears.
 
 Damage is only measured on pulls with no death or Damage Down before 2:00, and always over the same
@@ -156,7 +156,9 @@ python -m http.server -d tools/scorecard/site 8000          then open http://loc
 `build_site.py` runs the scorecard's analysis and adds the reports to `site/data.json`, grouping them into raid
 days by the date they were logged. A report already in the data is analysed again (handy after a classifier
 change); new reports on a day are named G1, G2, … in the order given, or pass `--names "Static A,Static B"`.
-`--remove <code>` drops a report; `--refresh` downloads reports again.
+`--remove <code>` drops a report; `--refresh` downloads reports again; `--reanalyse` analyses every report
+already on the site again from the cache, which is needed after the classifier or the cause labels change
+(the site stores the labels it was built with). Run `--publish` afterwards to update the published copy.
 
 | Page | What it shows |
 |---|---|
