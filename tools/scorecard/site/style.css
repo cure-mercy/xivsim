@@ -128,3 +128,49 @@ td.wrap{ white-space: normal; min-width: 260px; }
 .unlock input[type=password]{ font: inherit; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .unlock button.primary{ font: inherit; font-weight: 600; color: #fff; background: var(--series); border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; justify-self: start; }
 .unlock button.primary:disabled{ opacity: 0.6; cursor: progress; }
+
+/* "?" explanations */
+.help{ display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: 8px; padding: 0;
+       border: 1px solid var(--border); border-radius: 50%; background: transparent; color: var(--muted); font: 600 11px/1 inherit;
+       vertical-align: middle; cursor: help; }
+.help:hover, .help:focus-visible{ color: var(--ink); border-color: var(--ink-2); }
+h3 .help{ width: 16px; height: 16px; margin-left: 6px; font-size: 10px; }
+.tip .t-text{ color: var(--ink); line-height: 1.45; font-size: 13px; }
+
+/* opener card */
+.opener .summary{ margin: 0 0 8px; font-size: 14px; }
+.opener table{ width: 100%; }
+.opener .bad{ color: var(--div-neg); font-weight: 600; }
+
+/* report-level warnings (e.g. The Echo) */
+.warn{ border-left: 3px solid var(--div-neg); padding: 8px 12px; background: var(--surface); border-radius: 6px; color: var(--ink); max-width: 90ch; }
+
+/* focus lists: what to work on */
+.focus-card{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; max-width: 90ch; }
+ol.focus{ margin: 0; padding-left: 22px; display: grid; gap: 10px; }
+ol.focus li::marker{ color: var(--ink-2); font-weight: 600; }
+.focus .f-title{ font-weight: 600; }
+.focus .f-detail{ color: var(--ink-2); font-size: 14px; }
+.focus .f-links{ font-size: 13px; margin-top: 2px; display: flex; gap: 12px; flex-wrap: wrap; }
+.drill a{ color: var(--accent, #8b6cf6); }
+.linklike{ background: none; border: 0; padding: 0; font: inherit; color: var(--accent, #8b6cf6); cursor: pointer; }
+.linklike:hover, .drill a:hover{ text-decoration: underline; }
+
+/* burndown */
+.bd-pulls{ fill: none; stroke: var(--series); stroke-width: 1.2; stroke-linejoin: round; opacity: 0.85; }
+.bd-best{ fill: none; stroke: #9b6cf2; stroke-width: 2.2; }
+.milestone{ stroke: var(--muted); stroke-dasharray: 2 3; }
+.tabs{ display: flex; gap: 6px; margin: 4px 0 8px; flex-wrap: wrap; }
+.tabs button{ font: inherit; font-size: 13px; color: var(--ink-2); background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.tabs button.on{ color: var(--ink); border-color: var(--series); background: var(--series-wash); }
+figure.card .summary{ margin: 0 0 6px; font-size: 14px; color: var(--ink-2); }
+td.good{ color: #3fae5a; } td.bad{ color: var(--div-neg); }
+.chart line.ref.ref-min{ stroke: var(--div-neg); stroke-dasharray: 4 3; stroke-opacity: 0.9; }
+.chart text.lbl.ref-min{ fill: var(--div-neg); }
+.chart .series2{ fill: none; stroke: #9b6cf2; stroke-width: 2; stroke-dasharray: 5 4; }
+.chart .mark2{ fill: var(--surface); stroke: #9b6cf2; stroke-width: 2; }
+.chart text.second{ fill: #9b6cf2; }
+.chart .ref-mark{ stroke: var(--ink); stroke-width: 2.5; }
+.chart .extra{ fill: none; stroke-width: 1.8; stroke-dasharray: 5 4; }
+.chart .extra.x-death{ stroke: var(--div-neg); } .chart .mark-extra.x-death{ fill: var(--div-neg); }
+.chart .extra.x-dd{ stroke: #e0a03a; } .chart .mark-extra.x-dd{ fill: #e0a03a; }

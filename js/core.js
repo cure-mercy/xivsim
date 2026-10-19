@@ -902,6 +902,10 @@ window.Twelfth = (function(){
       const savedTab = localStorage.getItem('twelfth-tab');
       if(isOpen(savedTab)) initialTab = savedTab;
     }catch(e){}
+    // a link straight to a mechanic (index.html#superchain, e.g. from the scorecard) wins over the last one used
+    const linked = () => decodeURIComponent(location.hash.slice(1));
+    if(isOpen(linked())) initialTab = linked();
+    addEventListener('hashchange', () => { if(isOpen(linked())) selectTab(linked()); });
     selectTab(initialTab);
 
     function boot(data){
