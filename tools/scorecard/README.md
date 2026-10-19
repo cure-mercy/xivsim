@@ -74,8 +74,9 @@ plaintext `data.json` is never copied there. The passphrase is asked for twice (
 download the encrypted file and try passphrases offline. Encrypting needs Node (`encrypt_data.js`); the browser
 decrypts with its built-in Web Crypto, which works on https and on localhost. After a check that the result
 decrypts, commit and push `stats/`; the existing Pages workflow deploys it with the rest of the repository, at
-`/stats/` under the trainer's address. Run `--publish` again after adding or re-analysing reports. Browsers may
-keep the old page files for a few minutes after a deploy; a hard refresh (Ctrl+F5) picks up the new ones.
+`/stats/` under the trainer's address. Run `--publish` again after adding or re-analysing reports. The published
+`index.html` loads `style.css` and `app.js` with a version stamp (`?v=` and a hash of the file), so browsers fetch new
+page files after a deploy rather than mixing a cached stylesheet with a new script.
 
 Readers enter the passphrase once per browser session (unless they untick "Remember"); the Lock button forgets
 it. The page is marked `noindex` and is not linked from the trainer. What this does not give you: individual
@@ -94,7 +95,7 @@ appears (the page only asks when `data.json` is missing and `data.enc.json` is t
 | Raid days | Trends across days (best boss HP, pulls clean through 2:00, mistakes per pull, damage lost to deaths, party DPS against the clears) and a table of days |
 | Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group |
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
-| Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime; damage per phase; mistakes and their cost by cause; rDPS on every clean pull; every mistake with its pull and time; the player across raid days |
+| Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes and their cost by cause; rDPS on every clean pull; every mistake with its pull and time; the player across raid days (mistakes per pull and per minute in pulls) |
 
 Every chart has a Table button for the same numbers as a table and shows details on hover or keyboard focus.
 The theme follows the system and can be switched with the button (or `?theme=light` / `?theme=dark` in the

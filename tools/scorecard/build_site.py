@@ -18,7 +18,7 @@ with a passphrase (encrypt_data.js, needs Node). The plaintext data.json is neve
 read from SCORECARD_PASSPHRASE, or asked for twice. To stop publishing, delete DIR; to move host, upload DIR (or
 serve site/ with its plaintext data behind the new host's own login).
 """
-import argparse, datetime, getpass, json, os, shutil, subprocess, sys
+import argparse, datetime, getpass, hashlib, json, os, shutil, subprocess, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -99,6 +99,11 @@ def publish(out):
     if len(pw) < 12: raise SystemExit("use a passphrase of at least 12 characters (several words is best); nothing published")
     out = Path(out); out.mkdir(parents=True, exist_ok=True)
     for f in PAGE_FILES: shutil.copyfile(HERE / "site" / f, out / f)
+    page = (out / "index.html").read_text(encoding="utf-8")   # version the files so browsers fetch the new ones
+    for f in ("style.css", "app.js"):
+        v = hashlib.sha256((HERE / "site" / f).read_bytes()).hexdigest()[:10]
+        page = page.replace(f'"{f}"', f'"{f}?v={v}"')
+    (out / "index.html").write_text(page, encoding="utf-8")
     (out / "data.json").unlink(missing_ok=True)
     env = dict(os.environ, SCORECARD_PASSPHRASE=pw)
     subprocess.run(["node", str(HERE / "encrypt_data.js"), str(DATA), str(out / "data.enc.json")], env=env, check=True)
