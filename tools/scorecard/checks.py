@@ -71,10 +71,11 @@ def starts(p, src, busy=False):
     begun = collections.defaultdict(list)
     for t, s, a in p.get("begins", []):
         if s == src: begun[a].append(t)
-    out = []
-    for t, s, a in p["casts"]:
-        if s != src or not (acts.get(a) or {}).get("gcd"): continue
-        b = [x for x in begun[a] if 0 <= t - x < 6]
+    out, last = [], -1e9              # last: the player's previous cast; a begin before it belongs to an earlier cast
+    for t, s, a in sorted(x for x in p["casts"] if x[1] == src):
+        prev, last = last, t
+        if not (acts.get(a) or {}).get("gcd"): continue
+        b = [x for x in begun[a] if 0 <= t - x < 6 and x > prev]    # instant casts (Swiftcast, Dualcast, procs) have none
         rec = acts[a]["recast"] / 2.5 if acts[a]["recast"] <= 5 else 1.0
         out.append((b[-1], t - b[-1] + SLIDE + 0.1, rec) if b else (t, 0.0, rec))
     out.sort()
@@ -529,8 +530,8 @@ def report(data, lives):
         s = summary(job, pulls, gcd)
         if s:
             prof = profile(job)
-            seqs = [opener_seq(p, sid, prof) for p, sid, alive, until, n in items
-                    if until > OPENER_END and any(a <= 0.5 and b > OPENER_END for a, b in alive)]
+            seqs = [opener_seq(p, sid, prof, OPENER_LATE) for p, sid, alive, until, n in items
+                    if until > OPENER_LATE and any(a <= 0.5 and b > OPENER_LATE for a, b in alive)]
             out[(name, job)] = dict(s, gcd=gcd, opener=opener(job, seqs))     # raw times: the card shows both GCDs
     return out
 
@@ -598,24 +599,35 @@ def bursts(data, lives):
 # --- openers -------------------------------------------------------------------------------------------------------
 
 OPENER_END = 22.0            # seconds of opener compared (pre-pull casts included)
+OPENER_LATE = 30.0           # a player's openers are read this far, then cut to as many GCDs as the clears' opener has
 NOT_OPENER = ("Gemdraught", "Tincture", "Sprint")
+# oGCDs that neither deal damage nor are raid buffs but are planned into openers (cards and draws, Swiftcast, gauge
+# and pet skills); mitigation, movement, True North and Lucid Dreaming stay out
+OPENER_ALSO = {"the Balance", "the Spear", "Astral Draw", "Umbral Draw", "Lightspeed", "Swiftcast", "Triplecast",
+               "Hypercharge", "Automaton Queen", "Enshroud", "Infuriate", "Dissipation", "Salted Earth", "Salt and Darkness",
+               "Enkindle Bahamut", "Enkindle Phoenix", "Enkindle Solar Bahamut", "Subtractive Palette", "Striking Muse",
+               "Quadruple Technical Finish"}
 SAME_STEP = {"Emboite": "Step", "Entrechat": "Step", "Jete": "Step", "Pirouette": "Step"}   # Dancer steps come in a random order
 
 
-def opener_seq(p, sid, prof):
-    """[(start, name, gcd)] of a player's casts from before the pull to OPENER_END: GCDs, damaging oGCDs and damage
+RECAST = {}                  # skill name -> recast (s), filled by opener_seq
+
+
+def opener_seq(p, sid, prof, end=OPENER_END):
+    """[(start, name, gcd)] of a player's casts from before the pull to `end`: GCDs, damaging oGCDs and damage
     buffs (defensives, potions and Sprint left out); hard casts are timed from their begun cast."""
     acts = gamedata.actions({a for t, s, a in p["casts"] if s == sid})
     begun = collections.defaultdict(list)
     for t, s, a in p.get("begins", []):
         if s == sid: begun[a].append(t)
     keep = set(prof["cooldowns"]) | prof["damaging"] | set(prof["windows"])
-    out = []
-    for t, s, a in p["casts"]:
-        info = acts.get(a)
-        if s != sid or t > OPENER_END or not info or any(x in info["name"] for x in NOT_OPENER): continue
-        if not info["gcd"] and a not in keep and info["name"] not in BUFFS: continue
-        b = [x for x in begun[a] if 0 <= t - x < 6]
+    out, last = [], -1e9              # last: the player's previous cast; a begin before it belongs to an earlier cast
+    for t, s, a in sorted(x for x in p["casts"] if x[1] == sid):
+        info, prev, last = acts.get(a), last, t
+        if t > end or not info or any(x in info["name"] for x in NOT_OPENER): continue
+        if not info["gcd"] and a not in keep and info["name"] not in BUFFS and info["name"] not in OPENER_ALSO: continue
+        b = [x for x in begun[a] if 0 <= t - x < 6 and x > prev]    # instant casts have none
+        RECAST[SAME_STEP.get(info["name"], info["name"])] = info.get("recast") or 0
         out.append((round(b[-1] if b else t, 2), SAME_STEP.get(info["name"], info["name"]), info["gcd"]))
     return sorted(out)
 
@@ -649,38 +661,60 @@ def medoid(seqs):
     return min(range(len(seqs)), key=lambda i: sum(distance(names[i], x) for x in names))
 
 
+ECHO = 1.20                  # The Echo: a flat +20% damage
+
+
 @functools.lru_cache(maxsize=None)
 def clear_openers(job):
-    """The clears' openers on the job (players alive past OPENER_END)."""
-    prof = profile(job)
-    seqs = [opener_seq(p, sid, prof) for p, sid, death, end, _ in clear_logs(job) if (death or end) > OPENER_END]
-    return [s for s in seqs if s]
+    """The clears' openers on the job (players alive past OPENER_END): [dict(seq, dmg)], dmg their opener nDPS (first
+    20 s, tincture removed; Echo clears divided by ECHO), None when unknown."""
+    prof, out = profile(job), []
+    for k in json.loads((HERE / "benchmark.json").read_text())["kills"]:
+        p = B.kill_acts(k)
+        deaths, pf = {}, B.CACHE / f"phases_{k['code']}_{k['fight']}.json"
+        for x in (json.loads(pf.read_text())["deaths"] if pf.exists() else []): deaths[x["name"]] = min(deaths.get(x["name"], 1e9), x["t"])
+        dmg = {x["name"]: x["ndps"] / (ECHO if B.has_echo(k) else 1) for x in B.kill_opener(k) if x["job"] == job}
+        for sid, (name, j) in p["players"].items():
+            if j != job or deaths.get(name, 1e9) <= OPENER_END: continue
+            seq = opener_seq(p, int(sid), prof)
+            if seq: out.append(dict(seq=seq, dmg=dmg.get(name)))
+    return out
 
 
-def opener_ref(job, like=None):
-    """The clears' opener to compare with: the clear opener closest to `like` (a player's usual opener), as several
-    openers are played; each step gets its median time and share over the clears that play that variant (within a
-    few edits of it). Without `like`, the clears' most typical opener."""
-    seqs = clear_openers(job)
-    if len(seqs) < 3: return None
-    names = [[n for _, n, _ in x] for x in seqs]
+@functools.lru_cache(maxsize=None)
+def opener_ref(job):
+    """The best opener the clears play on the job. Variants are openers within a few edits of each other; the one most
+    clears play is the reference unless another (played by at least three) does clearly more opener damage: its median
+    ahead by more than 1.5 standard errors of the difference, as the spread between players of one opener (gear, crits)
+    is larger than most differences between openers. Returned as the variant's most typical sequence, the casts per
+    skill in it, each skill's median first cast, and the damage of the clears that play it."""
+    ops = clear_openers(job)
+    if len(ops) < 3: return None
+    names = [[n for _, n, _ in o["seq"]] for o in ops]
     near = lambda i: max(2, len(names[i]) // 6)
-    groups = [[k for k in range(len(seqs)) if distance(names[i], names[k]) <= near(i)] for i in range(len(seqs))]
-    played = [i for i in range(len(seqs)) if len(groups[i]) >= 3] or [max(range(len(seqs)), key=lambda i: len(groups[i]))]
-    if like:        # the variant (played by at least three clears) closest to the player's own
-        mine = [n for _, n, _ in like]
-        v = min(played, key=lambda i: (distance(mine, names[i]), -len(groups[i])))
-    else: v = max(played, key=lambda i: len(groups[i]))
+    groups = [[k for k in range(len(ops)) if distance(names[i], names[k]) <= near(i)] for i in range(len(ops))]
+    def dmg_of(g):
+        d = [ops[k]["dmg"] for k in g if ops[k]["dmg"]]
+        return (st.median(d), st.pstdev(d) / len(d) ** 0.5) if len(d) >= 2 else (None, None)
+    v = max(range(len(ops)), key=lambda i: (len(groups[i]), dmg_of(groups[i])[0] or 0))
+    basis, (m0, e0) = "played", dmg_of(groups[v])
+    if m0 is not None:
+        ahead = [(len(groups[i]), m, i) for i in range(len(ops)) if len(groups[i]) >= 3 for m, e in [dmg_of(groups[i])]
+                 if m is not None and m - m0 > 1.5 * (e * e + e0 * e0) ** 0.5]
+        if ahead: v, basis = max(ahead)[2], "damage"
     group = groups[v]
-    times, hits = [[] for _ in names[v]], [0] * len(names[v])
-    for i in group:
-        for op, a, b in align(names[v], names[i]):
-            if op == "match": times[a].append(seqs[i][b][0]); hits[a] += 1
-    return dict(steps=[dict(name=n, gcd=g, t=round(st.median(times[k]), 2) if times[k] else t, share=round(hits[k] / len(group), 2))
-                       for k, (t, n, g) in enumerate(seqs[v])], clears=len(group), all=len(seqs))
-
-
-ECHO = 1.20                  # The Echo: a flat +20% damage
+    centre = min(group, key=lambda i: sum(distance(names[i], names[k]) for k in group))
+    seq = ops[centre]["seq"]
+    times = collections.defaultdict(list)      # first cast of each skill, over the variant's clears
+    for k in group:
+        first = {}
+        for t, n, g in ops[k]["seq"]: first.setdefault(n, t)
+        for n, t in first.items(): times[n].append(t)
+    dmg = [ops[k]["dmg"] for k in group if ops[k]["dmg"]]
+    return dict(steps=[dict(t=t, name=n, gcd=g) for t, n, g in seq], counts=dict(collections.Counter(n for _, n, _ in seq)),
+                first={n: round(st.median(v2), 2) for n, v2 in times.items()}, gcd={n: g for _, n, g in seq},
+                dmg=round(st.median(dmg)) if dmg else None, clears=len(group), all=len(ops), basis=basis,
+                all_dmg=round(st.median([o["dmg"] for o in ops if o["dmg"]])) if any(o["dmg"] for o in ops) else None)
 
 
 @functools.lru_cache(maxsize=None)
@@ -698,25 +732,32 @@ def clear_opener_dps():
 
 
 def opener(job, seqs, ratio=1.0):
-    """A player's openers on the job against the clears' variant closest to their own: per step how often they had it
-    and how late it came (median, s; clear times scaled by `ratio`, the player's GCD over the clears', so a slower GCD
-    from gear is not lateness), the casts they added, their usual opener, and how late their last opener GCD was."""
+    """A player's openers on the job against the clears' best opener (opener_ref): casts per skill in the opener
+    against it over the same number of GCDs (GCD order is not compared: swapping two GCDs inside the opener changes
+    nothing), when each oGCD cooldown and raid buff first went out, and their usual opener for showing side by side."""
     seqs = [x for x in seqs if x]
-    if not seqs: return None
+    ref = opener_ref(job)
+    if not seqs or not ref: return None
+    gcds = sum(1 for x in ref["steps"] if x["gcd"])     # compared over as many GCDs as the clears' opener has, so a
+    def cut(sq):                                         # slower GCD from gear does not read as a missing filler
+        k = [i for i, (_, _, g) in enumerate(sq) if g]
+        return sq[:k[gcds]] if len(k) > gcds else sq
+    full, seqs = seqs, [cut(sq) for sq in seqs]
     usual = seqs[medoid(seqs[-40:]) + max(0, len(seqs) - 40)]
-    ref = opener_ref(job, usual)
-    if not ref: return None
-    exp = lambda t: t * ratio if t > 0 else t
-    names = [x["name"] for x in ref["steps"]]
-    hit, late, extra = [0] * len(names), [[] for _ in names], collections.Counter()
-    for sq in seqs:
-        for op, i, j in align(names, [n for _, n, _ in sq]):
-            if op == "match": hit[i] += 1; late[i].append(sq[j][0] - exp(ref["steps"][i]["t"]))
-            elif op in ("ins", "sub"): extra[sq[j][1]] += 1
-    gcds = [i for i, x in enumerate(ref["steps"]) if x["gcd"]]
-    last = gcds[-1] if gcds else None
-    return dict(clears=ref["clears"], clears_all=ref["all"], pulls=len(seqs), ratio=round(ratio, 3),
-                steps=[dict(x, hit=round(hit[i] / len(seqs), 2), late=round(st.median(late[i]), 2) if late[i] else None) for i, x in enumerate(ref["steps"])],
-                extra=[dict(name=n, per_pull=round(c / len(seqs), 2)) for n, c in extra.most_common(6) if c / len(seqs) >= 0.2],
-                usual=[dict(t=t, name=n, gcd=g) for t, n, g in usual],
-                last_gcd=dict(name=ref["steps"][last]["name"], late=round(st.median(late[last]), 2) if late[last] else None) if last is not None else None)
+    names = set(ref["counts"]) | {n for sq in seqs for _, n, _ in sq}
+    gcd = dict(ref["gcd"]); gcd.update({n: g for sq in seqs for _, n, g in sq})
+    timed = {c["name"] for c in profile(job)["cooldowns"].values()} | set(BUFFS) | OPENER_ALSO | {n for n in names if not gcd.get(n, True) and RECAST.get(n, 0) >= 30}   # cooldowns and raid buffs, not spenders
+    rows = []
+    for n in names:
+        mine = st.mean(sum(1 for _, x, _ in sq if x == n) for sq in seqs)
+        firsts = [next(t for t, x, _ in sq if x == n) for sq in seqs if any(x == n for _, x, _ in sq)]
+        rows.append(dict(name=n, gcd=gcd.get(n, True), clears=ref["counts"].get(n, 0), theirs=round(mine, 2),
+                         t_clears=ref["first"].get(n), t_theirs=round(st.median(firsts), 2) if firsts else None))
+    for r in rows:
+        r["fewer"] = r["clears"] - r["theirs"] >= 0.5
+        r["more"] = r["theirs"] - r["clears"] >= 0.5
+        r["late"] = (r["name"] in timed and r["t_clears"] is not None and r["t_theirs"] is not None and abs(r["t_theirs"] - r["t_clears"]) >= 1.5
+                     and round(r["t_theirs"] - r["t_clears"], 1)) or None
+    rows.sort(key=lambda r: (r["t_clears"] if r["t_clears"] is not None else 99, r["name"]))
+    return dict(clears=ref["clears"], clears_all=ref["all"], basis=ref["basis"], pulls=len(full), gcds=gcds, best_dmg=ref["dmg"], all_dmg=ref["all_dmg"],
+                best=ref["steps"], usual=[dict(t=t, name=n, gcd=g) for t, n, g in usual], skills=rows)

@@ -94,7 +94,7 @@ appears (the page only asks when `data.json` is missing and `data.enc.json` is t
 | Raid days | Trends across days (best boss HP, pulls clean through 2:00, mistakes per pull, damage lost to deaths, party DPS against the clears) and a table of days |
 | Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group |
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
-| Player | Mistakes per pull, wipes, damage against clearers, uptime and what their mistakes cost; damage per phase; mistakes and their cost by cause; rDPS on every clean pull; every mistake with its pull and time; the player across raid days |
+| Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime; damage per phase; mistakes and their cost by cause; rDPS on every clean pull; every mistake with its pull and time; the player across raid days |
 
 Every chart has a Table button for the same numbers as a table and shows details on hover or keyboard focus.
 The theme follows the system and can be switched with the button (or `?theme=light` / `?theme=dark` in the
@@ -188,7 +188,7 @@ uptime in the phase against clearers of the role.
 **Raid leader focus** (group page) lists what to raise first: the mechanics that ended the most pulls and who failed
 them, the most common mistake, the costliest rotation issues against the clearers, the latest raid buff and weak
 openers. **Work on this** (player page) does the same for one player, at most five points: mechanics whose mistakes
-lost pulls, their most frequent other mistake, the two costliest rotation issues, an opener 5% or more below clearers,
+lost pulls, their most frequent other mistake, the two costliest rotation issues, an opener 5% or more below clearers (with the skills cast fewer times than in the clears' opener and the cooldowns that went out late),
 and a raid buff pressed 1.5 s late or skipped. Every point links to its section, and mistakes in a mechanic the trainer
 has a drill for link to it: **Drill** opens the trainer on that mechanic (`index.html#<mechanic>`) and **Brief** its
 brief (`briefs.html#<mechanic>`). The open drills are listed in `DRILLS` in `site/app.js` (Paradeigma I, Paradeigma II,
@@ -203,14 +203,30 @@ spread from the party's first raid buff to its last against the clears.
 
 ### Opener
 
-On a player's page, their openers (casts from before the pull to 0:22; potions, Sprint and defensives left out)
-against the clears' opener. Several openers are played, so the player is compared with the variant closest to their
-own usual opener among those at least three clears play; its step times come from the clears that play it. Per step:
-when the clears cast it, how often the player had it, and how much later it came (median). Dancer steps count as one
-step, since they come in a random order. Times are not adjusted for GCD speed; both GCDs are shown. Opener damage is
-nDPS over 0:00-0:20 against clearers on the job (tinctures removed), from pulls the player was alive through. Clears with The
-Echo are left out; for a job with fewer than three other samples they are included with their damage divided by 1.2,
-and the card says so.
+On a player's page, their openers against the best opener the clears play (`opener_ref` in `checks.py`): GCDs,
+damaging oGCDs, raid buffs and the other oGCDs planned into openers (`OPENER_ALSO`: Astrologian cards and draws,
+Lightspeed, Swiftcast, Infuriate, Enshroud, Hypercharge and the like). Potions, Sprint, mitigation, movement, True North
+and Lucid Dreaming are left out. A hard cast is timed from its begun cast, an instant (Swiftcast, Lightspeed, Dualcast,
+procs) from the cast itself. Clears' openers run from before the pull to 0:22; openers within a few casts of each
+other count as one variant. The reference is the variant most clears play, unless another one played by at least three
+clears clearly does more opener damage: its median ahead by more than 1.5 standard errors of the difference. Within one
+opener, gear and crits spread players by about 1,000 nDPS, more than most openers differ, so the highest median alone
+would chase noise. Echo clears count with their damage divided by 1.2.
+
+Compared is what matters, not the order:
+- **Casts per skill**, over as many GCDs as the reference opener has (the player's casts are read to 0:30 and cut
+  there), so a slower GCD from gear doesn't count as a missing filler. Flagged at half a cast or more per pull fewer or
+  more than the reference.
+- **First cast of each cooldown and raid buff** (oGCDs with a recast of 30 s or more, the job's cooldowns, raid buffs;
+  not gauge spenders), median over their pulls against the median over the variant's clears. Flagged at 1.5 s or more
+  either way.
+- **GCD order is not compared.** Swapping two GCDs inside the opener changes nothing.
+
+The card lists the flagged differences and shows the reference opener next to their usual one (red: a skill the other
+doesn't have); its table view has the per-skill counts and first casts. Dancer steps count as one step, since they come
+in a random order. Opener damage is nDPS over 0:00-0:20 (tinctures removed), from pulls the player was alive through,
+against the clears playing the reference opener and against all clears on the job. For the latter, clears with The
+Echo are left out; a job with fewer than three other samples includes them, damage divided by 1.2, and the card says so.
 
 ### Abilities
 
@@ -289,7 +305,10 @@ to their whole-fight average (about 1.11; they front-load opener and burst). Sto
 
 **The Echo.** Some clears were played with The Echo turned on (+20% damage, HP and healing): 16 of the 45, all among the
 faster kills (Echo is what made them fast). They still count for everything about casts and timing (rotation checks, openers, burst, cooldowns, gauges)
-but not for damage, boss HP checkpoints or kill time. `python tools/scorecard/build_benchmark.py --rebuild` recomputes
+but not for damage, boss HP checkpoints or kill time. The exception is a job with fewer than three clear players without The Echo: its
+Echo clears count too, damage divided by 1.2 (rDPS, damage by phase, opener damage), marked `echo_corrected`. That
+fills Dragoon, Gunbreaker, White Mage, Summoner, Red Mage and others; the corrected values land within a few percent
+of the few clean ones. `python tools/scorecard/build_benchmark.py --rebuild` recomputes
 `benchmark.json` from the kills it already lists. Our own reports are checked the same way: pulls with The Echo are left
 out of every damage figure (rDPS against clearers, damage by phase, opener damage, party DPS, boss HP checkpoints, damage
 lost to deaths) and the group, day and player pages say so; mistakes, deaths and rotation checks still count.

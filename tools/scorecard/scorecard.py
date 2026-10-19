@@ -311,6 +311,8 @@ def analyse(group, data, bench):
             ref = oref[key[1]]
             rot["opener"]["dmg"] = dict(ndps=round(st.median(odps[key])), clears=round(ref["ndps"]), n=len(odps[key]),
                                         vs=round(st.median(odps[key]) / ref["ndps"] - 1, 3), echo_corrected=ref["echo_corrected"])
+            best = rot["opener"].get("best_dmg")   # the clears that play the reference opener
+            if best: rot["opener"]["dmg"].update(best=best, vs_best=round(st.median(odps[key]) / best - 1, 3))
     played = {}                                  # (pull, player) -> job
     for f, row in zip(data["fights"], pull_rows):
         for name, job in acts.report(data["code"], data["fights"]).get(str(f["id"]), {}).get("players", {}).values(): played[(row["n"], name)] = job
@@ -350,7 +352,7 @@ def analyse(group, data, bench):
             xs = sorted((y["rdps"] for y in v), reverse=True)
             top = st.mean(xs[:max(2, len(xs) // 4)]) if xs else None
             cj = bench["pools"]["clears"]["jobs"]
-            vs = (top / cj[job]["rdps"] - 1, cj[job]["players"]) if top and job in cj else None
+            vs = (top / cj[job]["rdps"] - 1, cj[job]["players"], cj[job].get("echo_corrected", False)) if top and job in cj else None
             up = st.mean(y["active"] for y in v) if v else None
             phases = []
             for wname, a, b in WINDOWS:   # damage per phase: rotation (nDPS) and GCD uptime against clearers on the job
@@ -360,7 +362,7 @@ def analyse(group, data, bench):
                 ref = bwin.get(wname, {}).get("pools", {}).get("clears", {}).get("jobs", {}).get(job)
                 rup = bwin.get(wname, {}).get("pools", {}).get("clears", {}).get("role_uptime", {}).get(ROLE.get(job, "Melee"))
                 phases.append(dict(window=wname, n=len(sm), ndps=nd, uptime=act, uptime_diff=act - rup if rup else None,
-                                   vs=(nd / ref["ndps"] - 1, ref["players"]) if ref else None))
+                                   vs=(nd / ref["ndps"] - 1, ref["players"], ref.get("echo_corrected", False)) if ref else None))
             players.append(dict(group=group, name=name, job=job, role=ROLE.get(job, "Melee"), pulls=attended[name],
                                 mistakes=nmist[name], mrate=nmist[name] / attended[name],
                                 mdeath=nkind[(name, "death")], mdd=nkind[(name, "DD")], mcauses=mcauses[name].most_common(3),

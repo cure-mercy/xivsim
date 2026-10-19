@@ -281,8 +281,8 @@ function playerFocus(r, entries, name) {
       items.push({ title: `${JOB[e.job] || e.job}: ${c.label}`, detail: `${checkRate(c)} for clearers; worth about ${num(Math.round(c.cost))} DPS.`, links: jumpTo("Rotation") });
     const o = rot.opener;
     if (o && o.dmg && o.dmg.vs <= -0.05) {
-      const miss = o.steps.filter(s => s.share >= 0.7 && s.hit < 0.5).map(s => s.name);
-      items.push({ title: `${JOB[e.job] || e.job} opener`, detail: `${signed(o.dmg.vs)} damage against clearers over 0:00–0:20${miss.length ? `; usually missing ${[...new Set(miss)].join(", ")}` : ""}.`, links: jumpTo("Opener") });
+      const miss = o.skills.filter(s => s.fewer).map(s => s.name), late = o.skills.filter(s => s.late != null && s.late > 0).map(s => s.name);
+      items.push({ title: `${JOB[e.job] || e.job} opener`, detail: `${signed(o.dmg.vs)} damage against clearers over 0:00–0:20${miss.length ? `; fewer ${miss.join(", ")} than the clears' opener` : ""}${late.length ? `; ${late.join(", ")} late` : ""}.`, links: jumpTo("Opener") });
     }
   }
   for (const b of (r.burst ? r.burst.buffs : []).filter(b => b.player === name && ((b.delay || 0) >= 1.5 || b.skipped >= 2)))
@@ -589,7 +589,7 @@ const divLegend = () => [
   el("span", {}, el("i", { style: "width:14px;height:10px;border-radius:3px;background:var(--div-pos)" }), "above clearers"),
   el("span", {}, "* only 1–2 clearers on the job"),
 ];
-const phaseTip = ph => [[signed(ph.vs[0]), `vs clearers (${ph.vs[1]} on the job)`],
+const phaseTip = ph => [[signed(ph.vs[0]), `vs clearers (${ph.vs[1]} on the job${ph.vs[2] ? ", some with The Echo, damage ÷1.2" : ""})`],
   [num(ph.ndps), "nDPS"], [`${ph.uptime.toFixed(1)}%`, `uptime${ph.uptime_diff != null ? ` (${ph.uptime_diff >= 0 ? "+" : "−"}${Math.abs(ph.uptime_diff).toFixed(1)} vs clearers)` : ""}`],
   [String(ph.n), "clean samples"]];
 // most clears skip Paradeigma I's movement with tank invulnerabilities; build_benchmark.py adjusts their first-window nDPS by role
@@ -795,7 +795,7 @@ function groupPage(day, group) {
         p.uptime != null ? el("span", {}, `${p.uptime.toFixed(1)}%`, gradeChip(grade("uptime", p.uptime_diff))) : "–"], `#/day/${day}/${group}/${encodeURIComponent(p.name)}`, 2));
     }
   }
-  app.append(heading("h2", "Player scorecard", "Mistakes per pull counts every mistake until the pull was lost; Deaths/pull and DD/pull split it into mistakes that killed someone and those that only gave Damage Down. Wipes: share of pulls their mistake lost. vs Clears: rDPS 0:00–2:00 (best quarter of clean pulls) against clearers on the same job (clears without The Echo); * = only 1–2 clearers. Uptime: GCD time vs clearers of the role."), el("div", { class: "table-wrap" }, el("table", {},
+  app.append(heading("h2", "Player scorecard", "Mistakes per pull counts every mistake until the pull was lost; Deaths/pull and DD/pull split it into mistakes that killed someone and those that only gave Damage Down. Wipes: share of pulls their mistake lost. vs Clears: rDPS 0:00–2:00 (best quarter of clean pulls) against clearers on the same job (clears without The Echo; a job with fewer than three such players also counts its Echo clears, damage divided by 1.2); * = only 1–2 clearers. Uptime: GCD time vs clearers of the role."), el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: i >= 2 ? "num" : null }, h)))), el("tbody", {}, rows))));
   // rotation and ability usage, per player
   const rotPlayers = r.players.filter(p => p.rotation);
@@ -898,9 +898,10 @@ function playerPage(day, group, name) {
   app.append(tiles([
     ["Mistakes per pull", p.mrate.toFixed(2), `${p.mdeath || 0} deaths · ${p.mdd || 0} Damage Downs in ${p.pulls} pulls`, grade("mistakes", p.mrate)],
     ["Wipes caused", pct(p.wrate), `${p.wipes} of ${p.pulls} pulls`, grade("wipes", p.wrate)],
-    ...entries.map(e => [`${JOB[e.job] || e.job} vs clears`, e.vs ? signed(e.vs[0]) : "–", e.vs ? `${e.vs[1]} clearer${e.vs[1] > 1 ? "s" : ""} on the job${e.vs[1] < 3 ? " · thin data" : ""}` : "no comparison", e.vs ? grade("damage", e.vs[0]) : null]),
+    ...entries.map(e => [`${JOB[e.job] || e.job} vs clears`, e.vs ? signed(e.vs[0]) : "–", e.vs ? `${e.vs[1]} clearer${e.vs[1] > 1 ? "s" : ""} on the job${e.vs[2] ? ", some with The Echo (damage ÷1.2)" : ""}${e.vs[1] < 3 ? " · thin data" : ""}` : "no comparison", e.vs ? grade("damage", e.vs[0]) : null]),
     ["Uptime 0:00–2:00", p.uptime != null ? `${p.uptime.toFixed(1)}%` : "–", `clearers ${b.pools.clears.role_uptime[p.role].toFixed(1)}%`, grade("uptime", p.uptime_diff)],
-    ["Their mistakes cost", hpfmt(p.lost_caused / p.pulls), `per pull, ${secs(p.lost_caused / p.pulls)}`],
+    ...entries.map(e => { const d = e.rotation && e.rotation.opener && e.rotation.opener.dmg;
+      return [`${JOB[e.job] || e.job} opener vs clears`, d ? signed(d.vs) : "–", d ? `nDPS 0:00–0:20, ${d.n} pulls${d.best ? ` · ${signed(d.vs_best)} vs the clears' opener` : ""}${d.echo_corrected ? " · some clears with The Echo (÷1.2)" : ""}` : "no comparison", d ? grade("damage", d.vs) : null]; }),
     ["Dead per pull", `${(p.dead_s / p.pulls).toFixed(1)} s`, `before the pull was lost; own deaths cost ${hpfmt(p.lost_suffered / p.pulls)}`],
   ]));
   app.append(heading("h2", "Work on this", "Their most important points, in order: mechanics whose mistakes lost pulls, their most frequent other mistake, the costliest rotation issues against clearers on the job, a weak opener, and a raid buff they press late or skip. Drill and Brief open the trainer on that mechanic."),
@@ -933,23 +934,32 @@ function playerPage(day, group, name) {
     costBy.length ? card("What their mistakes cost", info(`Boss HP lost to deaths they caused, all ${p.pulls} pulls together.`), hbarChart(costBy, { fmt: v => `${v.toFixed(2)}%` }),
       () => tableOf(["Cause", "Boss HP"], costBy.map(x => [x.label, `${x.value.toFixed(2)}%`])))
       : el("figure", { class: "card" }, el("div", { class: "card-head" }, el("h3", {}, "What their mistakes cost")), el("div", { class: "empty" }, "None of their mistakes caused a death."))));
-  // opener against the clears' opener variant closest to theirs
-  const opEntries = entries.filter(e => e.rotation && e.rotation.opener);
+  // opener against the best opener the clears play: what was cast and when the cooldowns went out, not the GCD order
+  const opEntries = entries.filter(e => e.rotation && e.rotation.opener && e.rotation.opener.skills);
   if (opEntries.length) {
     const sec = v => v == null ? "–" : `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)} s`;
-    app.append(heading("h2", "Opener", "Their openers (casts from before the pull to 0:22; potions, Sprint and defensives left out) against the clears' opener closest to theirs, since several openers are played; the clears' timings come from the clears that play that opener. For each step: when the clears cast it, how often they had it, and how much later than the clears it came (median). Times are not adjusted for GCD speed, so a slower GCD from gear makes later steps drift; both GCDs are shown. Opener damage is nDPS over 0:00–0:20 against clearers on the job (tinctures removed), from pulls they were alive through."),
+    const at = t => t == null ? "–" : t < 0 ? `${t.toFixed(1)} s` : mmss(t);
+    const casts = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
+    app.append(heading("h2", "Opener", "Their openers (casts from before the pull through as many GCDs as the clears' opener has; potions, Sprint and defensives left out) against the best opener the clears play (casts to 0:22). Openers within a few casts of each other count as one variant; the reference is the variant most clears play, unless another clearly does more opener damage (ahead by more than 1.5 standard errors, since gear and crits spread players of one opener more than most openers differ). Compared: how often each skill is cast over as many GCDs as the clears' opener has, so a slower GCD from gear does not count as a missing cast (flagged at half a cast or more per pull) and when each oGCD cooldown and raid buff first goes out (flagged at 1.5 s or more). The order of GCDs is not compared, since swapping two inside the opener changes nothing. Times are not adjusted for GCD speed. Opener damage is nDPS over 0:00–0:20 (tinctures removed) from pulls they were alive through."),
       el("div", { class: "grid wide" }, ...opEntries.map(e => {
         const o = e.rotation.opener, d = o.dmg;
-        const steps = o.steps.map((s, i) => [String(i + 1), s.name + (s.gcd ? "" : " ·"), mmss(Math.max(0, s.t)) + (s.t < 0 ? " (pre-pull)" : ""),
-          el("span", { class: s.share >= 0.7 && s.hit < 0.5 ? "bad" : null }, `${Math.round(100 * s.hit)}%`),
-          el("span", { class: s.late != null && s.late >= 1 ? "bad" : null }, sec(s.late))]);
+        const diffs = [
+          ...o.skills.filter(s => s.fewer).map(s => `${s.name}: ${casts(s.theirs)} per pull, the clears ${casts(s.clears)}`),
+          ...o.skills.filter(s => s.more).map(s => `${s.name}: ${casts(s.theirs)} per pull, the clears ${casts(s.clears)}`),
+          ...o.skills.filter(s => s.late != null).map(s => `${s.name} ${sec(s.late)} ${s.late > 0 ? "later" : "earlier"} than the clears (${at(s.t_theirs)} vs ${at(s.t_clears)})`)];
+        const n = Math.max(o.best.length, o.usual.length), names = new Set(o.usual.map(u => u.name)), bestNames = new Set(o.best.map(u => u.name));
+        const side = Array.from({ length: n }, (_, i) => { const b = o.best[i], u = o.usual[i];
+          return [String(i + 1), b ? el("span", { class: names.has(b.name) ? null : "bad" }, b.name + (b.gcd ? "" : " ·")) : "", b ? at(b.t) : "",
+            u ? el("span", { class: bestNames.has(u.name) ? null : "bad" }, u.name + (u.gcd ? "" : " ·")) : "", u ? at(u.t) : ""]; });
+        const dmgText = !d ? "Opener damage: –" : `Opener damage ${num(d.ndps)} nDPS (${d.n} pulls): ${d.best ? `${signed(d.vs_best)} against the clears playing this opener (${num(d.best)}), ` : ""}${signed(d.vs)} against all clears (${num(d.clears)})${d.echo_corrected ? "; clears with The Echo included, their damage divided by 1.2" : ""}.`;
         const body = () => el("div", { class: "opener" },
-          el("p", { class: "summary" }, d ? `Opener damage ${signed(d.vs)} against clearers (${num(d.ndps)} vs ${num(d.clears)} nDPS, ${d.n} pulls${d.echo_corrected ? "; clears with The Echo included, their damage divided by 1.2" : ""})` : "Opener damage: –",
-            o.last_gcd && o.last_gcd.late != null ? ` · last opener GCD ${sec(o.last_gcd.late)}` : ""),
-          tableOf(["#", "Clears' opener", "Clears at", "They had it", "Their timing"], steps, [2, 3, 4]),
-          o.extra.length ? el("p", { class: "note" }, `Cast instead or out of order: ${o.extra.map(x => `${x.name} (${x.per_pull.toFixed(1)} per pull)`).join(", ")}.`) : null);
-        return card(`${JOB[e.job] || e.job} opener`, `${o.pulls} pulls against ${o.clears} of ${o.clears_all} clears that play this opener. Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s, clears' ${e.rotation.clear_gcd ? e.rotation.clear_gcd.toFixed(2) : "–"} s. · marks an oGCD.`,
-          () => body(), () => tableOf(["#", "Their usual opener", "At"], o.usual.map((u, i) => [String(i + 1), u.name + (u.gcd ? "" : " ·"), u.t < 0 ? `${u.t.toFixed(1)} s` : mmss(u.t)]), [2]));
+          el("p", { class: "summary" }, dmgText),
+          diffs.length ? el("ul", { class: "diffs" }, ...diffs.map(x => el("li", {}, x))) : el("p", { class: "note" }, "Same skills and cooldown timings as the clears' opener; only the order differs, which does not matter."),
+          tableOf(["#", "Clears' opener", "At", "Their usual opener", "At"], side, [2, 4]));
+        return card(`${JOB[e.job] || e.job} opener`, `${o.pulls} pulls against the ${o.basis === "damage" ? "highest-damage" : "most played"} clear opener (${o.clears} of ${o.clears_all} clears play it). Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s, clears' ${e.rotation.clear_gcd ? e.rotation.clear_gcd.toFixed(2) : "–"} s. · marks an oGCD; red: not in the other opener.`,
+          () => body(), () => tableOf(["Skill", "Clears' casts", "Theirs", "Clears' first", "Their first"],
+            o.skills.map(s => [s.name + (s.gcd ? "" : " ·"), String(s.clears), el("span", { class: s.fewer || s.more ? "bad" : null }, casts(s.theirs)),
+              at(s.t_clears), el("span", { class: s.late != null ? "bad" : null }, at(s.t_theirs))]), [1, 2, 3, 4]));
       })));
   }
   // rotation checks against the clears over the same stretch of fight
