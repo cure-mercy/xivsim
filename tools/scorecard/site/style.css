@@ -176,3 +176,4 @@ td.good{ color: #3fae5a; } td.bad{ color: var(--div-neg); }
 .chart .extra{ fill: none; stroke-width: 1.8; stroke-dasharray: 5 4; }
 .chart .extra.x-death{ stroke: var(--div-neg); } .chart .mark-extra.x-death{ fill: var(--div-neg); }
 .chart .extra.x-dd{ stroke: #e0a03a; } .chart .mark-extra.x-dd{ fill: #e0a03a; }
+.chart .extra.x-min{ stroke: #9b6cf2; } .chart .mark-extra.x-min{ fill: #9b6cf2; }

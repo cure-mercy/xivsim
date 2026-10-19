@@ -100,6 +100,18 @@ const budgetTile = rs => { const b = budget(rs);
   if (b.hp <= 0) return ["Mistake budget", "none", `party DPS ${kfmt(b.party)} is below the ${kfmt(b.min)} needed to clear`];
   return ["Mistake budget", `${b.hp.toFixed(1)}% HP`, `per kill ≈ ${b.deaths != null ? b.deaths.toFixed(1) : "–"} deaths or ${b.dds != null ? Math.floor(b.dds) : "–"} Damage Downs (party DPS ${kfmt(b.party)} vs ${kfmt(b.min)} needed)`]; };
 
+// what one death of theirs costs at full length: time dead until raised (median over our reports) plus the raise's
+// Weakness for its whole duration, at their own rDPS; as boss HP, kill time at the group's party DPS, and against the
+// group's mistake budget (Echo reports: damage taken back to normal, /1.2)
+function deathTile(r, p) {
+  const b = DATA.benchmark, echo = r.echo ? 1.2 : 1, rdps = p.avg ? p.avg / echo : null;
+  if (!rdps) return ["One death costs", "–", "needs a clean 0:00–2:00 pull"];   // label below gets the explanation
+  const lost = (b.mistake_times.dead_s + b.raise_s * b.raise_penalty.Weakness) * rdps, hp = 100 * lost / b.hp_checkpoints.boss_hp;
+  const bud = budget([r]), fits = bud && bud.hp > 0 ? bud.hp / hp : null;
+  const label = el("span", {}, "One death costs", help(`One death of theirs at full length: ${b.mistake_times.dead_s.toFixed(0)} s dead until raised (median over our reports) plus ${b.raise_s} s of Weakness (−${Math.round(100 * b.raise_penalty.Weakness)}% damage), at their average rDPS over clean 0:00–2:00 pulls. Kill time: that damage at the group's party DPS. Budget: how many such deaths fit in the group's mistake budget for a whole kill. A second death within the Weakness gives Brink of Death (−50%) and costs more.`));
+  return [label, `${hp.toFixed(2)}% HP`, `≈ ${(lost / (r.party / echo)).toFixed(1)} s of kill time at their ${kfmt(rdps)} rDPS${fits != null ? ` · budget fits ${fits.toFixed(1)}` : bud ? " · no mistake budget" : ""}`];
+}
+
 function findGroup(day, group) { return reports().find(r => r.day === day && r.group === group); }
 
 // ---------- tooltip ----------
@@ -358,8 +370,9 @@ function lineChart(points, { yFmt = v => v, yMax, yMin = 0, invert = false, refs
     const svg = sv("svg", { viewBox: `0 0 ${width} ${H}`, role: "img" });
     for (const t of ticks(top - lo)) { const v = lo + t; svg.append(sv("line", { class: "gridline", x1: L, x2: L + w, y1: Y(v), y2: Y(v) }), sv("text", { x: L - 6, y: Y(v) + 4, "text-anchor": "end" }, yFmt(v))); }
     const n = points.length;
-    const every = Math.max(1, Math.ceil(n * 85 / Math.max(1, w)));   // about 85 px per label
-    points.forEach((p, i) => { if (i % every && i !== n - 1) return;
+    const room = Math.max(85, 6.5 * Math.max(...points.map(p => String(p.x).length)) + 14);   // px per label, wider for long labels
+    const every = Math.max(1, Math.ceil(n * room / Math.max(1, w)));
+    points.forEach((p, i) => { if (i !== n - 1 && (i % every || X(n - 1) - X(i) < room)) return;   // keep clear of the last label
       svg.append(sv("text", { x: X(i), y: H - 6, "text-anchor": n > 1 && i === 0 ? "start" : n > 1 && i === n - 1 ? "end" : "middle" }, p.x)); });
     const placed = [];   // reference labels: nudge apart when the lines are close
     const refY = r => { let y = Y(r.value); while (placed.some(q => Math.abs(q - y) < 11)) y -= 11; placed.push(y); return y; };
@@ -379,14 +392,14 @@ function lineChart(points, { yFmt = v => v, yMax, yMin = 0, invert = false, refs
     if (extra.length) {   // more series on the same axis: thinner, dashed, with a legend
       extra.forEach((x, k) => {
         const p2 = x.points.map((p, i) => p.y == null ? null : [X(i), Y(p.y)]).filter(Boolean);
-        if (p2.length > 1) svg.append(sv("polyline", { class: `extra ${x.cls || ""}`, points: p2.map(p => p.join(",")).join(" ") }));
-        x.points.forEach((p, i) => { if (p.y == null) return; svg.append(sv("circle", { class: `mark-extra ${x.cls || ""}`, cx: X(i), cy: Y(p.y), r: 3 })); });
+        if (p2.length > 1) svg.append(sv("polyline", { class: `extra ${x.cls || ""}`, points: p2.map(p => p.join(",")).join(" "), ...(x.color ? { stroke: x.color } : {}) }));
+        x.points.forEach((p, i) => { if (p.y == null) return; svg.append(sv("circle", { class: `mark-extra ${x.cls || ""}`, cx: X(i), cy: Y(p.y), r: 3, ...(x.color ? { fill: x.color } : {}) })); });
       });
       points.forEach((p, i) => { const hit = sv("rect", { class: "hit", x: X(i) - 14, y: T, width: 28, height: h });
         hover(hit, p.x, [[p.y != null ? yFmt(p.y) : "–", name || "", true], ...extra.map(x => [x.points[i].y != null ? yFmt(x.points[i].y) : "–", x.name])]); svg.append(hit); });
       let lx = L;
-      for (const [label, cls, dashed] of [[name || "", "", false], ...extra.map(x => [x.name, x.cls || "", true])]) {
-        svg.append(sv("line", { class: dashed ? `extra ${cls}` : null, x1: lx, x2: lx + 18, y1: 10, y2: 10, ...(dashed ? {} : { stroke: "var(--series)", "stroke-width": 2 }) }),
+      for (const [label, cls, dashed, color] of [[name || "", "", false], ...extra.map(x => [x.name, x.cls || "", true, x.color])]) {
+        svg.append(sv("line", { class: dashed ? `extra ${cls}` : null, x1: lx, x2: lx + 18, y1: 10, y2: 10, ...(dashed ? (color ? { stroke: color } : {}) : { stroke: "var(--series)", "stroke-width": 2 }) }),
           sv("text", { class: "lbl", x: lx + 24, y: 14 }, label));
         lx += 34 + label.length * 6.2;
       }
@@ -730,7 +743,7 @@ function home() {
           return x.share != null ? `${pct(x.share)} (${x.left}/${x.entered})` : "–"; })])));
     })(),
     card("Mistakes per pull", info("Per player, counted until each pull was lost. The dashed line divides the same mistakes by the minutes players spent in pulls (up to where each pull was lost), so longer pulls as the groups progress do not read as more mistakes."),
-      lineChart(series(s => s.mistakesPerPull), { yFmt: v => v.toFixed(2), name: "per pull", second: { points: series(s => s.mistakesPerMin), yFmt: v => v.toFixed(2), name: "per minute" } }),
+      lineChart(series(s => s.mistakesPerPull), { yFmt: v => v.toFixed(2), name: "per pull", extra: [{ points: series(s => s.mistakesPerMin), name: "per minute", cls: "x-min", color: "#9b6cf2" }] }),
       () => tableOf(["Day", "Mistakes per pull", "Per minute in pulls"], ds.map(d => { const s2 = stats(d.groups); return [dayName(d.day), s2.mistakesPerPull.toFixed(2), s2.mistakesPerMin != null ? s2.mistakesPerMin.toFixed(3) : "–"]; }))),
     card("Damage lost to mistakes", info("Boss HP per pull lost to mistakes before each pull was lost, valued at the player's own rDPS in that phase. Deaths: time dead and the raise's Weakness (−22% damage for 100 s). Damage Down: −38% damage while it lasts. Both measured from players' own hits in these logs. Reports with The Echo are left out."),
       lineChart(series(s => s.lostPerPull), { yFmt: v => `${v.toFixed(1)}%`, name: "combined",
@@ -912,7 +925,7 @@ function playerPage(day, group, name) {
     ...entries.map(e => { const d = e.rotation && e.rotation.opener && e.rotation.opener.dmg;
       const R = opRef(e.rotation && e.rotation.opener);
       return [`${JOB[e.job] || e.job} opener vs ${R.short}`, d ? signed(d.vs) : "–", d ? `nDPS 0:00–0:20, ${d.n} pulls${d.best ? ` · ${signed(d.vs_best)} vs ${R.whose} opener` : ""}${d.echo_corrected ? " · some clears with The Echo (÷1.2)" : ""}${d.players != null && d.players < 5 ? ` · ${d.players} other players, thin data` : ""}` : "no comparison", d ? grade("damage", d.vs) : null]; }),
-    ["Dead per pull", `${(p.dead_s / p.pulls).toFixed(1)} s`, `before the pull was lost; own deaths cost ${hpfmt(p.lost_suffered / p.pulls)}`],
+    deathTile(r, p),
   ]));
   app.append(heading("h2", "Work on this", "Their most important points, in order: mechanics whose mistakes lost pulls, their most frequent other mistake, the costliest rotation issues against clearers on the job, a weak opener, and a raid buff they press late or skip. Drill and Brief open the trainer on that mechanic."),
     el("div", { class: "focus-card" }, focusList(playerFocus(r, entries, name), "Nothing stands out against the clears.")));
@@ -1043,8 +1056,13 @@ function playerPage(day, group, name) {
   }
   if (byDay.length > 1) {
     const pts = f => byDay.map(es => ({ x: `${dayName(es[0].day)} ${es[0].group}`, y: f(es) }));
+    const perMin = es => { const rep = findGroup(es[0].day, es[0].group); if (!rep) return null;   // as on the overview, for one player
+      const m = sum(rep.pulls.filter(q => q.players.includes(name)).map(q => Math.min(q.dur, q.wipe ? q.wipe.t + 2 : q.dur) / 60));
+      return m ? es[0].mistakes / m : null; };   // mistakes are per player, repeated on each job entry
     app.append(el("div", { class: "grid" },
-      card("Mistakes per pull", null, lineChart(pts(es => es[0].mrate), { yFmt: v => v.toFixed(2) }), () => tableOf(["Day", "Mistakes per pull"], byDay.map(es => [`${dayName(es[0].day)} ${es[0].group}`, es[0].mrate.toFixed(2)]))),
+      card("Mistakes per pull", info("Counted until each pull was lost. The dashed line divides the same mistakes by the minutes they spent in pulls (up to where each pull was lost), so longer pulls as the groups progress do not read as more mistakes."),
+        lineChart(pts(es => es[0].mrate), { yFmt: v => v.toFixed(2), name: "per pull", extra: [{ points: pts(perMin), name: "per minute", cls: "x-min", color: "#9b6cf2" }] }),
+        () => tableOf(["Day", "Mistakes per pull", "Per minute in pulls"], byDay.map(es => [`${dayName(es[0].day)} ${es[0].group}`, es[0].mrate.toFixed(2), perMin(es) != null ? perMin(es).toFixed(3) : "–"]))),
       card("Wipes caused", info("Share of pulls."), lineChart(pts(es => es[0].wrate), { yFmt: v => pct(v), yMax: Math.max(0.4, ...byDay.map(es => es[0].wrate)) }), () => tableOf(["Day", "Wipes"], byDay.map(es => [`${dayName(es[0].day)} ${es[0].group}`, pct(es[0].wrate)]))),
     ));
   }
