@@ -102,9 +102,10 @@ tr.link:hover td{ background: var(--surface-2); }
 tr.role td{ color: var(--muted); font-size: 12px; padding-top: 12px; border-bottom: 0; }
 td.wrap{ white-space: normal; min-width: 260px; }
 
-/* grades: a status dot with its glyph, never colour alone */
-.g{ display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; font-weight: 650; }
-.g::before{ content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+/* grades: a green, yellow or red dot; the word rides along for hover and screen readers */
+.g{ display: inline-flex; align-items: center; margin-left: 6px; vertical-align: middle; }
+.g::before{ content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+.sr-only{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .g.good{ --c: var(--good); } .g.ok{ --c: var(--warn); } .g.bad{ --c: var(--bad); }
 .note{ color: var(--muted); font-size: 13px; margin-top: 8px; }
 
