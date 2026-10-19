@@ -34,6 +34,8 @@ CHECKPOINTS = [("Paradeigma II", 55.4), ("Superchain I", 112.4), ("Paradeigma II
                ("Superchain II (1st)", 349.0), ("Superchain II (2nd)", 399.1)]
 # Most clears skip Paradeigma I's movement: two tanks invuln at 0:30-0:40 and the party stands still. Our groups move.
 INVULN = {"Hallowed Ground", "Holmgang", "Living Dead", "Superbolide"}
+ECHO, THIN = 1.20, 3          # The Echo: a flat +20% damage; a job with fewer clear players than THIN without it also gets
+                               # its Echo clears, their damage divided by ECHO (marked echo_corrected)
 POT = {"tank": 0.1042 / 1.1042, "dps": 0.1057 / 1.1057}
 LEVEL92 = ["High Thunder", "High Thunder II", "Flare Star", "Solar Bahamut", "Sunflare", "Lux Solaris", "Necrotize", "Vice of Thorns",
            "Grand Impact", "Prefulgence", "Star Prism", "Rainbow Drip", "Ouroboros", "Leaping Opo", "Rising Raptor", "Pouncing Coeurl",
@@ -275,9 +277,20 @@ def strategy_factors(kills, min_n=5):
             for r in ROLES}, {"moving": sum(not invuln_strategy(k) for k in kills), "invuln": sum(invuln_strategy(k) for k in kills)}
 
 
-def phases(kills):
+def echo_fill(jobs, echo_per, fields):
+    """For jobs with fewer than THIN players, add the Echo clears' players (damage fields divided by ECHO)."""
+    corrected = set()
+    for (n, j), v in echo_per.items():
+        if len(jobs.get(j, [])) >= THIN: continue
+        jobs[j].append({m: st.mean(x[m] for x in v) / (ECHO if m in ("rdps", "ndps") else 1) for m in fields})
+        corrected.add(j)
+    return corrected
+
+
+def phases(kills, echo_kills=()):
     """Clearers' nDPS and uptime per phase window, per job. In the first window, the nDPS of
-    clears that skipped Paradeigma I with invulnerabilities is scaled by the role's strategy factor, since we move."""
+    clears that skipped Paradeigma I with invulnerabilities is scaled by the role's strategy factor, since we move.
+    Jobs with fewer than THIN players also get the Echo clears' players, damage divided by ECHO."""
     res = []
     factors, counts = strategy_factors(kills)
     for name, a, b in WINDOWS:
@@ -294,8 +307,14 @@ def phases(kills):
             for (n, j), v in per.items():
                 m = dict(ndps=st.mean(x["ndps"] for x in v), uptime=st.mean(x["uptime"] for x in v))
                 jobs[j].append(m); roles[ROLE[j]].append(m["uptime"])
+            eper = collections.defaultdict(list)
+            for k in echo_kills:
+                scale = name == WINDOWS[0][0] and invuln_strategy(k)
+                for x in kill_phases(k):
+                    if x["window"] == name: eper[(x["name"], x["job"])].append(dict(x, ndps=x["ndps"] * (factors[ROLE[x["job"]]] if scale else 1)))
+            corrected = echo_fill(jobs, eper, ("ndps", "uptime"))
             entry["pools"][pool] = dict(jobs={j: dict(ndps=round(st.mean(x["ndps"] for x in v)), uptime=round(st.mean(x["uptime"] for x in v), 2),
-                                                      players=len(v)) for j, v in jobs.items()},
+                                                      players=len(v), echo_corrected=j in corrected) for j, v in jobs.items()},
                                         role_uptime={r: round(st.mean(v), 2) for r, v in roles.items()})
         if name == WINDOWS[0][0]: entry["strategy"] = dict(counts, factors=factors)
         res.append(entry)
@@ -307,8 +326,10 @@ def build(kills):
            "method": "Savage P1 (Athena) clears from FFLogs, level 90, no level-92+ abilities, logger main stat 3400-3560 (capped gear). "
                      "rDPS/nDPS over 0:00-2:00 with pots stripped (+10.57% DPS/healer, +10.42% tank for the Medicated window); deaths before 2:00 "
                      "excluded. Job values are averages of distinct players over all clears. "
-                     "Kills with The Echo (+20% damage) count for casts and timing only, not for damage, HP or kill time.",
+                     "Kills with The Echo (+20% damage) count for casts and timing only, not for damage, HP or kill time, except "
+                     "that a job with fewer than three other players also gets its Echo clears, damage divided by 1.2.",
            "kills": [dict(code=k["code"], fight=k["fight"], dur=round(k["dur"], 1), day=k["day"], echo=has_echo(k)) for k in kills]}
+    echo_kills = [k for k in kills if has_echo(k)]
     kills = [k for k in kills if not has_echo(k)]       # damage, boss HP and kill time: kills without The Echo only
     res["echo_excluded"] = len(res["kills"]) - len(kills)
     res["hp_checkpoints"] = checkpoints(kills)
@@ -324,14 +345,19 @@ def build(kills):
         for (n, j), v in per.items(): jobs[j].append({m: st.mean(x[m] for x in v) for m in ("rdps", "ndps", "uptime")})
         roles = collections.defaultdict(list)
         for j, v in jobs.items(): roles[ROLE[j]] += [x["uptime"] for x in v]
+        eper = collections.defaultdict(list)
+        for k in echo_kills:
+            for p in kill_players(k)[0]: eper[(p["name"], p["job"])].append(p)
+        corrected = echo_fill(jobs, eper, ("rdps", "ndps", "uptime"))
         res["pools"][pool] = dict(kills=len(ks), kill_median_s=round(st.median(k["dur"] for k in ks)) if ks else None,
                                   party_dps_median=round(st.median(parties)) if parties else None,
                                   # 0:00-2:00 party DPS that is on pace to kill at enrage, if the rest goes like a clear
                                   party_dps_min=round(st.median(ratios) * boss / ENRAGE_S) if ratios else None,
                                   role_uptime={r: round(st.mean(v), 2) for r, v in roles.items()},
                                   jobs={j: dict(rdps=round(st.mean(x["rdps"] for x in v)), ndps=round(st.mean(x["ndps"] for x in v)),
-                                                uptime=round(st.mean(x["uptime"] for x in v), 2), players=len(v)) for j, v in jobs.items()})
-    res["windows"] = phases(kills)
+                                                uptime=round(st.mean(x["uptime"] for x in v), 2), players=len(v), echo_corrected=j in corrected)
+                                        for j, v in jobs.items()})
+    res["windows"] = phases(kills, echo_kills)
     return res
 
 

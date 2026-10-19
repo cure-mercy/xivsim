@@ -15,123 +15,149 @@
    },
    "jobs": {
     "Reaper": {
-     "rdps": 12078,
-     "ndps": 11494,
-     "uptime": 98.13,
-     "players": 2
+     "rdps": 11904,
+     "ndps": 11339,
+     "uptime": 98.48,
+     "players": 3,
+     "echo_corrected": true
     },
     "Dancer": {
      "rdps": 11840,
      "ndps": 9597,
      "uptime": 97.5,
-     "players": 8
+     "players": 8,
+     "echo_corrected": false
     },
     "Sage": {
-     "rdps": 7209,
-     "ndps": 7209,
-     "uptime": 96.99,
-     "players": 2
+     "rdps": 7360,
+     "ndps": 7360,
+     "uptime": 97.51,
+     "players": 3,
+     "echo_corrected": true
     },
     "Astrologian": {
      "rdps": 7467,
      "ndps": 5893,
      "uptime": 97.39,
-     "players": 6
+     "players": 6,
+     "echo_corrected": false
     },
     "Paladin": {
      "rdps": 8395,
      "ndps": 8395,
      "uptime": 98.54,
-     "players": 5
+     "players": 5,
+     "echo_corrected": false
     },
     "BlackMage": {
      "rdps": 13402,
      "ndps": 13402,
      "uptime": 97.09,
-     "players": 5
+     "players": 5,
+     "echo_corrected": false
     },
     "Warrior": {
      "rdps": 8438,
      "ndps": 8438,
      "uptime": 97.54,
-     "players": 6
+     "players": 6,
+     "echo_corrected": false
     },
     "Ninja": {
      "rdps": 12874,
      "ndps": 11932,
      "uptime": 98.11,
-     "players": 5
+     "players": 5,
+     "echo_corrected": false
     },
     "DarkKnight": {
      "rdps": 7695,
      "ndps": 7695,
      "uptime": 98.03,
-     "players": 6
+     "players": 6,
+     "echo_corrected": false
     },
     "Scholar": {
      "rdps": 7429,
      "ndps": 6307,
      "uptime": 98.07,
-     "players": 7
+     "players": 7,
+     "echo_corrected": false
     },
     "Samurai": {
-     "rdps": 13151,
-     "ndps": 13151,
-     "uptime": 97.5,
-     "players": 2
+     "rdps": 13143,
+     "ndps": 13143,
+     "uptime": 97.74,
+     "players": 3,
+     "echo_corrected": true
     },
     "Dragoon": {
-     "rdps": 13481,
-     "ndps": 12296,
-     "uptime": 97.93,
-     "players": 1
+     "rdps": 13196,
+     "ndps": 12199,
+     "uptime": 98.16,
+     "players": 3,
+     "echo_corrected": true
     },
     "Pictomancer": {
-     "rdps": 13063,
-     "ndps": 12029,
-     "uptime": 97.15,
-     "players": 1
+     "rdps": 13009,
+     "ndps": 12075,
+     "uptime": 97.61,
+     "players": 2,
+     "echo_corrected": true
     },
     "WhiteMage": {
-     "rdps": 6827,
-     "ndps": 6827,
-     "uptime": 96.6,
-     "players": 1
+     "rdps": 6510,
+     "ndps": 6510,
+     "uptime": 96.08,
+     "players": 3,
+     "echo_corrected": true
     },
     "Monk": {
      "rdps": 13482,
      "ndps": 12562,
      "uptime": 97.73,
-     "players": 5
+     "players": 5,
+     "echo_corrected": false
     },
     "Summoner": {
-     "rdps": 12651,
-     "ndps": 11629,
-     "uptime": 96.97,
-     "players": 1
+     "rdps": 12786,
+     "ndps": 11885,
+     "uptime": 97.8,
+     "players": 3,
+     "echo_corrected": true
     },
     "RedMage": {
-     "rdps": 11720,
-     "ndps": 10832,
+     "rdps": 11318,
+     "ndps": 10453,
      "uptime": 97.65,
-     "players": 2
+     "players": 3,
+     "echo_corrected": true
     },
     "Viper": {
      "rdps": 12024,
      "ndps": 12024,
      "uptime": 97.81,
-     "players": 3
+     "players": 3,
+     "echo_corrected": false
     },
     "Gunbreaker": {
-     "rdps": 8109,
-     "ndps": 8109,
-     "uptime": 98.32,
-     "players": 1
+     "rdps": 8024,
+     "ndps": 8024,
+     "uptime": 97.85,
+     "players": 3,
+     "echo_corrected": true
+    },
+    "Machinist": {
+     "rdps": 11537,
+     "ndps": 11537,
+     "uptime": 98.4,
+     "players": 2,
+     "echo_corrected": true
     }
    }
   }
  },
- "method": "Savage P1 (Athena) clears from FFLogs, level 90, no level-92+ abilities, logger main stat 3400-3560 (capped gear). rDPS/nDPS over 0:00-2:00 with pots stripped (+10.57% DPS/healer, +10.42% tank for the Medicated window); deaths before 2:00 excluded. Job values are averages of distinct players over all clears. Kills with The Echo (+20% damage) count for casts and timing only, not for damage, HP or kill time.",
+ "method": "Savage P1 (Athena) clears from FFLogs, level 90, no level-92+ abilities, logger main stat 3400-3560 (capped gear). rDPS/nDPS over 0:00-2:00 with pots stripped (+10.57% DPS/healer, +10.42% tank for the Medicated window); deaths before 2:00 excluded. Job values are averages of distinct players over all clears. Kills with The Echo (+20% damage) count for casts and timing only, not for damage, HP or kill time, except that a job with fewer than three other players also gets its Echo clears, damage divided by 1.2.",
  "kills": [
   {
    "code": "Za342LyX8HgdFqNW",
@@ -516,97 +542,122 @@
       "Astrologian": {
        "ndps": 5828,
        "uptime": 95.38,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Warrior": {
        "ndps": 9719,
        "uptime": 95.31,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Sage": {
-       "ndps": 7188,
-       "uptime": 93.58,
-       "players": 2
+       "ndps": 7292,
+       "uptime": 94.79,
+       "players": 3,
+       "echo_corrected": true
       },
       "BlackMage": {
        "ndps": 13743,
        "uptime": 95.61,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Reaper": {
-       "ndps": 12980,
-       "uptime": 96.92,
-       "players": 2
+       "ndps": 13019,
+       "uptime": 97.26,
+       "players": 3,
+       "echo_corrected": true
       },
       "Ninja": {
        "ndps": 12912,
        "uptime": 94.43,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Dancer": {
        "ndps": 11357,
        "uptime": 96.46,
-       "players": 8
+       "players": 8,
+       "echo_corrected": false
       },
       "Paladin": {
        "ndps": 9419,
        "uptime": 97.06,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Scholar": {
        "ndps": 6294,
        "uptime": 93.96,
-       "players": 7
+       "players": 7,
+       "echo_corrected": false
       },
       "WhiteMage": {
-       "ndps": 6693,
-       "uptime": 92.92,
-       "players": 1
+       "ndps": 6339,
+       "uptime": 93.08,
+       "players": 3,
+       "echo_corrected": true
       },
       "DarkKnight": {
        "ndps": 10127,
        "uptime": 95.19,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Pictomancer": {
-       "ndps": 12090,
-       "uptime": 96.22,
-       "players": 1
+       "ndps": 12005,
+       "uptime": 94.19,
+       "players": 2,
+       "echo_corrected": true
       },
       "Dragoon": {
-       "ndps": 12859,
-       "uptime": 93.64,
-       "players": 1
+       "ndps": 13132,
+       "uptime": 95.85,
+       "players": 3,
+       "echo_corrected": true
       },
       "Samurai": {
-       "ndps": 14619,
-       "uptime": 94.91,
-       "players": 2
+       "ndps": 14568,
+       "uptime": 95.21,
+       "players": 3,
+       "echo_corrected": true
       },
       "Monk": {
        "ndps": 13832,
        "uptime": 95.88,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Summoner": {
-       "ndps": 11501,
-       "uptime": 97.37,
-       "players": 1
+       "ndps": 11737,
+       "uptime": 95.89,
+       "players": 3,
+       "echo_corrected": true
       },
       "Viper": {
        "ndps": 12453,
        "uptime": 95.21,
-       "players": 3
+       "players": 3,
+       "echo_corrected": false
       },
       "RedMage": {
-       "ndps": 10933,
-       "uptime": 95.35,
-       "players": 2
+       "ndps": 10495,
+       "uptime": 95.06,
+       "players": 3,
+       "echo_corrected": true
       },
       "Gunbreaker": {
-       "ndps": 9495,
-       "uptime": 96.41,
-       "players": 1
+       "ndps": 9162,
+       "uptime": 95.24,
+       "players": 3,
+       "echo_corrected": true
+      },
+      "Machinist": {
+       "ndps": 12045,
+       "uptime": 96.85,
+       "players": 2,
+       "echo_corrected": true
       }
      },
      "role_uptime": {
@@ -640,97 +691,122 @@
       "Astrologian": {
        "ndps": 5867,
        "uptime": 95.16,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Warrior": {
        "ndps": 8108,
        "uptime": 97.01,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Sage": {
-       "ndps": 7140,
-       "uptime": 96.93,
-       "players": 2
+       "ndps": 7260,
+       "uptime": 94.86,
+       "players": 3,
+       "echo_corrected": true
       },
       "BlackMage": {
        "ndps": 12601,
        "uptime": 94.14,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Reaper": {
-       "ndps": 10627,
-       "uptime": 96.67,
-       "players": 2
+       "ndps": 10348,
+       "uptime": 96.14,
+       "players": 3,
+       "echo_corrected": true
       },
       "Ninja": {
        "ndps": 11484,
        "uptime": 97.16,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Dancer": {
        "ndps": 8001,
        "uptime": 96.96,
-       "players": 8
+       "players": 8,
+       "echo_corrected": false
       },
       "Paladin": {
        "ndps": 8441,
        "uptime": 97.12,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Scholar": {
        "ndps": 5974,
        "uptime": 94.76,
-       "players": 7
+       "players": 7,
+       "echo_corrected": false
       },
       "WhiteMage": {
-       "ndps": 6411,
-       "uptime": 96.5,
-       "players": 1
+       "ndps": 6128,
+       "uptime": 93.39,
+       "players": 3,
+       "echo_corrected": true
       },
       "DarkKnight": {
        "ndps": 6380,
        "uptime": 97.44,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Pictomancer": {
-       "ndps": 12192,
-       "uptime": 95.8,
-       "players": 1
+       "ndps": 11876,
+       "uptime": 93.74,
+       "players": 2,
+       "echo_corrected": true
       },
       "Dragoon": {
-       "ndps": 11819,
-       "uptime": 98.86,
-       "players": 1
+       "ndps": 11837,
+       "uptime": 97.29,
+       "players": 3,
+       "echo_corrected": true
       },
       "Samurai": {
-       "ndps": 11945,
-       "uptime": 96.82,
-       "players": 2
+       "ndps": 11727,
+       "uptime": 96.34,
+       "players": 3,
+       "echo_corrected": true
       },
       "Monk": {
        "ndps": 11623,
        "uptime": 97.37,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Summoner": {
-       "ndps": 11647,
-       "uptime": 94.82,
-       "players": 1
+       "ndps": 11667,
+       "uptime": 94.35,
+       "players": 3,
+       "echo_corrected": true
       },
       "Viper": {
        "ndps": 11791,
        "uptime": 97.1,
-       "players": 3
+       "players": 3,
+       "echo_corrected": false
       },
       "RedMage": {
-       "ndps": 10004,
-       "uptime": 94.44,
-       "players": 2
+       "ndps": 9616,
+       "uptime": 93.73,
+       "players": 3,
+       "echo_corrected": true
       },
       "Gunbreaker": {
-       "ndps": 8051,
-       "uptime": 94.71,
-       "players": 1
+       "ndps": 8067,
+       "uptime": 95.95,
+       "players": 3,
+       "echo_corrected": true
+      },
+      "Machinist": {
+       "ndps": 10964,
+       "uptime": 97.28,
+       "players": 2,
+       "echo_corrected": true
       }
      },
      "role_uptime": {
@@ -753,97 +829,122 @@
       "Astrologian": {
        "ndps": 5597,
        "uptime": 96.15,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Warrior": {
        "ndps": 7840,
        "uptime": 97.56,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Sage": {
-       "ndps": 6462,
-       "uptime": 96.42,
-       "players": 2
+       "ndps": 6739,
+       "uptime": 95.94,
+       "players": 3,
+       "echo_corrected": true
       },
       "BlackMage": {
        "ndps": 13798,
        "uptime": 96.71,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Reaper": {
-       "ndps": 12983,
-       "uptime": 98.53,
-       "players": 2
+       "ndps": 12701,
+       "uptime": 98.6,
+       "players": 3,
+       "echo_corrected": true
       },
       "Ninja": {
        "ndps": 11531,
        "uptime": 98.88,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Dancer": {
        "ndps": 10228,
        "uptime": 97.4,
-       "players": 8
+       "players": 8,
+       "echo_corrected": false
       },
       "Paladin": {
        "ndps": 8628,
        "uptime": 98.98,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Scholar": {
        "ndps": 5592,
        "uptime": 95.67,
-       "players": 7
+       "players": 7,
+       "echo_corrected": false
       },
       "WhiteMage": {
-       "ndps": 6012,
-       "uptime": 94.96,
-       "players": 1
+       "ndps": 5383,
+       "uptime": 86.7,
+       "players": 3,
+       "echo_corrected": true
       },
       "DarkKnight": {
        "ndps": 7910,
        "uptime": 98.62,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Pictomancer": {
-       "ndps": 13544,
-       "uptime": 94.03,
-       "players": 1
+       "ndps": 13263,
+       "uptime": 93.36,
+       "players": 2,
+       "echo_corrected": true
       },
       "Dragoon": {
-       "ndps": 11812,
-       "uptime": 97.59,
-       "players": 1
+       "ndps": 12285,
+       "uptime": 98.05,
+       "players": 3,
+       "echo_corrected": true
       },
       "Samurai": {
-       "ndps": 14260,
-       "uptime": 98.73,
-       "players": 2
+       "ndps": 14232,
+       "uptime": 98.34,
+       "players": 3,
+       "echo_corrected": true
       },
       "Monk": {
        "ndps": 12759,
        "uptime": 98.89,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Summoner": {
-       "ndps": 12807,
-       "uptime": 97.68,
-       "players": 1
+       "ndps": 12335,
+       "uptime": 97.67,
+       "players": 3,
+       "echo_corrected": true
       },
       "Viper": {
        "ndps": 13154,
        "uptime": 98.71,
-       "players": 3
+       "players": 3,
+       "echo_corrected": false
       },
       "RedMage": {
-       "ndps": 12488,
-       "uptime": 98.82,
-       "players": 2
+       "ndps": 11841,
+       "uptime": 99.08,
+       "players": 3,
+       "echo_corrected": true
       },
       "Gunbreaker": {
-       "ndps": 7691,
-       "uptime": 98.69,
-       "players": 1
+       "ndps": 7415,
+       "uptime": 98.65,
+       "players": 3,
+       "echo_corrected": true
+      },
+      "Machinist": {
+       "ndps": 12367,
+       "uptime": 97.47,
+       "players": 2,
+       "echo_corrected": true
       }
      },
      "role_uptime": {
@@ -866,97 +967,122 @@
       "Astrologian": {
        "ndps": 5592,
        "uptime": 90.94,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Warrior": {
        "ndps": 7761,
        "uptime": 92.62,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "BlackMage": {
        "ndps": 14434,
        "uptime": 94.65,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Dancer": {
        "ndps": 10183,
        "uptime": 96.22,
-       "players": 8
+       "players": 8,
+       "echo_corrected": false
       },
       "Paladin": {
        "ndps": 8400,
        "uptime": 93.87,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Reaper": {
-       "ndps": 12378,
-       "uptime": 94.56,
-       "players": 2
+       "ndps": 11911,
+       "uptime": 94.05,
+       "players": 3,
+       "echo_corrected": true
       },
       "Ninja": {
        "ndps": 12144,
        "uptime": 95.28,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Sage": {
-       "ndps": 6520,
-       "uptime": 94.5,
-       "players": 2
+       "ndps": 6821,
+       "uptime": 95.04,
+       "players": 3,
+       "echo_corrected": true
       },
       "Scholar": {
        "ndps": 5935,
        "uptime": 94.51,
-       "players": 7
+       "players": 7,
+       "echo_corrected": false
       },
       "WhiteMage": {
-       "ndps": 6459,
-       "uptime": 92.27,
-       "players": 1
+       "ndps": 6076,
+       "uptime": 87.27,
+       "players": 3,
+       "echo_corrected": true
       },
       "DarkKnight": {
        "ndps": 7629,
        "uptime": 95.55,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Pictomancer": {
-       "ndps": 13253,
-       "uptime": 93.86,
-       "players": 1
+       "ndps": 13229,
+       "uptime": 94.83,
+       "players": 2,
+       "echo_corrected": true
       },
       "Dragoon": {
-       "ndps": 10837,
-       "uptime": 97.29,
-       "players": 1
+       "ndps": 11957,
+       "uptime": 96.71,
+       "players": 3,
+       "echo_corrected": true
       },
       "Samurai": {
-       "ndps": 12967,
-       "uptime": 95.48,
-       "players": 2
+       "ndps": 13333,
+       "uptime": 95.52,
+       "players": 3,
+       "echo_corrected": true
       },
       "Monk": {
        "ndps": 13152,
        "uptime": 96.05,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Summoner": {
-       "ndps": 11065,
-       "uptime": 93.41,
-       "players": 1
+       "ndps": 10966,
+       "uptime": 94.13,
+       "players": 3,
+       "echo_corrected": true
       },
       "Viper": {
        "ndps": 12743,
        "uptime": 95.9,
-       "players": 3
+       "players": 3,
+       "echo_corrected": false
       },
       "RedMage": {
-       "ndps": 12024,
-       "uptime": 95.17,
-       "players": 2
+       "ndps": 11414,
+       "uptime": 94.65,
+       "players": 3,
+       "echo_corrected": true
       },
       "Gunbreaker": {
-       "ndps": 8412,
-       "uptime": 96.44,
-       "players": 1
+       "ndps": 8153,
+       "uptime": 96.77,
+       "players": 3,
+       "echo_corrected": true
+      },
+      "Machinist": {
+       "ndps": 11687,
+       "uptime": 96.16,
+       "players": 2,
+       "echo_corrected": true
       }
      },
      "role_uptime": {
@@ -979,97 +1105,122 @@
       "Warrior": {
        "ndps": 4140,
        "uptime": 31.97,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "BlackMage": {
        "ndps": 3894,
        "uptime": 28.64,
-       "players": 4
+       "players": 4,
+       "echo_corrected": false
       },
       "Dancer": {
        "ndps": 3175,
        "uptime": 30.3,
-       "players": 8
+       "players": 8,
+       "echo_corrected": false
       },
       "Paladin": {
        "ndps": 4118,
        "uptime": 31.7,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Astrologian": {
        "ndps": 1897,
        "uptime": 25.83,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Reaper": {
-       "ndps": 4671,
-       "uptime": 31.26,
-       "players": 2
+       "ndps": 4142,
+       "uptime": 30.71,
+       "players": 3,
+       "echo_corrected": true
       },
       "Ninja": {
        "ndps": 5306,
        "uptime": 30.94,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Sage": {
-       "ndps": 2636,
-       "uptime": 29.32,
-       "players": 2
+       "ndps": 2737,
+       "uptime": 28.75,
+       "players": 3,
+       "echo_corrected": true
       },
       "Scholar": {
        "ndps": 2055,
        "uptime": 26.56,
-       "players": 7
+       "players": 7,
+       "echo_corrected": false
       },
       "WhiteMage": {
-       "ndps": 2978,
-       "uptime": 29.67,
-       "players": 1
+       "ndps": 2065,
+       "uptime": 22.33,
+       "players": 3,
+       "echo_corrected": true
       },
       "DarkKnight": {
        "ndps": 2797,
        "uptime": 32.0,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Pictomancer": {
-       "ndps": 4376,
-       "uptime": 30.5,
-       "players": 1
+       "ndps": 4191,
+       "uptime": 29.93,
+       "players": 2,
+       "echo_corrected": true
       },
       "Dragoon": {
-       "ndps": 5499,
-       "uptime": 30.36,
-       "players": 1
+       "ndps": 5783,
+       "uptime": 30.7,
+       "players": 3,
+       "echo_corrected": true
       },
       "Samurai": {
-       "ndps": 4681,
+       "ndps": 4461,
        "uptime": 31.94,
-       "players": 2
+       "players": 3,
+       "echo_corrected": true
       },
       "Monk": {
        "ndps": 4987,
        "uptime": 33.25,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Summoner": {
-       "ndps": 4848,
-       "uptime": 30.21,
-       "players": 1
+       "ndps": 4689,
+       "uptime": 25.42,
+       "players": 3,
+       "echo_corrected": true
       },
       "Viper": {
        "ndps": 4469,
        "uptime": 32.94,
-       "players": 3
+       "players": 3,
+       "echo_corrected": false
       },
       "RedMage": {
-       "ndps": 3530,
-       "uptime": 30.61,
-       "players": 2
+       "ndps": 3532,
+       "uptime": 30.05,
+       "players": 3,
+       "echo_corrected": true
       },
       "Gunbreaker": {
-       "ndps": 4159,
-       "uptime": 32.76,
-       "players": 1
+       "ndps": 3688,
+       "uptime": 32.4,
+       "players": 3,
+       "echo_corrected": true
+      },
+      "Machinist": {
+       "ndps": 4899,
+       "uptime": 31.96,
+       "players": 2,
+       "echo_corrected": true
       }
      },
      "role_uptime": {
@@ -1092,97 +1243,122 @@
       "Warrior": {
        "ndps": 7626,
        "uptime": 96.74,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "BlackMage": {
        "ndps": 14303,
        "uptime": 94.78,
-       "players": 4
+       "players": 4,
+       "echo_corrected": false
       },
       "Dancer": {
        "ndps": 11074,
        "uptime": 96.52,
-       "players": 8
+       "players": 8,
+       "echo_corrected": false
       },
       "Paladin": {
        "ndps": 7689,
        "uptime": 96.44,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Astrologian": {
        "ndps": 5271,
        "uptime": 90.21,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Ninja": {
        "ndps": 10907,
        "uptime": 97.83,
-       "players": 3
+       "players": 3,
+       "echo_corrected": false
       },
       "Reaper": {
        "ndps": 13405,
        "uptime": 98.09,
-       "players": 2
+       "players": 2,
+       "echo_corrected": false
       },
       "Sage": {
-       "ndps": 5554,
-       "uptime": 71.02,
-       "players": 2
+       "ndps": 5872,
+       "uptime": 78.16,
+       "players": 3,
+       "echo_corrected": true
       },
       "Scholar": {
        "ndps": 4610,
        "uptime": 86.56,
-       "players": 7
+       "players": 7,
+       "echo_corrected": false
       },
       "WhiteMage": {
-       "ndps": 4755,
-       "uptime": 90.3,
-       "players": 1
+       "ndps": 4936,
+       "uptime": 63.73,
+       "players": 2,
+       "echo_corrected": true
       },
       "DarkKnight": {
        "ndps": 8449,
        "uptime": 97.78,
-       "players": 6
+       "players": 6,
+       "echo_corrected": false
       },
       "Pictomancer": {
        "ndps": 16121,
        "uptime": 94.23,
-       "players": 1
+       "players": 1,
+       "echo_corrected": false
       },
       "Dragoon": {
-       "ndps": 9420,
-       "uptime": 96.02,
-       "players": 1
+       "ndps": 10596,
+       "uptime": 96.34,
+       "players": 2,
+       "echo_corrected": true
       },
       "Samurai": {
        "ndps": 14587,
        "uptime": 97.49,
-       "players": 2
+       "players": 2,
+       "echo_corrected": false
       },
       "Monk": {
        "ndps": 12972,
        "uptime": 97.71,
-       "players": 5
+       "players": 5,
+       "echo_corrected": false
       },
       "Summoner": {
-       "ndps": 12217,
-       "uptime": 95.42,
-       "players": 1
+       "ndps": 9707,
+       "uptime": 76.52,
+       "players": 2,
+       "echo_corrected": true
       },
       "Viper": {
        "ndps": 12445,
        "uptime": 96.74,
-       "players": 3
+       "players": 3,
+       "echo_corrected": false
       },
       "RedMage": {
-       "ndps": 12829,
-       "uptime": 95.89,
-       "players": 2
+       "ndps": 12059,
+       "uptime": 95.87,
+       "players": 3,
+       "echo_corrected": true
       },
       "Gunbreaker": {
-       "ndps": 8126,
-       "uptime": 96.57,
-       "players": 1
+       "ndps": 7549,
+       "uptime": 96.93,
+       "players": 2,
+       "echo_corrected": true
+      },
+      "Machinist": {
+       "ndps": 10874,
+       "uptime": 93.95,
+       "players": 1,
+       "echo_corrected": true
       }
      },
      "role_uptime": {
@@ -1205,47 +1381,56 @@
       "Warrior": {
        "ndps": 8110,
        "uptime": 94.71,
-       "players": 3
+       "players": 3,
+       "echo_corrected": false
       },
       "BlackMage": {
        "ndps": 13838,
        "uptime": 95.02,
-       "players": 2
+       "players": 2,
+       "echo_corrected": false
       },
       "Paladin": {
        "ndps": 7772,
        "uptime": 97.24,
-       "players": 2
+       "players": 2,
+       "echo_corrected": false
       },
       "Dancer": {
        "ndps": 7713,
        "uptime": 94.18,
-       "players": 1
+       "players": 1,
+       "echo_corrected": false
       },
       "Monk": {
        "ndps": 12955,
        "uptime": 98.19,
-       "players": 1
+       "players": 1,
+       "echo_corrected": false
       },
       "Scholar": {
        "ndps": 3413,
        "uptime": 51.56,
-       "players": 2
+       "players": 2,
+       "echo_corrected": false
       },
       "DarkKnight": {
        "ndps": 6080,
        "uptime": 97.02,
-       "players": 1
+       "players": 1,
+       "echo_corrected": false
       },
       "Astrologian": {
        "ndps": 4274,
        "uptime": 85.82,
-       "players": 2
+       "players": 2,
+       "echo_corrected": false
       },
       "RedMage": {
        "ndps": 8410,
        "uptime": 97.72,
-       "players": 1
+       "players": 1,
+       "echo_corrected": false
       }
      },
      "role_uptime": {

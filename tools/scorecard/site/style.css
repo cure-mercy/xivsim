@@ -141,6 +141,8 @@ h3 .help{ width: 16px; height: 16px; margin-left: 6px; font-size: 10px; }
 .opener .summary{ margin: 0 0 8px; font-size: 14px; }
 .opener table{ width: 100%; }
 .opener .bad{ color: var(--div-neg); font-weight: 600; }
+.opener ul.diffs{ margin: 0 0 10px; padding-left: 18px; font-size: 13px; }
+.opener ul.diffs li{ margin: 2px 0; }
 
 /* report-level warnings (e.g. The Echo) */
 .warn{ border-left: 3px solid var(--div-neg); padding: 8px 12px; background: var(--surface); border-radius: 6px; color: var(--ink); max-width: 90ch; }
