@@ -22,6 +22,7 @@ import argparse, datetime, getpass, json, os, shutil, subprocess, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import classifier as C
 import fflogs
 import scorecard as S
 
@@ -84,7 +85,9 @@ def benchmark_summary(bench, codes=()):
                 windows=bench.get("windows", []),
                 # seconds of kill time per 1% of boss HP, at the pace of a clear
                 sec_per_hp=bench["pools"]["clears"]["kill_median_s"] / 100, raise_penalty=S.RAISE_PENALTY, raise_s=S.RAISE_S,
-                dd_penalty=S.DD_PENALTY, mistake_times=mistake_times(codes))
+                dd_penalty=S.DD_PENALTY, mistake_times=mistake_times(codes),
+                # when each mechanic a mistake is filed under starts (s), for rates per pull that reached it
+                mech_start=dict({"other": 0.0}, **{m: float(lo) for lo, hi, m in C.MECH}))
 
 
 def publish(out):
@@ -121,6 +124,8 @@ def main():
     if a.reanalyse:   # every report already on the site, from the cache, keeping its group name
         given = {fflogs.report_code(l) for l in links}
         links += [c for c in sorted(site["reports"], key=lambda c: (site["reports"][c]["day"], site["reports"][c]["group"])) if c not in given]
+    import checks
+    checks.OUR_CODES = sorted(set(site["reports"]) | {fflogs.report_code(l) for l in links})   # for references from our own groups
     for i, link in enumerate(links):
         code = fflogs.report_code(link)
         data = S.fetch(code, a.refresh, bench)

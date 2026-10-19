@@ -237,6 +237,14 @@ function shareBars(rows, { refName = "", barName = "" } = {}) {
   };
 }
 
+// the mechanics a mistake label is filed under, over every report
+let MECHS_OF = null;
+const mechsOf = label => {
+  if (!MECHS_OF) { MECHS_OF = {};
+    for (const r of reports()) for (const q of r.pulls) for (const m of q.mistakes) (MECHS_OF[m.label] = MECHS_OF[m.label] || new Set()).add(m.mechanic || "other"); }
+  return [...(MECHS_OF[label] || ["other"])];
+};
+
 // ---------- practice links and focus lists ----------
 // the trainer's drills and briefs (the repository root on GitHub Pages; this site lives in stats/), open mechanics only
 const DRILLS = { "Paradeigma I": "para1", "Paradeigma II": "engrave", "Superchain I": "superchain" };
@@ -245,6 +253,7 @@ const drillLinks = mech => DRILLS[mech] ? el("span", { class: "drill" }, el("a",
 const jumpTo = (title, text) => el("button", { type: "button", class: "linklike", on: { click: () => {
   const h = [...document.querySelectorAll("h2")].find(x => x.textContent.startsWith(title)); if (h) h.scrollIntoView({ behavior: "smooth" }); } } }, text || `See ${title}`);
 const secs1 = v => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)} s`;
+const opRef = o => o && o.source === "groups" ? { who: "our other players", whose: "our groups'", short: "groups" } : { who: "clearers", whose: "the clears'", short: "clears" };
 const burstName = k => k === 1 ? "opener burst" : `${2 * (k - 1)}:00 burst`;
 const checkRate = c => c.unit === "s" ? `${c.ours.toFixed(1)} s/min vs ${c.clears.toFixed(1)}` : c.unit === "times" ? `${(c.ours * 10).toFixed(1)} vs ${(c.clears * 10).toFixed(1)} per 10 min`
   : `${c.ours.toFixed(1)} vs ${c.clears.toFixed(1)} per min`;
@@ -282,7 +291,7 @@ function playerFocus(r, entries, name) {
     const o = rot.opener;
     if (o && o.dmg && o.dmg.vs <= -0.05) {
       const miss = o.skills.filter(s => s.fewer).map(s => s.name), late = o.skills.filter(s => s.late != null && s.late > 0).map(s => s.name);
-      items.push({ title: `${JOB[e.job] || e.job} opener`, detail: `${signed(o.dmg.vs)} damage against clearers over 0:00–0:20${miss.length ? `; fewer ${miss.join(", ")} than the clears' opener` : ""}${late.length ? `; ${late.join(", ")} late` : ""}.`, links: jumpTo("Opener") });
+      items.push({ title: `${JOB[e.job] || e.job} opener`, detail: `${signed(o.dmg.vs)} damage against ${opRef(o).who} over 0:00–0:20${miss.length ? `; fewer ${miss.join(", ")} than ${opRef(o).whose} opener` : ""}${late.length ? `; ${late.join(", ")} late` : ""}.`, links: jumpTo("Opener") });
     }
   }
   for (const b of (r.burst ? r.burst.buffs : []).filter(b => b.player === name && ((b.delay || 0) >= 1.5 || b.skipped >= 2)))
@@ -308,7 +317,7 @@ function groupFocus(r) {
   const late = (r.burst ? r.burst.buffs : []).filter(b => (b.delay || 0) >= 1.5 || b.skipped >= 2).sort((a, c) => (c.delay || 0) - (a.delay || 0))[0];
   if (late) items.push({ title: "Burst alignment", detail: `${late.player}'s ${late.buff} in the ${burstName(late.burst)}: ${late.delay != null ? `${secs1(late.delay)} later than the clears` : ""}${late.skipped >= 2 ? `${late.delay != null ? ", " : ""}skipped ${late.skipped}×` : ""}.`, links: jumpTo("Burst") });
   const weak = r.players.filter(p => p.rotation && p.rotation.opener && p.rotation.opener.dmg && p.rotation.opener.dmg.vs <= -0.08);
-  if (weak.length) items.push({ title: "Openers", detail: weak.map(p => `${p.name} (${JOB[p.job] || p.job}) ${signed(p.rotation.opener.dmg.vs)}`).join(", ") + " against clearers over 0:00–0:20.", links: null });
+  if (weak.length) items.push({ title: "Openers", detail: weak.map(p => `${p.name} (${JOB[p.job] || p.job}) ${signed(p.rotation.opener.dmg.vs)}${p.rotation.opener.source === "groups" ? " against our other players" : ""}`).join(", ") + " against clearers over 0:00–0:20.", links: null });
   return items;
 }
 
@@ -798,7 +807,7 @@ function groupPage(day, group) {
   app.append(heading("h2", "Player scorecard", "Mistakes per pull counts every mistake until the pull was lost; Deaths/pull and DD/pull split it into mistakes that killed someone and those that only gave Damage Down. Wipes: share of pulls their mistake lost. vs Clears: rDPS 0:00–2:00 (best quarter of clean pulls) against clearers on the same job (clears without The Echo; a job with fewer than three such players also counts its Echo clears, damage divided by 1.2); * = only 1–2 clearers. Uptime: GCD time vs clearers of the role."), el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: i >= 2 ? "num" : null }, h)))), el("tbody", {}, rows))));
   // rotation and ability usage, per player
-  const rotPlayers = r.players.filter(p => p.rotation);
+  const rotPlayers = r.players.filter(p => p.rotation && !p.rotation.opener_only);   // opener_only: no clears on the job, only the opener is compared
   if (rotPlayers.length) {
     const dps = v => `${num(Math.round(v))} DPS`;
     const who = p => `${p.name} ${JOB[p.job] || p.job}`;
@@ -901,7 +910,8 @@ function playerPage(day, group, name) {
     ...entries.map(e => [`${JOB[e.job] || e.job} vs clears`, e.vs ? signed(e.vs[0]) : "–", e.vs ? `${e.vs[1]} clearer${e.vs[1] > 1 ? "s" : ""} on the job${e.vs[2] ? ", some with The Echo (damage ÷1.2)" : ""}${e.vs[1] < 3 ? " · thin data" : ""}` : "no comparison", e.vs ? grade("damage", e.vs[0]) : null]),
     ["Uptime 0:00–2:00", p.uptime != null ? `${p.uptime.toFixed(1)}%` : "–", `clearers ${b.pools.clears.role_uptime[p.role].toFixed(1)}%`, grade("uptime", p.uptime_diff)],
     ...entries.map(e => { const d = e.rotation && e.rotation.opener && e.rotation.opener.dmg;
-      return [`${JOB[e.job] || e.job} opener vs clears`, d ? signed(d.vs) : "–", d ? `nDPS 0:00–0:20, ${d.n} pulls${d.best ? ` · ${signed(d.vs_best)} vs the clears' opener` : ""}${d.echo_corrected ? " · some clears with The Echo (÷1.2)" : ""}` : "no comparison", d ? grade("damage", d.vs) : null]; }),
+      const R = opRef(e.rotation && e.rotation.opener);
+      return [`${JOB[e.job] || e.job} opener vs ${R.short}`, d ? signed(d.vs) : "–", d ? `nDPS 0:00–0:20, ${d.n} pulls${d.best ? ` · ${signed(d.vs_best)} vs ${R.whose} opener` : ""}${d.echo_corrected ? " · some clears with The Echo (÷1.2)" : ""}${d.players != null && d.players < 5 ? ` · ${d.players} other players, thin data` : ""}` : "no comparison", d ? grade("damage", d.vs) : null]; }),
     ["Dead per pull", `${(p.dead_s / p.pulls).toFixed(1)} s`, `before the pull was lost; own deaths cost ${hpfmt(p.lost_suffered / p.pulls)}`],
   ]));
   app.append(heading("h2", "Work on this", "Their most important points, in order: mechanics whose mistakes lost pulls, their most frequent other mistake, the costliest rotation issues against clearers on the job, a weak opener, and a raid buff they press late or skip. Drill and Brief open the trainer on that mechanic."),
@@ -940,30 +950,32 @@ function playerPage(day, group, name) {
     const sec = v => v == null ? "–" : `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)} s`;
     const at = t => t == null ? "–" : t < 0 ? `${t.toFixed(1)} s` : mmss(t);
     const casts = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
-    app.append(heading("h2", "Opener", "Their openers (casts from before the pull through as many GCDs as the clears' opener has; potions, Sprint and defensives left out) against the best opener the clears play (casts to 0:22). Openers within a few casts of each other count as one variant; the reference is the variant most clears play, unless another clearly does more opener damage (ahead by more than 1.5 standard errors, since gear and crits spread players of one opener more than most openers differ). Compared: how often each skill is cast over as many GCDs as the clears' opener has, so a slower GCD from gear does not count as a missing cast (flagged at half a cast or more per pull) and when each oGCD cooldown and raid buff first goes out (flagged at 1.5 s or more). The order of GCDs is not compared, since swapping two inside the opener changes nothing. Times are not adjusted for GCD speed. Opener damage is nDPS over 0:00–0:20 (tinctures removed) from pulls they were alive through."),
+    app.append(heading("h2", "Opener", "Their openers (casts from before the pull through as many GCDs as the clears' opener has; potions, Sprint and defensives left out) against the best opener the clears play (casts to 0:22). A job with fewer than three clears to compare with (Bard has none; White Mage now starts the pull with a Blood Lily, which every WHM clear predates) is compared within our own groups instead: every other player on the job counts like one clear, with their usual opener and median opener damage over all raid days; the player themselves is left out. With few players on a job this is thin: the reference may be one other player's opener. Openers within a few casts of each other count as one variant; the reference is the variant most clears play, unless another clearly does more opener damage (ahead by more than 1.5 standard errors, since gear and crits spread players of one opener more than most openers differ). Compared: how often each skill is cast over as many GCDs as the clears' opener has, so a slower GCD from gear does not count as a missing cast (flagged at half a cast or more per pull) and when each oGCD cooldown and raid buff first goes out (flagged at 1.5 s or more). The order of GCDs is not compared, since swapping two inside the opener changes nothing. Times are not adjusted for GCD speed. Opener damage is nDPS over 0:00–0:20 (tinctures removed) from pulls they were alive through."),
       el("div", { class: "grid wide" }, ...opEntries.map(e => {
-        const o = e.rotation.opener, d = o.dmg;
+        const o = e.rotation.opener, d = o.dmg, groups = o.source === "groups", them = groups ? "the others" : "the clears";
         const diffs = [
-          ...o.skills.filter(s => s.fewer).map(s => `${s.name}: ${casts(s.theirs)} per pull, the clears ${casts(s.clears)}`),
-          ...o.skills.filter(s => s.more).map(s => `${s.name}: ${casts(s.theirs)} per pull, the clears ${casts(s.clears)}`),
-          ...o.skills.filter(s => s.late != null).map(s => `${s.name} ${sec(s.late)} ${s.late > 0 ? "later" : "earlier"} than the clears (${at(s.t_theirs)} vs ${at(s.t_clears)})`)];
+          ...o.skills.filter(s => s.fewer).map(s => `${s.name}: ${casts(s.theirs)} per pull, ${them} ${casts(s.clears)}`),
+          ...o.skills.filter(s => s.more).map(s => `${s.name}: ${casts(s.theirs)} per pull, ${them} ${casts(s.clears)}`),
+          ...o.skills.filter(s => s.late != null).map(s => `${s.name} ${sec(s.late)} ${s.late > 0 ? "later" : "earlier"} than ${them} (${at(s.t_theirs)} vs ${at(s.t_clears)})`)];
         const n = Math.max(o.best.length, o.usual.length), names = new Set(o.usual.map(u => u.name)), bestNames = new Set(o.best.map(u => u.name));
         const side = Array.from({ length: n }, (_, i) => { const b = o.best[i], u = o.usual[i];
           return [String(i + 1), b ? el("span", { class: names.has(b.name) ? null : "bad" }, b.name + (b.gcd ? "" : " ·")) : "", b ? at(b.t) : "",
             u ? el("span", { class: bestNames.has(u.name) ? null : "bad" }, u.name + (u.gcd ? "" : " ·")) : "", u ? at(u.t) : ""]; });
-        const dmgText = !d ? "Opener damage: –" : `Opener damage ${num(d.ndps)} nDPS (${d.n} pulls): ${d.best ? `${signed(d.vs_best)} against the clears playing this opener (${num(d.best)}), ` : ""}${signed(d.vs)} against all clears (${num(d.clears)})${d.echo_corrected ? "; clears with The Echo included, their damage divided by 1.2" : ""}.`;
+        const dmgText = !d ? "Opener damage: –" : `Opener damage ${num(d.ndps)} nDPS (${d.n} pulls): ${d.best ? `${signed(d.vs_best)} against the ${groups ? "players" : "clears"} playing this opener (${num(d.best)}), ` : ""}${signed(d.vs)} against ${groups ? `our other ${JOB[e.job] || e.job}s (${num(d.clears)}, ${d.players} players${d.players < 5 ? ", thin data" : ""})` : `all clears (${num(d.clears)})`}${d.echo_corrected ? "; clears with The Echo included, their damage divided by 1.2" : ""}.`;
         const body = () => el("div", { class: "opener" },
           el("p", { class: "summary" }, dmgText),
-          diffs.length ? el("ul", { class: "diffs" }, ...diffs.map(x => el("li", {}, x))) : el("p", { class: "note" }, "Same skills and cooldown timings as the clears' opener; only the order differs, which does not matter."),
-          tableOf(["#", "Clears' opener", "At", "Their usual opener", "At"], side, [2, 4]));
-        return card(`${JOB[e.job] || e.job} opener`, `${o.pulls} pulls against the ${o.basis === "damage" ? "highest-damage" : "most played"} clear opener (${o.clears} of ${o.clears_all} clears play it). Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s, clears' ${e.rotation.clear_gcd ? e.rotation.clear_gcd.toFixed(2) : "–"} s. · marks an oGCD; red: not in the other opener.`,
+          diffs.length ? el("ul", { class: "diffs" }, ...diffs.map(x => el("li", {}, x))) : el("p", { class: "note" }, `Same skills and cooldown timings as ${groups ? "our groups'" : "the clears'"} opener; only the order differs, which does not matter.`),
+          tableOf(["#", groups ? "Our groups' opener" : "Clears' opener", "At", "Their usual opener", "At"], side, [2, 4]));
+        return card(`${JOB[e.job] || e.job} opener`, `${groups
+            ? `${o.change}, so the opener is compared within our groups: ${o.pulls} pulls against the ${o.basis === "damage" ? "highest-damage" : "most played"} opener of our other ${JOB[e.job] || e.job}s (${o.clears} of ${o.clears_all} players play it; their own left out${o.clears_all < 5 ? "; thin data" : ""}).`
+            : `${o.pulls} pulls against the ${o.basis === "damage" ? "highest-damage" : "most played"} clear opener (${o.clears} of ${o.clears_all} clears play it).`} Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s${e.rotation.clear_gcd ? `, clears' ${e.rotation.clear_gcd.toFixed(2)} s` : ""}. · marks an oGCD; red: not in the other opener.`,
           () => body(), () => tableOf(["Skill", "Clears' casts", "Theirs", "Clears' first", "Their first"],
             o.skills.map(s => [s.name + (s.gcd ? "" : " ·"), String(s.clears), el("span", { class: s.fewer || s.more ? "bad" : null }, casts(s.theirs)),
               at(s.t_clears), el("span", { class: s.late != null ? "bad" : null }, at(s.t_theirs))]), [1, 2, 3, 4]));
       })));
   }
   // rotation checks against the clears over the same stretch of fight
-  const rotEntries = entries.filter(e => e.rotation);
+  const rotEntries = entries.filter(e => e.rotation && !e.rotation.opener_only);
   if (rotEntries.length) {
     const rate = (c, v) => c.unit === "s" ? `${v.toFixed(1)} s/min` : c.unit === "ticks" || c.unit === "gcds" || c.unit === "gauge" ? `${v.toFixed(1)}/min`
       : c.unit === "per window" ? `${v.toFixed(1)} GCDs` : `${(v * 10).toFixed(2)} per 10 min`;
@@ -1002,7 +1014,7 @@ function playerPage(day, group, name) {
   // across raid days
   const hist = reports().flatMap(x => x.players.filter(q => q.name === name).map(q => ({ ...q, day: x.day, group: x.group }))).sort((a, c) => a.day.localeCompare(c.day));
   const byDay = Object.values(hist.reduce((a, q) => ((a[q.day + q.group] = a[q.day + q.group] || []).push(q), a), {}));
-  app.append(el("h2", {}, "Across raid days"));
+  app.append(heading("h2", "Across raid days", "Their top issues: the three mistakes they made most over all raid days, each per pull that reached the mechanic it happens in (the pull not yet lost when the mechanic began), so getting further in later raid days does not read as more mistakes. A mistake that comes up in several mechanics (Trinity of Souls in Paradeigma I, Superchain I and Dialogos) counts one chance per mechanic reached. Rotation issues: the latest raid day's costliest, per minute alive, on the same job only. Trend: the later half of their raid days against the earlier half, 20% or more apart."));
   // their top issues, raid day by raid day
   if (byDay.length > 1) {
     const total = {};
@@ -1014,7 +1026,13 @@ function playerPage(day, group, name) {
       const a = first.reduce((s, x) => s + x, 0) / first.length, b = last.reduce((s, x) => s + x, 0) / last.length;
       return b < a * 0.8 ? ["improving", "good"] : b > a * 1.2 ? ["worse", "bad"] : ["about the same", null]; };
     const rows = [
-      ...topM.map(l => { const v = byDay.map(es => (es[0].mcauses_all || {})[l] != null ? es[0].mcauses_all[l] / es[0].pulls : 0); return [l, "per pull", v.map(x => x.toFixed(2)), trend(v)]; }),
+      ...topM.map(l => {   // per pull that reached the mechanic(s) the mistake happens in
+        const starts = mechsOf(l).map(m => DATA.benchmark.mech_start[m] ?? 0);
+        const v = byDay.map(es => { const rep = findGroup(es[0].day, es[0].group); if (!rep) return null;
+          const live = rep.pulls.filter(q => q.players.includes(name)).map(q => q.kill ? Infinity : (q.wipe ? q.wipe.t : q.dur));
+          const chances = sum(starts.map(t => live.filter(x => x >= t).length));
+          return chances ? ((es[0].mcauses_all || {})[l] || 0) / chances : null; });
+        return [l, "per pull reaching it", v.map(x => x == null ? "–" : x.toFixed(2)), trend(v)]; }),
       ...latestRot.map(l => { const job = byDay[byDay.length - 1][0].job;      // rotation issues only compare days on the same job
         const v = byDay.map(es => { if (es[0].job !== job) return null; const c = (es[0].rotation || { checks: [] }).checks.find(x => x.label === l); return c ? c.ours : null; });
         return [l, "per minute", v.map(x => x == null ? "–" : x.toFixed(1)), trend(v)]; })];
