@@ -179,8 +179,11 @@ uptime in the phase against clearers of the role.
 - **How far pulls get** (overview): the share of each day's pulls that reached each mechanic.
 - **Where pulls ended** (group page): pulls that ended between each pair of mechanics, by pull length; the longest
   bar is the wall.
-- **Their top issues** (player page, Across raid days): their three most frequent mistakes per pull and their
-  costliest rotation issues per minute, raid day by raid day (rotation only on days with the same job), with a trend:
+- **Their top issues** (player page, Across raid days): their three most frequent mistakes and their costliest
+  rotation issues per minute, raid day by raid day. Mistakes are per pull that reached the mechanic they happen in
+  (still going when it began; start times from `MECH` in `classifier.py`, passed on as `mech_start`), so getting
+  further on later days doesn't read as more mistakes; a mistake filed under several mechanics (Trinity of Souls)
+  counts one chance per mechanic reached. Rotation issues are per minute alive, only on days with the same job. Trend:
   improving or worse when the later days differ from the earlier by 20% or more.
 
 ### Focus lists and practice links
@@ -221,6 +224,16 @@ Compared is what matters, not the order:
   not gauge spenders), median over their pulls against the median over the variant's clears. Flagged at 1.5 s or more
   either way.
 - **GCD order is not compared.** Swapping two GCDs inside the opener changes nothing.
+
+**Jobs with fewer than three clears** are compared within our own groups instead (`group_openers` in `checks.py`).
+Every other player on the job counts like one clear, with their usual opener and median opener damage over all raid
+days, so a regular on the job doesn't outweigh the others; the player themselves is left out. Bard has no clears at
+all, so a BRD gets only this opener comparison, no rotation checks. With four BRDs the reference is thin (each is
+compared with three others, often one other player's opener), and the card and tile say so below five players.
+**Kit changes the clears predate** (`KIT_CHANGES`): only clears after the change count for the job's opener. White
+Mage is the one so far: it now starts the pull with a Blood Lily (Afflatus Misery
+right away, in 98% of our pulls), which none of the 12 WHM clears (2025-03 to 2025-12-12) had, so the change came after
+2025-12-12. The card, the opener tile ("vs groups") and the focus lists say when a job is compared within our groups.
 
 The card lists the flagged differences and shows the reference opener next to their usual one (red: a skill the other
 doesn't have); its table view has the per-skill counts and first casts. Dancer steps count as one step, since they come

@@ -301,18 +301,25 @@ def analyse(group, data, bench):
         row["lost_by"] = [dict(who=c, hp=round(v, 2)) for c, v in by.most_common()]
     import acts, checks                         # rotation checks against the clears (imported here: it imports this module)
     rotation = checks.report(data, lives)
-    # opener damage (first OPENER_S seconds, alive throughout) against the clears' median on the job
+    # opener damage (first OPENER_S seconds, alive throughout) against the clears' median on the job, or our other
+    # players' when a kit change leaves too few clears (checks.KIT_CHANGES)
     odps, oref = collections.defaultdict(list), checks.clear_opener_dps()
     for (row, down, until), f in zip(lives, data["fights"]):
         for y in data.get("otables", {}).get(str(f["id"]), []):
             if not any(s < OPENER_S for s, e, share, _ in down.get(y["name"], []) if share == 1.0): odps[(y["name"], y["job"])].append(y["ndps"])
     for key, rot in rotation.items():
-        if rot.get("opener") and odps.get(key) and key[1] in oref:
+        if rot.get("opener") and odps.get(key) and rot["opener"]["source"] == "groups":   # kit change: our other players
+            others = [o["dmg"] for o in checks.group_openers(key[1]) if o["who"] != key[0] and o["dmg"]]
+            if len(others) >= 3:
+                ref = dict(ndps=st.median(others), echo_corrected=False)
+                rot["opener"]["dmg"] = dict(ndps=round(st.median(odps[key])), clears=round(ref["ndps"]), n=len(odps[key]),
+                                            vs=round(st.median(odps[key]) / ref["ndps"] - 1, 3), echo_corrected=False, players=len(others))
+        elif rot.get("opener") and odps.get(key) and key[1] in oref:
             ref = oref[key[1]]
             rot["opener"]["dmg"] = dict(ndps=round(st.median(odps[key])), clears=round(ref["ndps"]), n=len(odps[key]),
                                         vs=round(st.median(odps[key]) / ref["ndps"] - 1, 3), echo_corrected=ref["echo_corrected"])
-            best = rot["opener"].get("best_dmg")   # the clears that play the reference opener
-            if best: rot["opener"]["dmg"].update(best=best, vs_best=round(st.median(odps[key]) / best - 1, 3))
+        best = (rot.get("opener") or {}).get("best_dmg")   # the players of the reference opener
+        if best and rot["opener"].get("dmg"): rot["opener"]["dmg"].update(best=best, vs_best=round(st.median(odps[key]) / best - 1, 3))
     played = {}                                  # (pull, player) -> job
     for f, row in zip(data["fights"], pull_rows):
         for name, job in acts.report(data["code"], data["fights"]).get(str(f["id"]), {}).get("players", {}).values(): played[(row["n"], name)] = job

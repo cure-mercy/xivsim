@@ -528,11 +528,11 @@ def report(data, lives):
             r = pull(p, sid, job, alive, until, gcd); r["n"] = n
             pulls.append((r, until, unit_costs(p, sid), dealt))
         s = summary(job, pulls, gcd)
-        if s:
-            prof = profile(job)
-            seqs = [opener_seq(p, sid, prof, OPENER_LATE) for p, sid, alive, until, n in items
-                    if until > OPENER_LATE and any(a <= 0.5 and b > OPENER_LATE for a, b in alive)]
-            out[(name, job)] = dict(s, gcd=gcd, opener=opener(job, seqs))     # raw times: the card shows both GCDs
+        seqs = [opener_seq(p, sid, profile(job), OPENER_LATE) for p, sid, alive, until, n in items
+                if until > OPENER_LATE and any(a <= 0.5 and b > OPENER_LATE for a, b in alive)]
+        if s: out[(name, job)] = dict(s, gcd=gcd, opener=opener(job, seqs, who=name))     # raw times: the card shows both GCDs
+        elif opener_source(job) == "groups" and (o := opener(job, seqs, who=name)):        # no clears: the opener alone
+            out[(name, job)] = dict(gcd=gcd, opener=o, checks=[], abilities=[], opener_only=True)
     return out
 
 
@@ -677,18 +677,70 @@ def clear_openers(job):
         for sid, (name, j) in p["players"].items():
             if j != job or deaths.get(name, 1e9) <= OPENER_END: continue
             seq = opener_seq(p, int(sid), prof)
-            if seq: out.append(dict(seq=seq, dmg=dmg.get(name)))
+            if seq and k["day"] > KIT_CHANGES.get(job, ("",))[0]: out.append(dict(seq=seq, dmg=dmg.get(name)))
     return out
 
 
+# opener kit changes the clears predate: openers on the job are compared only with clears after the change. A job with
+# fewer than three clears to compare with (after such a change, or with none at all, like Bard) is compared within our
+# own groups instead. White Mage starts the pull with a Blood Lily (Afflatus Misery right away);
+# none of the WHM clears (2025-03 to 2025-12-12) has it and nearly every pull of ours does, so the change came after
+# 2025-12-12 (exact patch not pinned down)
+KIT_CHANGES = {"WhiteMage": ("2025-12-12", "White Mage now starts the pull with a Blood Lily, which none of the WHM clears (all older) had")}
+OUR_CODES = None              # our reports, for references from our own groups; None reads them from site/data.json
+
+
 @functools.lru_cache(maxsize=None)
-def opener_ref(job):
+def group_openers(job):
+    """Our groups' openers on the job: one entry per player over all our reports, like one clear player each (so a
+    regular on the job does not outweigh the others): their usual opener to OPENER_END over pulls they were alive through
+    to OPENER_LATE, and their median opener nDPS over pulls without The Echo they were alive through to OPENER_S.
+    Returns [dict(seq, dmg, who)]."""
+    import acts, fflogs
+    from scorecard import OPENER_S
+    codes = OUR_CODES if OUR_CODES is not None else list(json.loads((HERE / "site" / "data.json").read_text(encoding="utf-8"))["reports"])
+    prof, seqs, dmg = profile(job), collections.defaultdict(list), collections.defaultdict(list)
+    for code in codes:
+        cf = fflogs.CACHE / f"report_{code}.json"
+        if not cf.exists(): continue
+        data = json.loads(cf.read_text())
+        pulls, names = acts.report(code, data["fights"]), {a["id"]: a["name"] for a in data["masterData"]["actors"]}
+        for f in data["fights"]:
+            p = pulls.get(str(f["id"]))
+            if not p or not p.get("players"): continue
+            died = {}
+            for x in data["deaths"]:
+                if f["startTime"] <= x["timestamp"] <= f["endTime"] and x.get("targetID") in names:
+                    died.setdefault(names[x["targetID"]], (x["timestamp"] - f["startTime"]) / 1000)
+            dur = (f["endTime"] - f["startTime"]) / 1000
+            for sid, (name, j) in p["players"].items():
+                if j != job: continue
+                if dur > OPENER_LATE and died.get(name, 1e9) > OPENER_LATE:
+                    sq = opener_seq(p, int(sid), prof, OPENER_LATE)
+                    if sq: seqs[name].append(sq)
+            if f["id"] not in data.get("echo_pulls", []):
+                for y in data.get("otables", {}).get(str(f["id"]), []):
+                    if y["job"] == job and died.get(y["name"], 1e9) > OPENER_S: dmg[y["name"]].append(y["ndps"])
+    out = []
+    for name, sq in seqs.items():
+        sq = [[x for x in q if x[0] <= OPENER_END] for q in sq]           # to 0:22, like the clears' openers
+        out.append(dict(seq=sq[medoid(sq[-40:]) + max(0, len(sq) - 40)], dmg=st.median(dmg[name]) if dmg[name] else None, who=name))
+    return out
+
+
+def opener_source(job):
+    """"clears", or "groups" when fewer than three clears are left to compare the opener with."""
+    return "groups" if len(clear_openers(job)) < 3 else "clears"
+
+
+@functools.lru_cache(maxsize=None)
+def opener_ref(job, exclude=None):
     """The best opener the clears play on the job. Variants are openers within a few edits of each other; the one most
     clears play is the reference unless another (played by at least three) does clearly more opener damage: its median
     ahead by more than 1.5 standard errors of the difference, as the spread between players of one opener (gear, crits)
     is larger than most differences between openers. Returned as the variant's most typical sequence, the casts per
     skill in it, each skill's median first cast, and the damage of the clears that play it."""
-    ops = clear_openers(job)
+    ops = clear_openers(job) if opener_source(job) == "clears" else [o for o in group_openers(job) if o["who"] != exclude]
     if len(ops) < 3: return None
     names = [[n for _, n, _ in o["seq"]] for o in ops]
     near = lambda i: max(2, len(names[i]) // 6)
@@ -731,12 +783,13 @@ def clear_opener_dps():
     return out
 
 
-def opener(job, seqs, ratio=1.0):
+def opener(job, seqs, ratio=1.0, who=None):
     """A player's openers on the job against the clears' best opener (opener_ref): casts per skill in the opener
     against it over the same number of GCDs (GCD order is not compared: swapping two GCDs inside the opener changes
     nothing), when each oGCD cooldown and raid buff first went out, and their usual opener for showing side by side."""
     seqs = [x for x in seqs if x]
-    ref = opener_ref(job)
+    source = opener_source(job)
+    ref = opener_ref(job, who if source == "groups" else None)
     if not seqs or not ref: return None
     gcds = sum(1 for x in ref["steps"] if x["gcd"])     # compared over as many GCDs as the clears' opener has, so a
     def cut(sq):                                         # slower GCD from gear does not read as a missing filler
@@ -759,5 +812,6 @@ def opener(job, seqs, ratio=1.0):
         r["late"] = (r["name"] in timed and r["t_clears"] is not None and r["t_theirs"] is not None and abs(r["t_theirs"] - r["t_clears"]) >= 1.5
                      and round(r["t_theirs"] - r["t_clears"], 1)) or None
     rows.sort(key=lambda r: (r["t_clears"] if r["t_clears"] is not None else 99, r["name"]))
-    return dict(clears=ref["clears"], clears_all=ref["all"], basis=ref["basis"], pulls=len(full), gcds=gcds, best_dmg=ref["dmg"], all_dmg=ref["all_dmg"],
+    change = (KIT_CHANGES[job][1] if job in KIT_CHANGES else "No clear in the benchmark plays the job") if source == "groups" else None
+    return dict(source=source, change=change, clears=ref["clears"], clears_all=ref["all"], basis=ref["basis"], pulls=len(full), gcds=gcds, best_dmg=ref["dmg"], all_dmg=ref["all_dmg"],
                 best=ref["steps"], usual=[dict(t=t, name=n, gcd=g) for t, n, g in usual], skills=rows)
