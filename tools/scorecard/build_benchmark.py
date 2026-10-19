@@ -18,18 +18,21 @@ import argparse, calendar, collections, datetime, json, statistics as st, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import fflogs
-from scorecard import ROLE, P1, SAVAGE, WINDOWS
+import acts, fflogs
+from scorecard import ROLE, ROLES, P1, SAVAGE, WINDOWS
 
 HERE = Path(__file__).resolve().parent
 CACHE = fflogs.CACHE / "benchmark"
 ZONE = 54                          # Anabaseios
 MIN_S, MAX_S, PEER_S = 330, 470, 430
 MAIN_STAT = (3400, 3560)
+DT_START = datetime.date(2024, 6, 28)   # Dawntrail (7.0) early access: jobs before it played differently, so no earlier clear is used
 ENRAGE_S = 458                     # the slowest clears seen end at 7:38-7:39
 # when each major mechanic's cast begins, seconds into the pull (the timeline is fixed)
 CHECKPOINTS = [("Paradeigma II", 55.4), ("Superchain I", 112.4), ("Paradeigma III", 193.9), ("Palladion", 284.0),
                ("Superchain II (1st)", 349.0), ("Superchain II (2nd)", 399.1)]
+# Most clears skip Paradeigma I's movement: two tanks invuln at 0:30-0:40 and the party stands still. Our groups move.
+INVULN = {"Hallowed Ground", "Holmgang", "Living Dead", "Superbolide"}
 POT = {"tank": 0.1042 / 1.1042, "dps": 0.1057 / 1.1057}
 LEVEL92 = ["High Thunder", "High Thunder II", "Flare Star", "Solar Bahamut", "Sunflare", "Lux Solaris", "Necrotize", "Vice of Thorns",
            "Grand Impact", "Prefulgence", "Star Prism", "Rainbow Drip", "Ouroboros", "Leaping Opo", "Rising Raptor", "Pouncing Coeurl",
@@ -49,12 +52,23 @@ def cached(name, fn):
     v = fn(); CACHE.mkdir(parents=True, exist_ok=True); f.write_text(json.dumps(v)); return v
 
 
+class Archived(Exception):
+    """FFLogs has archived the report(s): only subscribers can read them, through the user API."""
+
+
+def gql_or_archived(q, v):
+    try: return fflogs.gql(q, v)
+    except RuntimeError as e:
+        if "archived" in str(e).lower(): raise Archived(str(e))
+        raise
+
+
 def scan_slice(s, e):
     q = '''query($s:Float,$e:Float,$p:Int){reportData{reports(zoneID:%d,startTime:$s,endTime:$e,limit:50,page:$p){has_more_pages
            data{code startTime fights(encounterID:%d,killType:Kills){id startTime endTime difficulty}}}}}''' % (ZONE, P1)
     kills = []
     for page in range(1, 26):
-        d = fflogs.gql(q, {"s": s, "e": e, "p": page})["reportData"]["reports"]
+        d = gql_or_archived(q, {"s": s, "e": e, "p": page})["reportData"]["reports"]
         kills += [dict(code=x["code"], fight=f["id"], start=f["startTime"], dur=(f["endTime"] - f["startTime"]) / 1000,
                        day=datetime.datetime.utcfromtimestamp(x["startTime"] / 1000).strftime("%Y-%m-%d"))
                   for x in d["data"] for f in (x["fights"] or []) if f.get("difficulty") == SAVAGE]
@@ -72,25 +86,31 @@ def scan(since, until):
             if b.date() <= since or a.date() > until: continue
             key = f"scan_{a:%Y%m%d}"
             done = a.date() < datetime.date.today() - datetime.timedelta(days=2)   # recent slices are rescanned
-            got = cached(key, lambda: scan_slice(calendar.timegm(a.timetuple()) * 1000, calendar.timegm(b.timetuple()) * 1000)) if done else \
-                scan_slice(calendar.timegm(a.timetuple()) * 1000, calendar.timegm(b.timetuple()) * 1000)
+            span = (calendar.timegm(a.timetuple()) * 1000, calendar.timegm(b.timetuple()) * 1000)
+            try:
+                got = cached(key, lambda: scan_slice(*span)) if done else scan_slice(*span)
+            except Archived:   # the listing itself refuses archived reports; nothing in this slice can be read
+                print(f"  {a:%Y-%m-%d}: archived, skipped", file=sys.stderr); continue
             kills += got
             print(f"  {a:%Y-%m-%d}: {len(got)} Savage kills", file=sys.stderr)
         d = datetime.date(d.year + (d.month == 12), d.month % 12 + 1, 1)
-    return [k for k in kills if MIN_S <= k["dur"] <= MAX_S]
+    return [k for k in kills if MIN_S <= k["dur"] <= MAX_S and k["day"] >= DT_START.isoformat()]
 
 
 def eligible(k):
     def check():
         fx = "ability.name IN (" + ",".join('"' + n + '"' for n in LEVEL92) + ")"
-        r = fflogs.gql('''query($c:String!,$f:[Int]!,$fx:String){reportData{report(code:$c){
-            dt:events(fightIDs:$f,dataType:Casts,hostilityType:Friendlies,filterExpression:$fx,limit:50){data}
-            ci:events(fightIDs:$f,dataType:CombatantInfo,limit:100){data}}}}''', {"c": k["code"], "f": [k["fight"]], "fx": fx})["reportData"]["report"]
+        try:
+            r = gql_or_archived('''query($c:String!,$f:[Int]!,$fx:String){reportData{report(code:$c){
+                dt:events(fightIDs:$f,dataType:Casts,hostilityType:Friendlies,filterExpression:$fx,limit:50){data}
+                ci:events(fightIDs:$f,dataType:CombatantInfo,limit:100){data}}}}''', {"c": k["code"], "f": [k["fight"]], "fx": fx})["reportData"]["report"]
+        except Archived:
+            return dict(archived=True, level92=None, levels=[], main=None)
         ci = r["ci"]["data"]
         main = [max(e["strength"], e["dexterity"], e["intelligence"], e["mind"]) for e in ci if "strength" in e]
         return dict(level92=len(r["dt"]["data"]), levels=sorted({e.get("level") for e in ci}), main=main[0] if main else None)
     c = cached(f"check_{k['code']}_{k['fight']}", check)
-    return c["level92"] == 0 and c["levels"] == [90] and c["main"] is not None and MAIN_STAT[0] <= c["main"] <= MAIN_STAT[1]
+    return not c.get("archived") and c["level92"] == 0 and c["levels"] == [90] and c["main"] is not None and MAIN_STAT[0] <= c["main"] <= MAIN_STAT[1]
 
 
 def kill_players(k):
@@ -179,17 +199,47 @@ def kill_phases(k):
     return out
 
 
+def kill_acts(k):
+    """Casts and outgoing damage of one kill (see acts.py)."""
+    return cached(f"acts_{k['code']}_{k['fight']}", lambda: acts.pulls(k["code"], [k["fight"]])[k["fight"]])
+
+
+def invuln_strategy(k):
+    """True when the kill skipped Paradeigma I's movement with tank invulnerabilities."""
+    p = kill_acts(k)
+    return any(p["names"].get(str(a)) in INVULN for t, _, a in p["casts"] if 0 <= t < 60)
+
+
+def strategy_factors(kills, min_n=5):
+    """Per role: a player's nDPS in the Paradeigma I window, relative to their own Paradeigma II nDPS, in clears that
+    move through Paradeigma I divided by the same in clears that skip it. Roles with fewer than min_n players either way get 1."""
+    w0, w1 = WINDOWS[0][0], WINDOWS[1][0]
+    ratio = {True: collections.defaultdict(list), False: collections.defaultdict(list)}
+    for k in kills:
+        by = collections.defaultdict(dict)
+        for x in kill_phases(k): by[x["name"]][x["window"]] = x
+        for w in by.values():
+            if w0 in w and w1 in w and w[w1]["ndps"] > 0: ratio[invuln_strategy(k)][ROLE[w[w0]["job"]]].append(w[w0]["ndps"] / w[w1]["ndps"])
+    return {r: round(st.mean(ratio[False][r]) / st.mean(ratio[True][r]), 3) if min(len(ratio[False][r]), len(ratio[True][r])) >= min_n else 1.0
+            for r in ROLES}, {"moving": sum(not invuln_strategy(k) for k in kills), "invuln": sum(invuln_strategy(k) for k in kills)}
+
+
 def phases(kills):
-    """Clearers' nDPS and uptime per phase window, per job, for peer and fast clears."""
+    """Clearers' nDPS and uptime per phase window, per job, for peer and fast clears. In the first window, the nDPS of
+    clears that skipped Paradeigma I with invulnerabilities is scaled by the role's strategy factor, since we move."""
     res = []
+    factors, counts = strategy_factors(kills)
     for name, a, b in WINDOWS:
         entry = dict(name=name, start=a, end=b, pools={})
         for pool in ("peer", "fast"):
             per = collections.defaultdict(list)
             for k in kills:
                 if (k["dur"] >= PEER_S) != (pool == "peer"): continue
+                scale = name == WINDOWS[0][0] and invuln_strategy(k)
                 for x in kill_phases(k):
-                    if x["window"] == name: per[(x["name"], x["job"])].append(x)
+                    if x["window"] != name: continue
+                    if scale: x = dict(x, ndps=x["ndps"] * factors[ROLE[x["job"]]])
+                    per[(x["name"], x["job"])].append(x)
             jobs, roles = collections.defaultdict(list), collections.defaultdict(list)
             for (n, j), v in per.items():
                 m = dict(ndps=st.mean(x["ndps"] for x in v), uptime=st.mean(x["uptime"] for x in v))
@@ -197,6 +247,7 @@ def phases(kills):
             entry["pools"][pool] = dict(jobs={j: dict(ndps=round(st.mean(x["ndps"] for x in v)), uptime=round(st.mean(x["uptime"] for x in v), 2),
                                                       players=len(v)) for j, v in jobs.items()},
                                         role_uptime={r: round(st.mean(v), 2) for r, v in roles.items()})
+        if name == WINDOWS[0][0]: entry["strategy"] = dict(counts, factors=factors)
         res.append(entry)
     return res
 
@@ -233,7 +284,13 @@ def main():
     ap.add_argument("--out", default=str(HERE / "benchmark.json"))
     ap.add_argument("--checkpoints-only", action="store_true", help="only recompute the boss HP checkpoints for the kills already in --out")
     ap.add_argument("--windows-only", action="store_true", help="only recompute the per-phase values for the kills already in --out")
+    ap.add_argument("--add", action="store_true", help="scan only --since..--until and add the eligible kills to those already in --out")
+    ap.add_argument("--acts-only", action="store_true", help="only fetch the casts and outgoing damage of the kills already in --out")
     a = ap.parse_args()
+    if a.acts_only:
+        kills = json.loads(Path(a.out).read_text())["kills"]
+        for i, k in enumerate(kills): kill_acts(k); print(f"  {i + 1}/{len(kills)} {k['code']} #{k['fight']}", file=sys.stderr)
+        return
     if a.windows_only:
         res = json.loads(Path(a.out).read_text())
         res["windows"] = phases(res["kills"])
@@ -246,14 +303,23 @@ def main():
         res["hp_checkpoints"] = checkpoints(kills)
         Path(a.out).write_text(json.dumps(res, indent=1))
         print(json.dumps(res["hp_checkpoints"], indent=1)); return
-    since, until = datetime.date.fromisoformat(a.since), datetime.date.fromisoformat(a.until)
+    since, until = max(datetime.date.fromisoformat(a.since), DT_START), datetime.date.fromisoformat(a.until)
     cand = scan(since, until)
     print(f"{len(cand)} kills at level 90 speed; checking level and gear", file=sys.stderr)
-    kills = [k for k in cand if eligible(k)]
-    print(f"{len(kills)} kept; reading 0:00-2:00 tables", file=sys.stderr)
+    kept = [k for k in cand if eligible(k)]
+    archived = sum(1 for k in cand if cached(f"check_{k['code']}_{k['fight']}", lambda: {}).get("archived"))
+    print(f"{len(kept)} kept ({archived} archived, unreadable)", file=sys.stderr)
+    kills = kept
+    if a.add:   # merge with the kills already in the benchmark
+        old = [k for k in json.loads(Path(a.out).read_text())["kills"] if k["day"] >= DT_START.isoformat()]
+        have = {(k["code"], k["fight"]) for k in old}
+        kills = old + [k for k in kept if (k["code"], k["fight"]) not in have]
+        print(f"adding {len(kills) - len(old)} new kills to {len(old)}", file=sys.stderr)
+    print("reading tables", file=sys.stderr)
     res = build(kills)
     Path(a.out).write_text(json.dumps(res, indent=1))
     print(f"wrote {a.out}: " + ", ".join(f"{p} {v['kills']} kills / {sum(j['players'] for j in v['jobs'].values())} players" for p, v in res["pools"].items()))
+    print("kills by year:", dict(collections.Counter(k["day"][:4] for k in res["kills"])))
 
 
 if __name__ == "__main__":
