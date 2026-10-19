@@ -9,7 +9,7 @@
    lower-gear runs are dropped.
 3. Takes rDPS, nDPS and GCD uptime over 0:00-2:00 for each player still alive at 2:00, removes the damage
    gained from tinctures (Medicated: +10.57% damage for DPS and healers, +10.42% for tanks, over its window),
-   and averages per distinct player, then per job, separately for peer clears (7:10 or slower) and fast ones.
+   and averages per distinct player, then per job, over every clear without The Echo.
 
 A full rebuild over two years reads several thousand report pages and can take an hour or more of API
 budget; the script waits out the hourly rate limit on its own. Progress is cached in .cache/benchmark/.
@@ -27,6 +27,7 @@ ZONE = 54                          # Anabaseios
 MIN_S, MAX_S, PEER_S = 330, 470, 430
 MAIN_STAT = (3400, 3560)
 DT_START = datetime.date(2024, 6, 28)   # Dawntrail (7.0) early access: jobs before it played differently, so no earlier clear is used
+DT_START_TS = 1719565200                # ... from 09:00 UTC that day (servers came back with 7.0); earlier reports are Endwalker
 ENRAGE_S = 458                     # the slowest clears seen end at 7:38-7:39
 # when each major mechanic's cast begins, seconds into the pull (the timeline is fixed)
 CHECKPOINTS = [("Paradeigma II", 55.4), ("Superchain I", 112.4), ("Paradeigma III", 193.9), ("Palladion", 284.0),
@@ -69,7 +70,7 @@ def scan_slice(s, e):
     kills = []
     for page in range(1, 26):
         d = gql_or_archived(q, {"s": s, "e": e, "p": page})["reportData"]["reports"]
-        kills += [dict(code=x["code"], fight=f["id"], start=f["startTime"], dur=(f["endTime"] - f["startTime"]) / 1000,
+        kills += [dict(code=x["code"], fight=f["id"], start=f["startTime"], dur=(f["endTime"] - f["startTime"]) / 1000, ts=x["startTime"],
                        day=datetime.datetime.utcfromtimestamp(x["startTime"] / 1000).strftime("%Y-%m-%d"))
                   for x in d["data"] for f in (x["fights"] or []) if f.get("difficulty") == SAVAGE]
         if not d["has_more_pages"]: return kills
@@ -87,6 +88,8 @@ def scan(since, until):
             key = f"scan_{a:%Y%m%d}"
             done = a.date() < datetime.date.today() - datetime.timedelta(days=2)   # recent slices are rescanned
             span = (calendar.timegm(a.timetuple()) * 1000, calendar.timegm(b.timetuple()) * 1000)
+            if span[0] < DT_START_TS * 1000 < span[1]:   # the slice with the 7.0 release: list only from the release
+                key, span = f"scan_{a:%Y%m%d}_dt", (DT_START_TS * 1000, span[1])
             try:
                 got = cached(key, lambda: scan_slice(*span)) if done else scan_slice(*span)
             except Archived:   # the listing itself refuses archived reports; nothing in this slice can be read
@@ -94,7 +97,8 @@ def scan(since, until):
             kills += got
             print(f"  {a:%Y-%m-%d}: {len(got)} Savage kills", file=sys.stderr)
         d = datetime.date(d.year + (d.month == 12), d.month % 12 + 1, 1)
-    return [k for k in kills if MIN_S <= k["dur"] <= MAX_S and k["day"] >= DT_START.isoformat()]
+    after = lambda k: k["ts"] >= DT_START_TS * 1000 if "ts" in k else k["day"] > DT_START.isoformat()
+    return [k for k in kills if MIN_S <= k["dur"] <= MAX_S and after(k)]
 
 
 def eligible(k):
@@ -199,9 +203,56 @@ def kill_phases(k):
     return out
 
 
+def kill_opener(k, seconds=20):
+    """Per player of one kill: nDPS over the first `seconds`, tincture gain removed."""
+    def get():
+        f = fflogs.gql('query($c:String!){reportData{report(code:$c){fights(fightIDs:[%d]){startTime endTime}}}}' % k["fight"],
+                       {"c": k["code"]})["reportData"]["report"]["fights"][0]
+        t = fflogs.tables(k["code"], [(f["startTime"], f["startTime"] + seconds * 1000)])[0]
+        return dict(start=f["startTime"], entries=t["entries"])
+    d = cached(f"opener_{k['code']}_{k['fight']}", get)
+    pots = kill_phases_raw(k)
+    bands = collections.defaultdict(list)
+    for a in pots:
+        if a.get("type") in ROLE: bands[a["name"]] += [((b["startTime"] - d["start"]) / 1000, (b["endTime"] - d["start"]) / 1000) for b in a.get("bands", [])]
+    out = []
+    for y in d["entries"]:
+        if y["type"] not in ROLE: continue
+        kind = "tank" if ROLE[y["type"]] == "Tank" else "dps"
+        overlap = sum(max(0, min(e, seconds) - max(s, 0)) for s, e in bands[y["name"]])
+        nd = y["totalNDPS"] / seconds
+        out.append(dict(name=y["name"], job=y["type"], ndps=nd - overlap * nd * POT[kind] / seconds))
+    return out
+
+
+def kill_phases_raw(k):
+    """The tincture auras cached with the kill's phase tables (see kill_phases)."""
+    f = CACHE / f"phases_{k['code']}_{k['fight']}.json"
+    return json.loads(f.read_text()).get("pots", []) if f.exists() else []
+
+
+def kill_buff_names(k):
+    """Names of every buff anyone had during the kill (cached), e.g. to spot the Echo."""
+    def get():
+        f = fflogs.gql('query($c:String!){reportData{report(code:$c){fights(fightIDs:[%d]){startTime endTime}}}}' % k["fight"],
+                       {"c": k["code"]})["reportData"]["report"]["fights"][0]
+        t = fflogs.tables(k["code"], [(f["startTime"], f["endTime"])], "Buffs")[0]
+        return sorted({a["name"] for a in t.get("auras", [])})
+    return cached(f"buffs_{k['code']}_{k['fight']}", get)
+
+
+def has_echo(k):
+    """The Echo (+20% damage, HP and healing in older duties when the party turns it on) makes a kill incomparable."""
+    return any("echo" in n.lower() for n in kill_buff_names(k))
+
+
 def kill_acts(k):
     """Casts and outgoing damage of one kill (see acts.py)."""
-    return cached(f"acts_{k['code']}_{k['fight']}", lambda: acts.pulls(k["code"], [k["fight"]])[k["fight"]])
+    d = cached(f"acts_{k['code']}_{k['fight']}", lambda: acts.pulls(k["code"], [k["fight"]])[k["fight"]])
+    if d.get("v") != acts.VERSION:      # cached by an older version of acts.py
+        d = acts.pulls(k["code"], [k["fight"]])[k["fight"]]
+        (CACHE / f"acts_{k['code']}_{k['fight']}.json").write_text(json.dumps(d))
+    return d
 
 
 def invuln_strategy(k):
@@ -225,16 +276,15 @@ def strategy_factors(kills, min_n=5):
 
 
 def phases(kills):
-    """Clearers' nDPS and uptime per phase window, per job, for peer and fast clears. In the first window, the nDPS of
+    """Clearers' nDPS and uptime per phase window, per job. In the first window, the nDPS of
     clears that skipped Paradeigma I with invulnerabilities is scaled by the role's strategy factor, since we move."""
     res = []
     factors, counts = strategy_factors(kills)
     for name, a, b in WINDOWS:
         entry = dict(name=name, start=a, end=b, pools={})
-        for pool in ("peer", "fast"):
+        for pool in ("clears",):
             per = collections.defaultdict(list)
             for k in kills:
-                if (k["dur"] >= PEER_S) != (pool == "peer"): continue
                 scale = name == WINDOWS[0][0] and invuln_strategy(k)
                 for x in kill_phases(k):
                     if x["window"] != name: continue
@@ -256,13 +306,19 @@ def build(kills):
     res = {"built": datetime.date.today().isoformat(), "pools": {},
            "method": "Savage P1 (Athena) clears from FFLogs, level 90, no level-92+ abilities, logger main stat 3400-3560 (capped gear). "
                      "rDPS/nDPS over 0:00-2:00 with pots stripped (+10.57% DPS/healer, +10.42% tank for the Medicated window); deaths before 2:00 "
-                     "excluded. Job values are averages of distinct players. peer = kills at 7:10 or slower, fast = faster.",
-           "kills": [dict(code=k["code"], fight=k["fight"], dur=round(k["dur"], 1), day=k["day"]) for k in kills]}
-    for pool in ("peer", "fast"):
-        ks = [k for k in kills if (k["dur"] >= PEER_S) == (pool == "peer")]
-        per, parties = collections.defaultdict(list), []
+                     "excluded. Job values are averages of distinct players over all clears. "
+                     "Kills with The Echo (+20% damage) count for casts and timing only, not for damage, HP or kill time.",
+           "kills": [dict(code=k["code"], fight=k["fight"], dur=round(k["dur"], 1), day=k["day"], echo=has_echo(k)) for k in kills]}
+    kills = [k for k in kills if not has_echo(k)]       # damage, boss HP and kill time: kills without The Echo only
+    res["echo_excluded"] = len(res["kills"]) - len(kills)
+    res["hp_checkpoints"] = checkpoints(kills)
+    boss = res["hp_checkpoints"]["boss_hp"]
+    for pool in ("clears",):
+        ks = kills
+        per, parties, ratios = collections.defaultdict(list), [], []
         for k in ks:
             ps, party = kill_players(k); parties.append(party)
+            if party: ratios.append(party / (boss / k["dur"]))     # 0:00-2:00 party DPS over the whole fight's average
             for p in ps: per[(p["name"], p["job"])].append(p)
         jobs = collections.defaultdict(list)
         for (n, j), v in per.items(): jobs[j].append({m: st.mean(x[m] for x in v) for m in ("rdps", "ndps", "uptime")})
@@ -270,10 +326,11 @@ def build(kills):
         for j, v in jobs.items(): roles[ROLE[j]] += [x["uptime"] for x in v]
         res["pools"][pool] = dict(kills=len(ks), kill_median_s=round(st.median(k["dur"] for k in ks)) if ks else None,
                                   party_dps_median=round(st.median(parties)) if parties else None,
+                                  # 0:00-2:00 party DPS that is on pace to kill at enrage, if the rest goes like a clear
+                                  party_dps_min=round(st.median(ratios) * boss / ENRAGE_S) if ratios else None,
                                   role_uptime={r: round(st.mean(v), 2) for r, v in roles.items()},
                                   jobs={j: dict(rdps=round(st.mean(x["rdps"] for x in v)), ndps=round(st.mean(x["ndps"] for x in v)),
                                                 uptime=round(st.mean(x["uptime"] for x in v), 2), players=len(v)) for j, v in jobs.items()})
-    res["hp_checkpoints"] = checkpoints(kills)
     res["windows"] = phases(kills)
     return res
 
@@ -285,8 +342,14 @@ def main():
     ap.add_argument("--checkpoints-only", action="store_true", help="only recompute the boss HP checkpoints for the kills already in --out")
     ap.add_argument("--windows-only", action="store_true", help="only recompute the per-phase values for the kills already in --out")
     ap.add_argument("--add", action="store_true", help="scan only --since..--until and add the eligible kills to those already in --out")
+    ap.add_argument("--rebuild", action="store_true", help="recompute everything from the kills already in --out (no scan)")
     ap.add_argument("--acts-only", action="store_true", help="only fetch the casts and outgoing damage of the kills already in --out")
     a = ap.parse_args()
+    if a.rebuild:
+        res = build(json.loads(Path(a.out).read_text())["kills"])
+        Path(a.out).write_text(json.dumps(res, indent=1))
+        print(f"rebuilt {a.out}: " + ", ".join(f"{p} {v['kills']} kills" for p, v in res["pools"].items()) + f"; {res['echo_excluded']} with The Echo kept out of damage")
+        return
     if a.acts_only:
         kills = json.loads(Path(a.out).read_text())["kills"]
         for i, k in enumerate(kills): kill_acts(k); print(f"  {i + 1}/{len(kills)} {k['code']} #{k['fight']}", file=sys.stderr)
@@ -311,7 +374,7 @@ def main():
     print(f"{len(kept)} kept ({archived} archived, unreadable)", file=sys.stderr)
     kills = kept
     if a.add:   # merge with the kills already in the benchmark
-        old = [k for k in json.loads(Path(a.out).read_text())["kills"] if k["day"] >= DT_START.isoformat()]
+        old = [k for k in json.loads(Path(a.out).read_text())["kills"] if k["day"] > DT_START.isoformat() or k.get("ts", 0) >= DT_START_TS * 1000]
         have = {(k["code"], k["fight"]) for k in old}
         kills = old + [k for k in kept if (k["code"], k["fight"]) not in have]
         print(f"adding {len(kills) - len(old)} new kills to {len(old)}", file=sys.stderr)

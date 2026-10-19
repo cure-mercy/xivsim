@@ -11,7 +11,7 @@ token (saved in .cache/user_token.json); after that, queries refused as archived
 
 The redirect address has to be registered on the API client at https://www.fflogs.com/api/clients/ first.
 """
-import argparse, base64, hashlib, http.server, json, secrets, threading, time, urllib.error, urllib.parse, urllib.request, webbrowser
+import argparse, base64, hashlib, http.server, json, secrets, sys, threading, time, urllib.error, urllib.parse, urllib.request, webbrowser
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -125,12 +125,26 @@ def gql(query, variables=None, tries=30):
             if "archived" in msg.lower() and api == API and user_token():
                 api, tok = USER_API, user_token; continue
             if "rate" not in msg.lower() and "timeout" not in msg.lower(): raise RuntimeError(msg)
+            if "rate" in msg.lower(): wait_for_budget(); continue
         except urllib.error.HTTPError as e:
-            if e.code not in (429, 500, 502, 503, 504): raise
+            if e.code == 429: wait_for_budget(); continue
+            if e.code not in (500, 502, 503, 504): raise
         except (urllib.error.URLError, TimeoutError):
             pass
         time.sleep(min(120, 5 * (attempt + 1)))
     raise RuntimeError("FFLogs API kept failing")
+
+
+def wait_for_budget():
+    """Out of hourly API points: sleep until FFLogs says the budget resets (the rate-limit query itself is free)."""
+    try:
+        req = urllib.request.Request(API, data=json.dumps({"query": "{rateLimitData{pointsResetIn}}"}).encode(),
+                                     headers={"Authorization": f"Bearer {token()}", "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=60) as r: wait = json.load(r)["data"]["rateLimitData"]["pointsResetIn"]
+    except Exception:
+        wait = 300
+    print(f"  FFLogs API points used up for this hour; waiting {wait // 60:.0f} min for the reset", file=sys.stderr)
+    time.sleep(min(3600, wait + 10))
 
 
 EVENTS = '''query($c:String!,$f:[Int]!,$s:Float!,$e:Float!,$dt:EventDataType!,$h:HostilityType,$fx:String,$res:Boolean){

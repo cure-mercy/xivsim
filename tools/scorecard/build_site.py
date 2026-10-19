@@ -44,22 +44,47 @@ def report_entry(code, group, data, bench):
     g = S.analyse(group, data, bench)
     boss = bench["hp_checkpoints"]["boss_hp"]
     for row in g["pull_rows"]:   # boss HP at each checkpoint the pull reached
-        row["hp"] = {m: round(100 * (1 - v / boss), 1) for m, v in data["hp"].get(str(row["id"]), {}).items()}
+        row["hp"] = {} if row["id"] in data.get("echo_pulls", []) else {m: round(100 * (1 - v / boss), 1) for m, v in data["hp"].get(str(row["id"]), {}).items()}
+        row["echo"] = row["id"] in data.get("echo_pulls", [])
     return plain(dict(code=code, group=group, day=g["date"].date().isoformat(), start=g["date"], title=data.get("title"),
                       pulls_total=g["pulls"], kills=g["kills"], best=g["best"], longest=g["longest"], clean2=g["clean2"], party=g["party"],
                       hp=g["hp"], causes=dict(g["causes"]), wipe_causes=dict(g["wipe_causes"]), coverage=dict(g["coverage"]),
                       light_parties=[sorted(g["lp"][0]), sorted(g["lp"][1])], players=g["players"], pulls=g["pull_rows"],
-                      lost_total=g["lost_total"], lost_causes=g["lost_causes"], lost_unattributed=g["lost_unattributed"]))
+                      lost_total=g["lost_total"], lost_dd=g.get("lost_dd"), cost_each=g.get("cost_each"), lost_causes=g["lost_causes"], lost_unattributed=g["lost_unattributed"], burst=g.get("burst"), echo=g.get("echo")))
 
 
-def benchmark_summary(bench):
+def mistake_times(codes):
+    """Medians over our reports: seconds dead until raised, and how long a Damage Down lasts (for the mistake budget)."""
+    dead, dd = [], []
+    for code in codes:
+        cf = fflogs.CACHE / f"report_{code}.json"
+        if not cf.exists(): continue
+        d = json.loads(cf.read_text())
+        for f in d["fights"]:
+            deb = [x for x in d["debuffs"] if f["startTime"] <= x["timestamp"] <= f["endTime"]]
+            for x in d["deaths"]:
+                if not f["startTime"] <= x["timestamp"] <= f["endTime"]: continue
+                rz = [e["timestamp"] for e in deb if e.get("targetID") == x.get("targetID") and e.get("abilityGameID") in (1000043, 1000044)
+                      and e["type"] == "applydebuff" and e["timestamp"] > x["timestamp"]]
+                if rz: dead.append((min(rz) - x["timestamp"]) / 1000)
+            on = {}
+            for e in sorted(deb, key=lambda e: e["timestamp"]):
+                if e.get("abilityGameID") != S.DD: continue
+                if e["type"] == "applydebuff": on[e.get("targetID")] = e["timestamp"]
+                elif e["type"] == "removedebuff" and e.get("targetID") in on: dd.append((e["timestamp"] - on.pop(e.get("targetID"))) / 1000)
+    import statistics as st
+    return dict(dead_s=round(st.median(dead), 1) if dead else 10.0, dd_s=round(st.median(dd), 1) if dd else 6.7, deaths=len(dead), dds=len(dd))
+
+
+def benchmark_summary(bench, codes=()):
     return dict(built=bench["built"], hp_checkpoints=bench["hp_checkpoints"],
-                pools={p: dict(kills=v["kills"], kill_median_s=v["kill_median_s"], party_dps_median=v["party_dps_median"],
+                pools={p: dict(kills=v["kills"], kill_median_s=v["kill_median_s"], party_dps_median=v["party_dps_median"], party_dps_min=v.get("party_dps_min"),
                                role_uptime=v["role_uptime"], jobs=v["jobs"]) for p, v in bench["pools"].items()},
                 grades=dict(mistakes=S.G_MIST, wipes=S.G_WIPE, damage=S.G_DMG, uptime=S.G_UP), window_s=S.WINDOW,
                 windows=bench.get("windows", []),
-                # seconds of kill time per 1% of boss HP, at the pace of a peer clear
-                sec_per_hp=bench["pools"]["peer"]["kill_median_s"] / 100, raise_penalty=S.RAISE_PENALTY)
+                # seconds of kill time per 1% of boss HP, at the pace of a clear
+                sec_per_hp=bench["pools"]["clears"]["kill_median_s"] / 100, raise_penalty=S.RAISE_PENALTY, raise_s=S.RAISE_S,
+                dd_penalty=S.DD_PENALTY, mistake_times=mistake_times(codes))
 
 
 def publish(out):
@@ -107,7 +132,7 @@ def main():
             group = next(f"G{n}" for n in range(1, 99) if f"G{n}" not in taken)
         print(f"{day} {group}: {code}", file=sys.stderr)
         site["reports"][code] = report_entry(code, group, data, bench)
-    site["benchmark"] = benchmark_summary(bench)
+    site["benchmark"] = benchmark_summary(bench, list(site["reports"]))
     site["generated"] = datetime.datetime.now().isoformat(timespec="minutes")
     DATA.parent.mkdir(exist_ok=True)
     DATA.write_text(json.dumps(site, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
