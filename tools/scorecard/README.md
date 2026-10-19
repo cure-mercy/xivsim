@@ -92,7 +92,7 @@ appears (the page only asks when `data.json` is missing and `data.enc.json` is t
 
 | Page | What it shows |
 |---|---|
-| Raid days | Trends across days (best boss HP, pulls clean through 2:00, mistakes per pull, damage lost to deaths, party DPS against the clears) and a table of days |
+| Raid days | Tiles: pulls, best pull, furthest seen (the longest pull, the mechanic it reached, its day, group and pull), latest day, mistakes per pull; the burndown; trends across days (how far pulls got, pulls clean through each mechanic, mistakes per pull and per minute, damage lost to mistakes, party DPS against the clears) and a table of days |
 | Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group |
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
 | Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes and their cost by cause; rDPS on every clean pull; every mistake with its pull and time; the player across raid days (mistakes per pull and per minute in pulls) |

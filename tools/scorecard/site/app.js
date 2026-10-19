@@ -714,9 +714,13 @@ function home() {
   const app = document.getElementById("app");
   app.append(el("h1", {}, "Raid days"), el("p", { class: "lede" }, `${ds.length} raid days, ${reports().length} group reports. Pick a day to compare its groups, then a group to see its players.`));
   const last = ds[ds.length - 1], ls = stats(last.groups);
+  // the longest pull of all, and the mechanic it got to (the last one that had started)
+  const far = reports().flatMap(r => r.pulls.map(q => ({ ...q, day: r.day, group: r.group }))).reduce((a, q) => (!a || q.dur > a.dur ? q : a), null);
+  const reached = far && Object.entries(DATA.benchmark.mech_start).filter(([m, t]) => m !== "other" && t <= far.dur).sort((a, b) => b[1] - a[1])[0];
   app.append(tiles([
     ["Pulls", num(all.pulls), `${all.kills} kills`],
     ["Best pull", `${all.best.toFixed(1)}% HP`, "lowest boss HP reached"],
+    ["Furthest seen", far ? mmss(far.dur) : "–", far ? `${far.kill ? "kill" : reached ? reached[0] : "opener"} · ${dayName(far.day)} ${far.group}, pull ${far.n}` : ""],
     ["Latest day", dayName(last.day), `${last.groups.length} group${last.groups.length > 1 ? "s" : ""}, ${ls.pulls} pulls`],
     ["Mistakes per pull", ls.mistakesPerPull?.toFixed(2), "latest day, per player", grade("mistakes", ls.mistakesPerPull)],
   ]));
