@@ -112,6 +112,15 @@ function deathTile(r, p) {
   return [label, `${hp.toFixed(2)}% HP`, `≈ ${(lost / (r.party / echo)).toFixed(1)} s of kill time at their ${kfmt(rdps)} rDPS${fits != null ? ` · budget fits ${fits.toFixed(1)}` : bud ? " · no mistake budget" : ""}`];
 }
 
+// potential gain against the clears as a share of their DPS: rotation checks with a cost added up; abilities net
+// (casting more of one skill usually means fewer of another, so surpluses offset shortfalls). The two overlap (a GCD
+// gap is also missing casts), so they are graded apart, never added
+const rotGain = r => r && r.dps ? sum(r.checks.map(c => c.cost > 1 ? c.cost : 0)) / r.dps : null;
+const abGain = r => r && r.dps && (r.abilities || []).length ? Math.max(0, sum(r.abilities.map(a => a.worth || 0))) / r.dps : null;
+const gainGrade = v => v == null ? null : v < 0.05 ? "good" : v < 0.15 ? "ok" : "bad";
+const gainTitle = (text, v) => el("span", {}, text, gradeChip(gainGrade(v)));
+const gainNote = (v, what) => v == null ? "" : ` Potential gain ${(100 * v).toFixed(1)}% of their DPS (${what}; green under 5%, yellow under 15%).`;
+
 function findGroup(day, group) { return reports().find(r => r.day === day && r.group === group); }
 
 // ---------- tooltip ----------
@@ -292,7 +301,7 @@ function playerFocus(r, entries, name) {
   const other = Object.entries(counts).filter(([l]) => !listed.has(l)).sort((a, c) => c[1] - a[1])[0];
   if (other && other[1] >= 3) {
     const hp = (p.lost_caused_by || {})[other[0]];
-    items.push({ title: other[0], detail: `${other[1]} times (${(other[1] / p.pulls).toFixed(2)} per pull)${hp ? `; cost ${hpfmt(hp / p.pulls)} boss HP per pull` : ""}.`,
+    items.push({ title: other[0], detail: `${other[1]} times (${(other[1] / p.pulls).toFixed(2)} per pull)${hp ? `; cost ${hpfmt(hp / p.pulls)} of the boss per pull` : ""}.`,
       links: [drillLinks(mech[other[0]]), jumpTo("Every mistake", "See their mistakes")] });
   }
   for (const e of entries) {
@@ -454,6 +463,32 @@ function columnChart(bars, { yFmt = v => v, yMax, refs = [], barTip, tickStep, o
 }
 
 // horizontal bars (one series), label left, value at the tip
+// one stacked bar per row (rows: {label, values: [a, b, ...]}), a segment per series ({name, color}), legend on top;
+// the number is the row's total, the split is in the hover
+function hbarStackChart(rows, series, { fmt = v => v } = {}) {
+  return width => {
+    const lab = Math.min(260, width * 0.48), R = 40, row = 24, T = 22, H = T + rows.length * row + 6, w = width - lab - R, bh = 14;
+    const max = Math.max(1, ...rows.map(r => sum(r.values)));
+    const svg = sv("svg", { viewBox: `0 0 ${width} ${H}`, role: "img" });
+    const legendW = sum(series.map(s => 30 + s.name.length * 6.5));
+    let lx = Math.max(0, Math.min(lab, width - legendW));   // start over the bars, further left when narrow
+    series.forEach(s => { svg.append(sv("rect", { x: lx, y: 5, width: 12, height: 10, rx: 2, fill: s.color }), sv("text", { class: "lbl", x: lx + 18, y: 14 }, s.name)); lx += 30 + s.name.length * 6.5; });
+    rows.forEach((r, i) => {
+      const y = T + i * row, yy = y + (row - bh) / 2, total = sum(r.values);
+      svg.append(sv("text", { class: "lbl", x: lab - 8, y: y + row / 2 + 4, "text-anchor": "end" }, clip(r.label, lab - 12)));
+      const hit = sv("rect", { class: "hit", x: 0, y, width, height: row });
+      hover(hit, r.label, [[fmt(total), "in total", true], ...series.map((s, k) => [fmt(r.values[k]), s.name])]);
+      let x = lab;
+      series.forEach((s, k) => { const v = r.values[k]; if (!(v > 0)) return;
+        const bw = Math.max(2, (v / max) * w);
+        svg.append(sv("rect", { class: "mark", x, y: yy, width: bw, height: bh, fill: s.color })); x += bw; });
+      svg.append(hit, sv("text", { class: "val", x: x + 6, y: y + row / 2 + 4 }, fmt(total)));
+    });
+    return svg;
+  };
+}
+const KIND_SERIES = [{ name: "Lost the pull", color: "var(--wipe, #9e1f30)" }, { name: "Other deaths", color: "var(--div-neg)" }, { name: "Damage Down", color: "#e0a03a" }];   // deaths and DD as in Damage lost to mistakes
+
 function hbarChart(rows, { fmt = v => v } = {}) {
   return width => {
     const lab = Math.min(260, width * 0.48), R = 40, row = 24, H = rows.length * row + 6, w = width - lab - R;
@@ -935,9 +970,13 @@ function playerPage(day, group, name) {
     el("div", { class: "focus-card" }, focusList(playerFocus(r, entries, name), "Nothing stands out against the clears.")));
   const mine = r.pulls.flatMap(q => q.mistakes.filter(m => m.who === name).map(m => ({ ...m, pull: q.n })));
   const wiped = r.pulls.filter(q => q.wipe && q.wipe.culprits.includes(name));
-  const causeRows = Object.entries(p.mcauses_all).sort((a, c) => c[1] - a[1]).map(([label, value]) => ({ label, value }));
+  const lostIt = m => wiped.some(q => q.n === m.pull && Math.abs(q.wipe.t - m.t) < 2.5);   // as in the Every mistake table
+  const causeRows = Object.entries(p.mcauses_all).sort((a, c) => c[1] - a[1]).map(([label, value]) => { const of = mine.filter(m => m.label === label);
+    return { label, value, values: [of.filter(lostIt).length, of.filter(m => !lostIt(m) && m.kind !== "DD").length, of.filter(m => !lostIt(m) && m.kind === "DD").length] }; });
   app.append(el("h2", {}, "Mistakes"), el("div", { class: "grid wide" },
-    causeRows.length ? card("Mistakes by cause", `${p.mistakes} mistakes, counted until each pull was lost.`, hbarChart(causeRows), () => tableOf(["Cause", "Count"], causeRows.map(x => [x.label, String(x.value)])))
+    causeRows.length ? card("Mistakes by cause", { info: `${p.mistakes} mistakes (${p.mdeath || 0} deaths, ${p.mdd || 0} Damage Downs), counted until each pull was lost. Lost the pull: the mistake that ended a pull (the pull's wipe names them, within 2.5 s), usually a death, sometimes a Damage Down; the rest split into other deaths and Damage Downs. A wipe put on them without a recorded mistake of theirs (an unsoaked tower, say) counts in Wipes caused but has no bar here.` },
+      hbarStackChart(causeRows, KIND_SERIES),
+      () => tableOf(["Cause", "Lost the pull", "Other deaths", "Damage Down", "Total"], causeRows.map(x => [x.label, ...x.values.map(String), String(x.value)])))
       : el("figure", { class: "card" }, el("div", { class: "card-head" }, el("h3", {}, "Mistakes by cause")), el("div", { class: "empty" }, "No mistakes recorded.")),
     ...entries.filter(e => e.clean_pulls.length).map(e => {
       const jb = b.pools, refs = [];
@@ -948,6 +987,7 @@ function playerPage(day, group, name) {
         () => tableOf(["Pull", "rDPS", "Uptime"], e.clean_pulls.map(c => [String(c.n), num(c.rdps), `${c.uptime}%`])));
     })));
   // damage: cost of their mistakes and damage per phase
+  const SHOW_MISTAKE_COST = false;   // "What their mistakes cost" card, hidden for now; set true to bring it back
   const costBy = Object.entries(p.lost_caused_by || {}).sort((a, c) => c[1] - a[1]).map(([label, value]) => ({ label, value }));
   app.append(el("h2", {}, "Damage"), el("div", { class: "grid wide" },
     ...entries.map(e => {
@@ -958,7 +998,7 @@ function playerPage(day, group, name) {
           (e.phases || []).map(ph => [ph.window, String(ph.n), ph.n ? num(ph.ndps) : "–", ph.vs ? signed(ph.vs[0]) : "–",
             ph.n ? `${ph.uptime.toFixed(1)}%` : "–", ph.uptime_diff != null ? `${ph.uptime_diff >= 0 ? "+" : "−"}${Math.abs(ph.uptime_diff).toFixed(1)}` : "–"])), divLegend());
     }),
-    costBy.length ? card("What their mistakes cost", info(`Boss HP lost to deaths they caused, all ${p.pulls} pulls together.`), hbarChart(costBy, { fmt: v => `${v.toFixed(2)}%` }),
+    !SHOW_MISTAKE_COST ? null : costBy.length ? card("What their mistakes cost", info(`Boss HP lost to deaths they caused, all ${p.pulls} pulls together.`), hbarChart(costBy, { fmt: v => `${v.toFixed(2)}%` }),
       () => tableOf(["Cause", "Boss HP"], costBy.map(x => [x.label, `${x.value.toFixed(2)}%`])))
       : el("figure", { class: "card" }, el("div", { class: "card-head" }, el("h3", {}, "What their mistakes cost")), el("div", { class: "empty" }, "None of their mistakes caused a death."))));
   // opener against the best opener the clears play: what was cast and when the cooldowns went out, not the GCD order
@@ -967,7 +1007,7 @@ function playerPage(day, group, name) {
     const sec = v => v == null ? "–" : `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)} s`;
     const at = t => t == null ? "–" : t < 0 ? `${t.toFixed(1)} s` : mmss(t);
     const casts = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
-    app.append(heading("h2", "Opener", "Their openers (casts from before the pull through as many GCDs as the clears' opener has; potions, Sprint and defensives left out) against the best opener the clears play (casts to 0:22). A job with fewer than three clears to compare with (Bard has none; White Mage now starts the pull with a Blood Lily, which every WHM clear predates) is compared within our own groups instead: every other player on the job counts like one clear, with their usual opener and median opener damage over all raid days; the player themselves is left out. With few players on a job this is thin: the reference may be one other player's opener. Openers within a few casts of each other count as one variant; the reference is the variant most clears play, unless another clearly does more opener damage (ahead by more than 1.5 standard errors, since gear and crits spread players of one opener more than most openers differ). Compared: how often each skill is cast over as many GCDs as the clears' opener has, so a slower GCD from gear does not count as a missing cast (flagged at half a cast or more per pull) and when each oGCD cooldown and raid buff first goes out (flagged at 1.5 s or more). The order of GCDs is not compared, since swapping two inside the opener changes nothing. Times are not adjusted for GCD speed. Opener damage is nDPS over 0:00–0:20 (tinctures removed) from pulls they were alive through."),
+    app.append(heading("h2", "Opener", "Their openers (casts from before the pull through as many GCDs as the clears' opener has; potions, Sprint and defensives left out) against the best opener the clears play (casts to 0:22). A job with fewer than three clears to compare with (Bard has none; White Mage now starts the pull with a Blood Lily, which every WHM clear predates) is compared within our own groups instead: every other player on the job counts like one clear, with their usual opener and median opener damage over all raid days; the player themselves is left out. With few players on a job this is thin: the reference may be one other player's opener. Openers within a few casts of each other count as one variant; the reference is the variant most clears play, unless another clearly does more opener damage (ahead by more than 1.5 standard errors, since gear and crits spread players of one opener more than most openers differ). Compared: how often each skill is cast over as many GCDs as the clears' opener has, so a slower GCD from gear does not count as a missing cast (flagged at half a cast or more per pull) and when each oGCD cooldown and raid buff first goes out (flagged at 1.5 s or more). The order of GCDs is not compared, since swapping two inside the opener changes nothing. Times are not adjusted for GCD speed. Opener damage is nDPS over 0:00–0:20 (tinctures removed) from pulls they were alive through. The dot grades it against all clears on the job (or our other players), as on the opener tile: green from −5%, yellow from −12%, red below."),
       el("div", { class: "grid wide" }, ...opEntries.map(e => {
         const o = e.rotation.opener, d = o.dmg, groups = o.source === "groups", them = groups ? "the others" : "the clears";
         const diffs = [
@@ -983,7 +1023,7 @@ function playerPage(day, group, name) {
           el("p", { class: "summary" }, dmgText),
           diffs.length ? el("ul", { class: "diffs" }, ...diffs.map(x => el("li", {}, x))) : el("p", { class: "note" }, `Same skills and cooldown timings as ${groups ? "our groups'" : "the clears'"} opener; only the order differs, which does not matter.`),
           tableOf(["#", groups ? "Our groups' opener" : "Clears' opener", "At", "Their usual opener", "At"], side, [2, 4]));
-        return card(`${JOB[e.job] || e.job} opener`, `${groups
+        return card(el("span", {}, `${JOB[e.job] || e.job} opener`, gradeChip(d ? grade("damage", d.vs) : null)), `${groups
             ? `${o.change}, so the opener is compared within our groups: ${o.pulls} pulls against the ${o.basis === "damage" ? "highest-damage" : "most played"} opener of our other ${JOB[e.job] || e.job}s (${o.clears} of ${o.clears_all} players play it; their own left out${o.clears_all < 5 ? "; thin data" : ""}).`
             : `${o.pulls} pulls against the ${o.basis === "damage" ? "highest-damage" : "most played"} clear opener (${o.clears} of ${o.clears_all} clears play it).`} Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s${e.rotation.clear_gcd ? `, clears' ${e.rotation.clear_gcd.toFixed(2)} s` : ""}. · marks an oGCD; red: not in the other opener.`,
           () => body(), () => tableOf(["Skill", "Clears' casts", "Theirs", "Clears' first", "Their first"],
@@ -1002,10 +1042,10 @@ function playerPage(day, group, name) {
       : c.ours > c.clears * 1.1 && c.cost == null ? "more, uncosted" : "–";
     app.append(heading("h2", "Rotation", "Simple rotation mistakes against clearers on the job, measured over the same stretch of each pull (0:00 until they died or the pull was lost) so mechanics that cost everyone time cancel out; 0:00–0:55 is compared with clears that move through Paradeigma I. Cost is the damage the difference is worth, from their own hits. GCD gaps are split by what filled them; burst windows count GCDs started inside their own damage buffs."),
       el("div", { class: "grid wide" }, ...rotEntries.map(e => {
-        const r = e.rotation, costly = r.checks.filter(c => c.cost > 1).slice(0, 6);
-        return card(`${JOB[e.job] || e.job} rotation`, `${r.pulls} pulls, ${r.alive_min.toFixed(0)} min alive; against ${r.clears} clearers. Usual GCD ${r.gcd ? r.gcd.toFixed(2) + " s" : "–"}.`,
+        const r = e.rotation, costly = r.checks.filter(c => c.cost > 1).slice(0, 6), g = rotGain(r);
+        return card(gainTitle(`${JOB[e.job] || e.job} rotation`, g), `${r.pulls} pulls, ${r.alive_min.toFixed(0)} min alive; against ${r.clears} clearers. Usual GCD ${r.gcd ? r.gcd.toFixed(2) + " s" : "–"}.${gainNote(g, "all costed checks")}`,
           costly.length ? hbarChart(costly.map(c => ({ label: c.label, value: c.cost })), { fmt: v => `${num(Math.round(v))} DPS` })
-            : el("div", { class: "empty" }, "Nothing they do notably more often than the clearers."),
+            : () => el("div", { class: "empty" }, "Nothing they do notably more often than the clearers."),
           () => tableOf(["Check", "Them", "Clearers", "Cost"], r.checks.map(c => [c.label, rate(c, c.ours), rate(c, c.clears), costText(c)])));
       })));
   }
@@ -1014,10 +1054,10 @@ function playerPage(day, group, name) {
   if (abEntries.length) {
     app.append(heading("h2", "Abilities", "Casts per minute of every damaging skill against clearers on the job, over the same stretch of each pull as the rotation checks (0:00–0:55 against clears that move through Paradeigma I). GCD skills are compared at the player's own GCD speed (a slower GCD from gear fits fewer casts, which is no mistake). Worth is the damage the difference in casts comes to, at their own average damage per cast (DoT ticks included); positive means fewer casts than the clearers. It overlaps with the GCD gaps above: those say when time was lost, this says which casts it cost."),
       el("div", { class: "grid wide" }, ...abEntries.map(e => {
-        const A = e.rotation.abilities, short = A.filter(a => a.worth > 1).slice(0, 8);
-        return card(`${JOB[e.job] || e.job} casts against clearers`, `Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s, clearers' ${e.rotation.clear_gcd ? e.rotation.clear_gcd.toFixed(2) : "–"} s; GCD skills compared at their speed.`,
+        const A = e.rotation.abilities, short = A.filter(a => a.worth > 1).slice(0, 8), g = abGain(e.rotation);
+        return card(gainTitle(`${JOB[e.job] || e.job} casts against clearers`, g), `Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s, clearers' ${e.rotation.clear_gcd ? e.rotation.clear_gcd.toFixed(2) : "–"} s; GCD skills compared at their speed.${gainNote(g, "worth of every skill, extra casts offsetting missing ones")}`,
           short.length ? hbarChart(short.map(a => ({ label: `${a.name} ${a.ours.toFixed(1)} vs ${a.clears.toFixed(1)}/min`, value: a.worth })), { fmt: v => `${num(Math.round(v))} DPS` })
-            : el("div", { class: "empty" }, "They cast every skill at least as often as the clearers."),
+            : () => el("div", { class: "empty" }, "They cast every skill at least as often as the clearers."),
           () => tableOf(["Skill", "", "Them /min", "Clearers /min", "Worth"], A.map(a => [a.name, a.gcd ? "GCD" : "oGCD", a.ours.toFixed(2), a.clears.toFixed(2),
             a.worth == null ? "–" : `${a.worth >= 0 ? "" : "−"}${num(Math.abs(Math.round(a.worth)))} DPS`]), 2));
       })));
