@@ -585,5 +585,1363 @@
     "fit_r": 0.97
    }
   ]
- }
+ },
+ "windows": [
+  {
+   "name": "Opener & Paradeigma I",
+   "start": 0.0,
+   "end": 55.4,
+   "pools": {
+    "peer": {
+     "jobs": {
+      "Astrologian": {
+       "ndps": 6221,
+       "uptime": 95.69,
+       "players": 5
+      },
+      "Warrior": {
+       "ndps": 8994,
+       "uptime": 94.93,
+       "players": 5
+      },
+      "Sage": {
+       "ndps": 7651,
+       "uptime": 92.29,
+       "players": 2
+      },
+      "BlackMage": {
+       "ndps": 14207,
+       "uptime": 95.64,
+       "players": 5
+      },
+      "Reaper": {
+       "ndps": 11358,
+       "uptime": 96.5,
+       "players": 1
+      },
+      "Ninja": {
+       "ndps": 12845,
+       "uptime": 94.46,
+       "players": 5
+      },
+      "Dancer": {
+       "ndps": 11390,
+       "uptime": 96.4,
+       "players": 7
+      },
+      "Paladin": {
+       "ndps": 8616,
+       "uptime": 96.77,
+       "players": 5
+      },
+      "Scholar": {
+       "ndps": 6600,
+       "uptime": 93.52,
+       "players": 6
+      },
+      "WhiteMage": {
+       "ndps": 7181,
+       "uptime": 92.92,
+       "players": 1
+      },
+      "DarkKnight": {
+       "ndps": 9555,
+       "uptime": 95.12,
+       "players": 5
+      },
+      "Pictomancer": {
+       "ndps": 12944,
+       "uptime": 96.22,
+       "players": 1
+      },
+      "Dragoon": {
+       "ndps": 12757,
+       "uptime": 93.64,
+       "players": 1
+      },
+      "Samurai": {
+       "ndps": 14561,
+       "uptime": 94.91,
+       "players": 2
+      },
+      "Monk": {
+       "ndps": 13656,
+       "uptime": 95.64,
+       "players": 4
+      },
+      "Viper": {
+       "ndps": 12360,
+       "uptime": 95.16,
+       "players": 3
+      },
+      "RedMage": {
+       "ndps": 11550,
+       "uptime": 95.81,
+       "players": 1
+      },
+      "Gunbreaker": {
+       "ndps": 8664,
+       "uptime": 96.41,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Healer": 94.08,
+      "Tank": 95.66,
+      "Caster": 95.75,
+      "Melee": 95.02,
+      "Ranged": 96.4
+     }
+    },
+    "fast": {
+     "jobs": {
+      "Astrologian": {
+       "ndps": 6727,
+       "uptime": 95.28,
+       "players": 4
+      },
+      "BlackMage": {
+       "ndps": 15616,
+       "uptime": 94.9,
+       "players": 1
+      },
+      "Warrior": {
+       "ndps": 10136,
+       "uptime": 96.41,
+       "players": 6
+      },
+      "Dancer": {
+       "ndps": 12575,
+       "uptime": 96.14,
+       "players": 8
+      },
+      "Paladin": {
+       "ndps": 9665,
+       "uptime": 97.44,
+       "players": 5
+      },
+      "Reaper": {
+       "ndps": 14220,
+       "uptime": 96.82,
+       "players": 5
+      },
+      "Ninja": {
+       "ndps": 15070,
+       "uptime": 94.55,
+       "players": 2
+      },
+      "Sage": {
+       "ndps": 8794,
+       "uptime": 94.83,
+       "players": 4
+      },
+      "WhiteMage": {
+       "ndps": 7930,
+       "uptime": 94.04,
+       "players": 3
+      },
+      "Scholar": {
+       "ndps": 8026,
+       "uptime": 95.62,
+       "players": 5
+      },
+      "Summoner": {
+       "ndps": 14259,
+       "uptime": 95.89,
+       "players": 3
+      },
+      "Viper": {
+       "ndps": 14563,
+       "uptime": 94.15,
+       "players": 3
+      },
+      "Samurai": {
+       "ndps": 17279,
+       "uptime": 95.82,
+       "players": 2
+      },
+      "Machinist": {
+       "ndps": 14644,
+       "uptime": 96.85,
+       "players": 2
+      },
+      "RedMage": {
+       "ndps": 12593,
+       "uptime": 94.95,
+       "players": 4
+      },
+      "DarkKnight": {
+       "ndps": 10926,
+       "uptime": 95.37,
+       "players": 5
+      },
+      "Dragoon": {
+       "ndps": 15859,
+       "uptime": 96.95,
+       "players": 2
+      },
+      "Gunbreaker": {
+       "ndps": 10049,
+       "uptime": 93.51,
+       "players": 3
+      },
+      "Monk": {
+       "ndps": 14335,
+       "uptime": 96.11,
+       "players": 3
+      },
+      "Pictomancer": {
+       "ndps": 15315,
+       "uptime": 92.16,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Healer": 95.04,
+      "Caster": 94.95,
+      "Tank": 95.95,
+      "Ranged": 96.28,
+      "Melee": 95.85
+     }
+    }
+   }
+  },
+  {
+   "name": "Paradeigma II",
+   "start": 55.4,
+   "end": 112.4,
+   "pools": {
+    "peer": {
+     "jobs": {
+      "Astrologian": {
+       "ndps": 5866,
+       "uptime": 94.67,
+       "players": 5
+      },
+      "Warrior": {
+       "ndps": 7988,
+       "uptime": 97.23,
+       "players": 5
+      },
+      "Sage": {
+       "ndps": 7304,
+       "uptime": 96.74,
+       "players": 2
+      },
+      "BlackMage": {
+       "ndps": 12536,
+       "uptime": 93.86,
+       "players": 5
+      },
+      "Reaper": {
+       "ndps": 10552,
+       "uptime": 95.71,
+       "players": 1
+      },
+      "Ninja": {
+       "ndps": 11381,
+       "uptime": 97.18,
+       "players": 5
+      },
+      "Dancer": {
+       "ndps": 7941,
+       "uptime": 97.02,
+       "players": 7
+      },
+      "Paladin": {
+       "ndps": 8425,
+       "uptime": 97.04,
+       "players": 5
+      },
+      "Scholar": {
+       "ndps": 5881,
+       "uptime": 94.81,
+       "players": 6
+      },
+      "WhiteMage": {
+       "ndps": 6411,
+       "uptime": 96.5,
+       "players": 1
+      },
+      "DarkKnight": {
+       "ndps": 6401,
+       "uptime": 97.12,
+       "players": 5
+      },
+      "Pictomancer": {
+       "ndps": 12192,
+       "uptime": 95.8,
+       "players": 1
+      },
+      "Dragoon": {
+       "ndps": 11819,
+       "uptime": 98.86,
+       "players": 1
+      },
+      "Samurai": {
+       "ndps": 11945,
+       "uptime": 96.82,
+       "players": 2
+      },
+      "Monk": {
+       "ndps": 11661,
+       "uptime": 97.9,
+       "players": 4
+      },
+      "Viper": {
+       "ndps": 11789,
+       "uptime": 96.97,
+       "players": 3
+      },
+      "RedMage": {
+       "ndps": 10150,
+       "uptime": 95.55,
+       "players": 1
+      },
+      "Gunbreaker": {
+       "ndps": 8051,
+       "uptime": 94.71,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Healer": 95.16,
+      "Tank": 96.98,
+      "Caster": 94.38,
+      "Melee": 97.29,
+      "Ranged": 97.02
+     }
+    },
+    "fast": {
+     "jobs": {
+      "BlackMage": {
+       "ndps": 13414,
+       "uptime": 94.29,
+       "players": 1
+      },
+      "Astrologian": {
+       "ndps": 6281,
+       "uptime": 95.18,
+       "players": 4
+      },
+      "Warrior": {
+       "ndps": 9143,
+       "uptime": 97.38,
+       "players": 6
+      },
+      "Dancer": {
+       "ndps": 9009,
+       "uptime": 96.4,
+       "players": 8
+      },
+      "Paladin": {
+       "ndps": 9218,
+       "uptime": 97.13,
+       "players": 5
+      },
+      "Reaper": {
+       "ndps": 11483,
+       "uptime": 96.44,
+       "players": 5
+      },
+      "Ninja": {
+       "ndps": 12248,
+       "uptime": 96.22,
+       "players": 2
+      },
+      "Sage": {
+       "ndps": 8082,
+       "uptime": 93.78,
+       "players": 4
+      },
+      "WhiteMage": {
+       "ndps": 7835,
+       "uptime": 92.39,
+       "players": 3
+      },
+      "Scholar": {
+       "ndps": 6889,
+       "uptime": 94.79,
+       "players": 5
+      },
+      "Summoner": {
+       "ndps": 13224,
+       "uptime": 94.35,
+       "players": 3
+      },
+      "Viper": {
+       "ndps": 15868,
+       "uptime": 98.48,
+       "players": 3
+      },
+      "Samurai": {
+       "ndps": 13552,
+       "uptime": 96.17,
+       "players": 2
+      },
+      "Machinist": {
+       "ndps": 13156,
+       "uptime": 97.28,
+       "players": 2
+      },
+      "RedMage": {
+       "ndps": 10632,
+       "uptime": 95.16,
+       "players": 4
+      },
+      "DarkKnight": {
+       "ndps": 7862,
+       "uptime": 97.45,
+       "players": 5
+      },
+      "Dragoon": {
+       "ndps": 14215,
+       "uptime": 96.5,
+       "players": 2
+      },
+      "Gunbreaker": {
+       "ndps": 10004,
+       "uptime": 97.19,
+       "players": 3
+      },
+      "Monk": {
+       "ndps": 11678,
+       "uptime": 96.67,
+       "players": 3
+      },
+      "Pictomancer": {
+       "ndps": 13872,
+       "uptime": 91.68,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Caster": 94.4,
+      "Healer": 94.19,
+      "Tank": 97.3,
+      "Ranged": 96.58,
+      "Melee": 96.79
+     }
+    }
+   }
+  },
+  {
+   "name": "Superchain I & Dialogos",
+   "start": 112.4,
+   "end": 193.9,
+   "pools": {
+    "peer": {
+     "jobs": {
+      "Astrologian": {
+       "ndps": 5758,
+       "uptime": 96.75,
+       "players": 5
+      },
+      "Warrior": {
+       "ndps": 7795,
+       "uptime": 97.35,
+       "players": 5
+      },
+      "Sage": {
+       "ndps": 6374,
+       "uptime": 95.41,
+       "players": 2
+      },
+      "BlackMage": {
+       "ndps": 13903,
+       "uptime": 96.74,
+       "players": 5
+      },
+      "Reaper": {
+       "ndps": 14391,
+       "uptime": 98.92,
+       "players": 1
+      },
+      "Ninja": {
+       "ndps": 11531,
+       "uptime": 98.99,
+       "players": 5
+      },
+      "Dancer": {
+       "ndps": 10161,
+       "uptime": 97.44,
+       "players": 7
+      },
+      "Paladin": {
+       "ndps": 8746,
+       "uptime": 99.08,
+       "players": 5
+      },
+      "Scholar": {
+       "ndps": 5480,
+       "uptime": 94.95,
+       "players": 6
+      },
+      "WhiteMage": {
+       "ndps": 6012,
+       "uptime": 94.96,
+       "players": 1
+      },
+      "DarkKnight": {
+       "ndps": 7821,
+       "uptime": 98.34,
+       "players": 5
+      },
+      "Pictomancer": {
+       "ndps": 13544,
+       "uptime": 94.03,
+       "players": 1
+      },
+      "Dragoon": {
+       "ndps": 11812,
+       "uptime": 97.59,
+       "players": 1
+      },
+      "Samurai": {
+       "ndps": 14260,
+       "uptime": 98.73,
+       "players": 2
+      },
+      "Monk": {
+       "ndps": 12530,
+       "uptime": 98.98,
+       "players": 4
+      },
+      "Viper": {
+       "ndps": 13171,
+       "uptime": 98.82,
+       "players": 3
+      },
+      "RedMage": {
+       "ndps": 12044,
+       "uptime": 97.73,
+       "players": 1
+      },
+      "Gunbreaker": {
+       "ndps": 7691,
+       "uptime": 98.69,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Healer": 95.66,
+      "Tank": 98.29,
+      "Caster": 96.5,
+      "Melee": 98.83,
+      "Ranged": 97.44
+     }
+    },
+    "fast": {
+     "jobs": {
+      "Astrologian": {
+       "ndps": 6133,
+       "uptime": 96.27,
+       "players": 4
+      },
+      "BlackMage": {
+       "ndps": 13303,
+       "uptime": 98.01,
+       "players": 1
+      },
+      "Warrior": {
+       "ndps": 9151,
+       "uptime": 97.31,
+       "players": 6
+      },
+      "Dancer": {
+       "ndps": 11318,
+       "uptime": 97.85,
+       "players": 8
+      },
+      "Paladin": {
+       "ndps": 9194,
+       "uptime": 98.56,
+       "players": 5
+      },
+      "Ninja": {
+       "ndps": 13537,
+       "uptime": 99.03,
+       "players": 2
+      },
+      "Reaper": {
+       "ndps": 13832,
+       "uptime": 98.28,
+       "players": 5
+      },
+      "Sage": {
+       "ndps": 7866,
+       "uptime": 97.25,
+       "players": 4
+      },
+      "WhiteMage": {
+       "ndps": 6915,
+       "uptime": 87.57,
+       "players": 3
+      },
+      "Scholar": {
+       "ndps": 6874,
+       "uptime": 97.31,
+       "players": 5
+      },
+      "Summoner": {
+       "ndps": 13949,
+       "uptime": 97.67,
+       "players": 3
+      },
+      "Viper": {
+       "ndps": 15145,
+       "uptime": 97.35,
+       "players": 3
+      },
+      "Samurai": {
+       "ndps": 16527,
+       "uptime": 97.68,
+       "players": 2
+      },
+      "Machinist": {
+       "ndps": 14840,
+       "uptime": 97.47,
+       "players": 2
+      },
+      "RedMage": {
+       "ndps": 13004,
+       "uptime": 98.9,
+       "players": 4
+      },
+      "DarkKnight": {
+       "ndps": 9613,
+       "uptime": 98.77,
+       "players": 5
+      },
+      "Dragoon": {
+       "ndps": 15027,
+       "uptime": 98.28,
+       "players": 2
+      },
+      "Gunbreaker": {
+       "ndps": 9139,
+       "uptime": 98.44,
+       "players": 3
+      },
+      "Monk": {
+       "ndps": 13076,
+       "uptime": 98.47,
+       "players": 3
+      },
+      "Pictomancer": {
+       "ndps": 15577,
+       "uptime": 92.69,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Healer": 95.21,
+      "Caster": 97.7,
+      "Tank": 98.2,
+      "Ranged": 97.77,
+      "Melee": 98.17
+     }
+    }
+   }
+  },
+  {
+   "name": "Paradeigma III & Ultima Blade",
+   "start": 193.9,
+   "end": 284.0,
+   "pools": {
+    "peer": {
+     "jobs": {
+      "Astrologian": {
+       "ndps": 5330,
+       "uptime": 87.25,
+       "players": 5
+      },
+      "Warrior": {
+       "ndps": 7714,
+       "uptime": 92.14,
+       "players": 5
+      },
+      "BlackMage": {
+       "ndps": 14492,
+       "uptime": 94.72,
+       "players": 5
+      },
+      "Dancer": {
+       "ndps": 9989,
+       "uptime": 96.4,
+       "players": 7
+      },
+      "Paladin": {
+       "ndps": 8326,
+       "uptime": 94.25,
+       "players": 5
+      },
+      "Scholar": {
+       "ndps": 5753,
+       "uptime": 94.39,
+       "players": 6
+      },
+      "WhiteMage": {
+       "ndps": 6459,
+       "uptime": 92.27,
+       "players": 1
+      },
+      "DarkKnight": {
+       "ndps": 7578,
+       "uptime": 95.43,
+       "players": 5
+      },
+      "Pictomancer": {
+       "ndps": 13253,
+       "uptime": 93.86,
+       "players": 1
+      },
+      "Dragoon": {
+       "ndps": 10837,
+       "uptime": 97.29,
+       "players": 1
+      },
+      "Samurai": {
+       "ndps": 12967,
+       "uptime": 95.48,
+       "players": 2
+      },
+      "Monk": {
+       "ndps": 12894,
+       "uptime": 95.75,
+       "players": 4
+      },
+      "Ninja": {
+       "ndps": 12129,
+       "uptime": 95.51,
+       "players": 4
+      },
+      "Viper": {
+       "ndps": 12710,
+       "uptime": 95.83,
+       "players": 3
+      },
+      "RedMage": {
+       "ndps": 11977,
+       "uptime": 94.79,
+       "players": 1
+      },
+      "Sage": {
+       "ndps": 6883,
+       "uptime": 95.09,
+       "players": 1
+      },
+      "Gunbreaker": {
+       "ndps": 8412,
+       "uptime": 96.44,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Healer": 91.53,
+      "Tank": 94.1,
+      "Caster": 94.61,
+      "Ranged": 96.4,
+      "Melee": 95.77
+     }
+    },
+    "fast": {
+     "jobs": {
+      "Astrologian": {
+       "ndps": 6216,
+       "uptime": 93.74,
+       "players": 4
+      },
+      "BlackMage": {
+       "ndps": 14843,
+       "uptime": 92.78,
+       "players": 1
+      },
+      "Warrior": {
+       "ndps": 8856,
+       "uptime": 95.57,
+       "players": 6
+      },
+      "Dancer": {
+       "ndps": 11172,
+       "uptime": 95.41,
+       "players": 8
+      },
+      "Paladin": {
+       "ndps": 9339,
+       "uptime": 95.39,
+       "players": 5
+      },
+      "Reaper": {
+       "ndps": 12734,
+       "uptime": 94.8,
+       "players": 5
+      },
+      "Ninja": {
+       "ndps": 14441,
+       "uptime": 95.46,
+       "players": 2
+      },
+      "Sage": {
+       "ndps": 7697,
+       "uptime": 92.68,
+       "players": 4
+      },
+      "WhiteMage": {
+       "ndps": 7537,
+       "uptime": 88.14,
+       "players": 3
+      },
+      "Scholar": {
+       "ndps": 7015,
+       "uptime": 94.45,
+       "players": 5
+      },
+      "Summoner": {
+       "ndps": 12422,
+       "uptime": 94.13,
+       "players": 3
+      },
+      "Viper": {
+       "ndps": 15421,
+       "uptime": 96.72,
+       "players": 3
+      },
+      "Machinist": {
+       "ndps": 14024,
+       "uptime": 96.16,
+       "players": 2
+      },
+      "Samurai": {
+       "ndps": 16556,
+       "uptime": 95.58,
+       "players": 2
+      },
+      "RedMage": {
+       "ndps": 12895,
+       "uptime": 94.47,
+       "players": 4
+      },
+      "DarkKnight": {
+       "ndps": 9189,
+       "uptime": 95.9,
+       "players": 5
+      },
+      "Dragoon": {
+       "ndps": 15020,
+       "uptime": 96.42,
+       "players": 2
+      },
+      "Gunbreaker": {
+       "ndps": 9762,
+       "uptime": 96.73,
+       "players": 3
+      },
+      "Monk": {
+       "ndps": 13659,
+       "uptime": 96.6,
+       "players": 3
+      },
+      "Pictomancer": {
+       "ndps": 15844,
+       "uptime": 95.81,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Healer": 92.65,
+      "Caster": 94.32,
+      "Tank": 95.79,
+      "Ranged": 95.56,
+      "Melee": 95.82
+     }
+    }
+   }
+  },
+  {
+   "name": "Palladion & Theos's Ultima",
+   "start": 284.0,
+   "end": 349.0,
+   "pools": {
+    "peer": {
+     "jobs": {
+      "Warrior": {
+       "ndps": 4156,
+       "uptime": 31.66,
+       "players": 5
+      },
+      "BlackMage": {
+       "ndps": 3919,
+       "uptime": 28.26,
+       "players": 4
+      },
+      "Dancer": {
+       "ndps": 3043,
+       "uptime": 29.62,
+       "players": 7
+      },
+      "Paladin": {
+       "ndps": 4136,
+       "uptime": 31.41,
+       "players": 5
+      },
+      "Scholar": {
+       "ndps": 2005,
+       "uptime": 25.94,
+       "players": 6
+      },
+      "WhiteMage": {
+       "ndps": 2978,
+       "uptime": 29.67,
+       "players": 1
+      },
+      "DarkKnight": {
+       "ndps": 2785,
+       "uptime": 31.96,
+       "players": 5
+      },
+      "Pictomancer": {
+       "ndps": 4376,
+       "uptime": 30.5,
+       "players": 1
+      },
+      "Dragoon": {
+       "ndps": 5499,
+       "uptime": 30.36,
+       "players": 1
+      },
+      "Samurai": {
+       "ndps": 4681,
+       "uptime": 31.94,
+       "players": 2
+      },
+      "Monk": {
+       "ndps": 5062,
+       "uptime": 33.32,
+       "players": 4
+      },
+      "Ninja": {
+       "ndps": 5220,
+       "uptime": 30.27,
+       "players": 4
+      },
+      "Astrologian": {
+       "ndps": 1719,
+       "uptime": 25.22,
+       "players": 4
+      },
+      "Viper": {
+       "ndps": 4543,
+       "uptime": 33.03,
+       "players": 3
+      },
+      "RedMage": {
+       "ndps": 3682,
+       "uptime": 29.79,
+       "players": 1
+      },
+      "Sage": {
+       "ndps": 2495,
+       "uptime": 27.0,
+       "players": 1
+      },
+      "Gunbreaker": {
+       "ndps": 4159,
+       "uptime": 32.76,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Tank": 31.75,
+      "Caster": 28.89,
+      "Ranged": 29.62,
+      "Healer": 26.1,
+      "Melee": 31.98
+     }
+    },
+    "fast": {
+     "jobs": {
+      "BlackMage": {
+       "ndps": 3630,
+       "uptime": 32.52,
+       "players": 1
+      },
+      "Astrologian": {
+       "ndps": 2125,
+       "uptime": 26.36,
+       "players": 4
+      },
+      "Warrior": {
+       "ndps": 4597,
+       "uptime": 32.51,
+       "players": 6
+      },
+      "Dancer": {
+       "ndps": 4113,
+       "uptime": 29.78,
+       "players": 8
+      },
+      "Paladin": {
+       "ndps": 4617,
+       "uptime": 32.65,
+       "players": 5
+      },
+      "Reaper": {
+       "ndps": 4916,
+       "uptime": 31.47,
+       "players": 5
+      },
+      "Ninja": {
+       "ndps": 5629,
+       "uptime": 33.67,
+       "players": 2
+      },
+      "Sage": {
+       "ndps": 3045,
+       "uptime": 28.61,
+       "players": 4
+      },
+      "WhiteMage": {
+       "ndps": 2521,
+       "uptime": 23.4,
+       "players": 3
+      },
+      "Summoner": {
+       "ndps": 5303,
+       "uptime": 25.42,
+       "players": 3
+      },
+      "Viper": {
+       "ndps": 5216,
+       "uptime": 32.52,
+       "players": 3
+      },
+      "Samurai": {
+       "ndps": 4892,
+       "uptime": 32.07,
+       "players": 2
+      },
+      "Machinist": {
+       "ndps": 5879,
+       "uptime": 31.96,
+       "players": 2
+      },
+      "RedMage": {
+       "ndps": 4415,
+       "uptime": 30.67,
+       "players": 4
+      },
+      "DarkKnight": {
+       "ndps": 3847,
+       "uptime": 32.25,
+       "players": 5
+      },
+      "Scholar": {
+       "ndps": 2269,
+       "uptime": 27.27,
+       "players": 4
+      },
+      "Dragoon": {
+       "ndps": 7110,
+       "uptime": 30.88,
+       "players": 2
+      },
+      "Gunbreaker": {
+       "ndps": 3961,
+       "uptime": 31.96,
+       "players": 3
+      },
+      "Monk": {
+       "ndps": 4866,
+       "uptime": 33.17,
+       "players": 3
+      },
+      "Pictomancer": {
+       "ndps": 4807,
+       "uptime": 29.35,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Caster": 28.98,
+      "Healer": 26.61,
+      "Tank": 32.39,
+      "Ranged": 30.22,
+      "Melee": 32.22
+     }
+    }
+   }
+  },
+  {
+   "name": "Superchain IIA",
+   "start": 349.0,
+   "end": 399.1,
+   "pools": {
+    "peer": {
+     "jobs": {
+      "Warrior": {
+       "ndps": 7603,
+       "uptime": 97.05,
+       "players": 5
+      },
+      "BlackMage": {
+       "ndps": 14527,
+       "uptime": 95.44,
+       "players": 4
+      },
+      "Dancer": {
+       "ndps": 10486,
+       "uptime": 96.77,
+       "players": 7
+      },
+      "Paladin": {
+       "ndps": 7643,
+       "uptime": 96.56,
+       "players": 4
+      },
+      "Scholar": {
+       "ndps": 4338,
+       "uptime": 85.14,
+       "players": 6
+      },
+      "WhiteMage": {
+       "ndps": 4755,
+       "uptime": 90.3,
+       "players": 1
+      },
+      "DarkKnight": {
+       "ndps": 8233,
+       "uptime": 97.82,
+       "players": 5
+      },
+      "Pictomancer": {
+       "ndps": 16121,
+       "uptime": 94.23,
+       "players": 1
+      },
+      "Dragoon": {
+       "ndps": 9420,
+       "uptime": 96.02,
+       "players": 1
+      },
+      "Samurai": {
+       "ndps": 14587,
+       "uptime": 97.49,
+       "players": 2
+      },
+      "Monk": {
+       "ndps": 12841,
+       "uptime": 97.93,
+       "players": 4
+      },
+      "Ninja": {
+       "ndps": 10508,
+       "uptime": 97.48,
+       "players": 2
+      },
+      "Astrologian": {
+       "ndps": 5047,
+       "uptime": 92.07,
+       "players": 4
+      },
+      "Viper": {
+       "ndps": 12690,
+       "uptime": 96.85,
+       "players": 3
+      },
+      "RedMage": {
+       "ndps": 12734,
+       "uptime": 97.02,
+       "players": 1
+      },
+      "Sage": {
+       "ndps": 6169,
+       "uptime": 82.77,
+       "players": 1
+      },
+      "Gunbreaker": {
+       "ndps": 8126,
+       "uptime": 96.57,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Tank": 97.14,
+      "Caster": 95.5,
+      "Ranged": 96.77,
+      "Healer": 87.68,
+      "Melee": 97.35
+     }
+    },
+    "fast": {
+     "jobs": {
+      "Astrologian": {
+       "ndps": 5995,
+       "uptime": 88.69,
+       "players": 4
+      },
+      "BlackMage": {
+       "ndps": 15345,
+       "uptime": 91.07,
+       "players": 1
+      },
+      "Warrior": {
+       "ndps": 8679,
+       "uptime": 96.6,
+       "players": 5
+      },
+      "Dancer": {
+       "ndps": 12259,
+       "uptime": 96.5,
+       "players": 4
+      },
+      "Paladin": {
+       "ndps": 8313,
+       "uptime": 96.52,
+       "players": 4
+      },
+      "Ninja": {
+       "ndps": 11704,
+       "uptime": 98.53,
+       "players": 1
+      },
+      "Reaper": {
+       "ndps": 13405,
+       "uptime": 98.09,
+       "players": 2
+      },
+      "Sage": {
+       "ndps": 6374,
+       "uptime": 75.86,
+       "players": 2
+      },
+      "DarkKnight": {
+       "ndps": 10083,
+       "uptime": 97.54,
+       "players": 3
+      },
+      "Summoner": {
+       "ndps": 10427,
+       "uptime": 76.52,
+       "players": 2
+      },
+      "Dragoon": {
+       "ndps": 14127,
+       "uptime": 96.67,
+       "players": 1
+      },
+      "RedMage": {
+       "ndps": 12899,
+       "uptime": 95.67,
+       "players": 3
+      },
+      "Machinist": {
+       "ndps": 13049,
+       "uptime": 93.95,
+       "players": 1
+      },
+      "Scholar": {
+       "ndps": 5871,
+       "uptime": 92.19,
+       "players": 3
+      },
+      "WhiteMage": {
+       "ndps": 6141,
+       "uptime": 37.15,
+       "players": 1
+      },
+      "Gunbreaker": {
+       "ndps": 8367,
+       "uptime": 97.28,
+       "players": 1
+      },
+      "Monk": {
+       "ndps": 13405,
+       "uptime": 95.05,
+       "players": 3
+      },
+      "Viper": {
+       "ndps": 14030,
+       "uptime": 97.19,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Healer": 82.02,
+      "Caster": 88.52,
+      "Tank": 96.84,
+      "Ranged": 95.99,
+      "Melee": 96.71
+     }
+    }
+   }
+  },
+  {
+   "name": "Superchain IIB",
+   "start": 399.1,
+   "end": 458.0,
+   "pools": {
+    "peer": {
+     "jobs": {
+      "Warrior": {
+       "ndps": 8110,
+       "uptime": 94.71,
+       "players": 3
+      },
+      "BlackMage": {
+       "ndps": 13838,
+       "uptime": 95.02,
+       "players": 2
+      },
+      "Paladin": {
+       "ndps": 7772,
+       "uptime": 97.24,
+       "players": 2
+      },
+      "Dancer": {
+       "ndps": 7713,
+       "uptime": 94.18,
+       "players": 1
+      },
+      "Monk": {
+       "ndps": 12955,
+       "uptime": 98.19,
+       "players": 1
+      },
+      "Scholar": {
+       "ndps": 3413,
+       "uptime": 51.56,
+       "players": 2
+      },
+      "DarkKnight": {
+       "ndps": 6080,
+       "uptime": 97.02,
+       "players": 1
+      },
+      "Astrologian": {
+       "ndps": 4274,
+       "uptime": 85.82,
+       "players": 2
+      },
+      "RedMage": {
+       "ndps": 8410,
+       "uptime": 97.72,
+       "players": 1
+      }
+     },
+     "role_uptime": {
+      "Tank": 95.94,
+      "Caster": 95.92,
+      "Ranged": 94.18,
+      "Melee": 98.19,
+      "Healer": 68.69
+     }
+    },
+    "fast": {
+     "jobs": {},
+     "role_uptime": {}
+    }
+   }
+  }
+ ]
 }

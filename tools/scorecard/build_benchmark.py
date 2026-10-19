@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fflogs
-from scorecard import ROLE, P1, SAVAGE
+from scorecard import ROLE, P1, SAVAGE, WINDOWS
 
 HERE = Path(__file__).resolve().parent
 CACHE = fflogs.CACHE / "benchmark"
@@ -148,6 +148,59 @@ def checkpoints(kills):
     return dict(boss_hp=round(st.median(r[1] for r in rows)), enrage_s=ENRAGE_S, kills=len(rows), mechanics=out)
 
 
+def kill_phases(k):
+    """Per player and phase window of one kill: pot-stripped nDPS and GCD uptime. Only phases the kill lived through,
+    and only players alive through the whole phase."""
+    def get():
+        f = fflogs.gql('query($c:String!){reportData{report(code:$c){fights(fightIDs:[%d]){startTime endTime}}}}' % k["fight"],
+                       {"c": k["code"]})["reportData"]["report"]["fights"][0]
+        s, e = f["startTime"], f["endTime"]
+        wins = [(n, a, b) for n, a, b in WINDOWS if s + b * 1000 <= e]
+        tabs = fflogs.tables(k["code"], [(s + int(a * 1000), s + int(b * 1000)) for _, a, b in wins])
+        pots = fflogs.tables(k["code"], [(s - 30000, e)], "Buffs", extra=",abilityID:1000049")[0]
+        deaths = fflogs.tables(k["code"], [(s, e)], "Deaths")[0]
+        return dict(start=s, wins=[dict(name=n, a=a, b=b, entries=t["entries"]) for (n, a, b), t in zip(wins, tabs)],
+                    pots=pots.get("auras", []), deaths=[dict(name=x["name"], t=(x["timestamp"] - s) / 1000) for x in deaths.get("entries", [])])
+    d = cached(f"phases_{k['code']}_{k['fight']}", get)
+    died = {}
+    for x in d["deaths"]: died[x["name"]] = min(died.get(x["name"], 1e9), x["t"])
+    bands = collections.defaultdict(list)
+    for a in d["pots"]:
+        if a.get("type") in ROLE: bands[a["name"]] += [((b["startTime"] - d["start"]) / 1000, (b["endTime"] - d["start"]) / 1000) for b in a.get("bands", [])]
+    out = []
+    for w in d["wins"]:
+        span = w["b"] - w["a"]
+        for y in w["entries"]:
+            if y["type"] not in ROLE or died.get(y["name"], 1e9) <= w["b"]: continue
+            kind = "tank" if ROLE[y["type"]] == "Tank" else "dps"
+            overlap = sum(max(0, min(e, w["b"]) - max(s, w["a"])) for s, e in bands[y["name"]])
+            gain = overlap * (y["total"] / span) * POT[kind] / span
+            out.append(dict(window=w["name"], name=y["name"], job=y["type"], ndps=y["totalNDPS"] / span - gain, uptime=y["activeTime"] / (10 * span)))
+    return out
+
+
+def phases(kills):
+    """Clearers' nDPS and uptime per phase window, per job, for peer and fast clears."""
+    res = []
+    for name, a, b in WINDOWS:
+        entry = dict(name=name, start=a, end=b, pools={})
+        for pool in ("peer", "fast"):
+            per = collections.defaultdict(list)
+            for k in kills:
+                if (k["dur"] >= PEER_S) != (pool == "peer"): continue
+                for x in kill_phases(k):
+                    if x["window"] == name: per[(x["name"], x["job"])].append(x)
+            jobs, roles = collections.defaultdict(list), collections.defaultdict(list)
+            for (n, j), v in per.items():
+                m = dict(ndps=st.mean(x["ndps"] for x in v), uptime=st.mean(x["uptime"] for x in v))
+                jobs[j].append(m); roles[ROLE[j]].append(m["uptime"])
+            entry["pools"][pool] = dict(jobs={j: dict(ndps=round(st.mean(x["ndps"] for x in v)), uptime=round(st.mean(x["uptime"] for x in v), 2),
+                                                      players=len(v)) for j, v in jobs.items()},
+                                        role_uptime={r: round(st.mean(v), 2) for r, v in roles.items()})
+        res.append(entry)
+    return res
+
+
 def build(kills):
     res = {"built": datetime.date.today().isoformat(), "pools": {},
            "method": "Savage P1 (Athena) clears from FFLogs, level 90, no level-92+ abilities, logger main stat 3400-3560 (capped gear). "
@@ -170,6 +223,7 @@ def build(kills):
                                   jobs={j: dict(rdps=round(st.mean(x["rdps"] for x in v)), ndps=round(st.mean(x["ndps"] for x in v)),
                                                 uptime=round(st.mean(x["uptime"] for x in v), 2), players=len(v)) for j, v in jobs.items()})
     res["hp_checkpoints"] = checkpoints(kills)
+    res["windows"] = phases(kills)
     return res
 
 
@@ -178,7 +232,14 @@ def main():
     ap.add_argument("--since", default="2025-01-01"); ap.add_argument("--until", default=datetime.date.today().isoformat())
     ap.add_argument("--out", default=str(HERE / "benchmark.json"))
     ap.add_argument("--checkpoints-only", action="store_true", help="only recompute the boss HP checkpoints for the kills already in --out")
+    ap.add_argument("--windows-only", action="store_true", help="only recompute the per-phase values for the kills already in --out")
     a = ap.parse_args()
+    if a.windows_only:
+        res = json.loads(Path(a.out).read_text())
+        res["windows"] = phases(res["kills"])
+        Path(a.out).write_text(json.dumps(res, indent=1))
+        for w in res["windows"]: print(f"{w['name']:<32} peer jobs {len(w['pools']['peer']['jobs']):>2}  fast jobs {len(w['pools']['fast']['jobs']):>2}")
+        return
     if a.checkpoints_only:
         res = json.loads(Path(a.out).read_text())
         kills = [dict(k, fight=k["fight"]) for k in res["kills"]]

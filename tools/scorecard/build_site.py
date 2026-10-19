@@ -8,8 +8,7 @@
 
 Each link is one raid group's report. Reports are grouped into raid days by the date they were logged; a report
 already in the data is analysed again and keeps its group name unless --names gives a new one. New reports on a
-day get the next free G1, G2, ... in the order given. The analysis is the scorecard's (scorecard.py), so the site
-and the Discord messages always agree.
+day get the next free G1, G2, ... in the order given. The analysis itself is in scorecard.py.
 
 site/data.json holds player names and who caused which mistake, so it is git-ignored.
 
@@ -49,14 +48,18 @@ def report_entry(code, group, data, bench):
     return plain(dict(code=code, group=group, day=g["date"].date().isoformat(), start=g["date"], title=data.get("title"),
                       pulls_total=g["pulls"], kills=g["kills"], best=g["best"], longest=g["longest"], clean2=g["clean2"], party=g["party"],
                       hp=g["hp"], causes=dict(g["causes"]), wipe_causes=dict(g["wipe_causes"]), coverage=dict(g["coverage"]),
-                      light_parties=[sorted(g["lp"][0]), sorted(g["lp"][1])], players=g["players"], pulls=g["pull_rows"]))
+                      light_parties=[sorted(g["lp"][0]), sorted(g["lp"][1])], players=g["players"], pulls=g["pull_rows"],
+                      lost_total=g["lost_total"], lost_causes=g["lost_causes"], lost_unattributed=g["lost_unattributed"]))
 
 
 def benchmark_summary(bench):
     return dict(built=bench["built"], hp_checkpoints=bench["hp_checkpoints"],
                 pools={p: dict(kills=v["kills"], kill_median_s=v["kill_median_s"], party_dps_median=v["party_dps_median"],
                                role_uptime=v["role_uptime"], jobs=v["jobs"]) for p, v in bench["pools"].items()},
-                grades=dict(mistakes=S.G_MIST, wipes=S.G_WIPE, damage=S.G_DMG, uptime=S.G_UP), window_s=S.WINDOW)
+                grades=dict(mistakes=S.G_MIST, wipes=S.G_WIPE, damage=S.G_DMG, uptime=S.G_UP), window_s=S.WINDOW,
+                windows=bench.get("windows", []),
+                # seconds of kill time per 1% of boss HP, at the pace of a peer clear
+                sec_per_hp=bench["pools"]["peer"]["kill_median_s"] / 100, raise_penalty=S.RAISE_PENALTY)
 
 
 def publish(out):
