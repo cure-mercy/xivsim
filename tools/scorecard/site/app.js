@@ -301,6 +301,14 @@ const divLegend = () => [
 const phaseTip = ph => [[signed(ph.peer[0]), `vs peer clearers (${ph.peer[1]} on the job)`], ...(ph.fast ? [[signed(ph.fast[0]), "vs fast clearers"]] : []),
   [num(ph.ndps), "nDPS"], [`${ph.uptime.toFixed(1)}%`, `uptime${ph.uptime_diff != null ? ` (${ph.uptime_diff >= 0 ? "+" : "−"}${Math.abs(ph.uptime_diff).toFixed(1)} vs clearers)` : ""}`],
   [String(ph.n), "clean samples"]];
+// most clears skip Paradeigma I's movement with tank invulnerabilities; build_benchmark.py adjusts their first-window nDPS by role
+const stratNote = () => {
+  const s = (DATA.benchmark.windows[0] || {}).strategy; if (!s) return "";
+  const f = Object.entries(s.factors).filter(([, v]) => Math.abs(v - 1) >= 0.005)
+    .map(([r, v]) => `${r.toLowerCase()}s ${v >= 1 ? "+" : "−"}${Math.abs((v - 1) * 100).toFixed(1)}%`).join(", ");
+  return ` ${s.invuln} of ${s.invuln + s.moving} clears skip Paradeigma I's movement with two tank invulnerabilities and keep casting; ` +
+    `in the first phase their values are adjusted to the ${s.moving} clears that move like we do (${f}).`;
+};
 const MIN_PHASE = 2;   // clean samples a phase needs before it is compared with clearers
 const shortPhase = w => w.replace("Opener & Paradeigma I", "Opener & Para I").replace("Paradeigma", "Para").replace(" & Dialogos", "").replace(" & Ultima Blade", "").replace(" & Theos's Ultima", "");
 
@@ -505,7 +513,7 @@ function groupPage(day, group) {
   // damage per phase
   const W = b.windows.map(w => w.name);
   const allPh = r.players.map(p => ({ p, ph: Object.fromEntries((p.phases || []).map(x => [x.window, x])) }));
-  app.append(el("h2", {}, "Damage by phase"), el("p", { class: "lede" }, "nDPS in each phase against clearers on the same job (pots removed), from pulls where the player was alive and unweakened through that phase; a phase needs two such pulls. Late phases rarely have them."),
+  app.append(el("h2", {}, "Damage by phase"), el("p", { class: "lede" }, "nDPS in each phase against clearers on the same job (pots removed), from pulls where the player was alive and unweakened through that phase; a phase needs two such pulls. Late phases rarely have them." + stratNote()),
     card("Players against clearers, by phase", null,
       divHeatmap(allPh.map(x => `${x.p.name} ${JOB[x.p.job] || x.p.job}`), W.map(shortPhase), (i, j) => { const ph = allPh[i].ph[W[j]];
         return ph && ph.n >= MIN_PHASE && ph.peer ? { v: ph.peer[0], thin: ph.peer[1] < 3, tip: phaseTip(ph) } : null; }),
@@ -555,7 +563,7 @@ function playerPage(day, group, name) {
     ...entries.map(e => {
       const rows = (e.phases || []).map(ph => ({ label: ph.window, v: ph.n >= MIN_PHASE && ph.peer ? ph.peer[0] : null, thin: ph.peer && ph.peer[1] < 3,
         empty: ph.n >= MIN_PHASE ? `no ${JOB[e.job] || e.job} clearers` : ph.n ? "1 clean sample" : "no clean sample", tip: ph.n >= MIN_PHASE && ph.peer ? phaseTip(ph) : null }));
-      return card(`${JOB[e.job] || e.job} damage by phase`, "nDPS against peer clearers on the job, from pulls where they were alive through the phase.",
+      return card(`${JOB[e.job] || e.job} damage by phase`, "nDPS against peer clearers on the job, from pulls where they were alive through the phase. The first phase is compared with clears that move through Paradeigma I.",
         divergingBars(rows), () => tableOf(["Phase", "Samples", "nDPS", "vs peer", "vs fast", "Uptime", "Uptime vs clearers"],
           (e.phases || []).map(ph => [ph.window, String(ph.n), ph.n ? num(ph.ndps) : "–", ph.peer ? signed(ph.peer[0]) : "–", ph.fast ? signed(ph.fast[0]) : "–",
             ph.n ? `${ph.uptime.toFixed(1)}%` : "–", ph.uptime_diff != null ? `${ph.uptime_diff >= 0 ? "+" : "−"}${Math.abs(ph.uptime_diff).toFixed(1)}` : "–"])), divLegend());

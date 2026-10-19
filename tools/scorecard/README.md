@@ -42,6 +42,23 @@ deploy.
   Create a client at <https://www.fflogs.com/api/clients/>. Any key names ending in `_ID` and `_SECRET` work.
   The access token is cached in `.cache/token.json` until it expires.
 
+### Archived reports
+
+FFLogs archives reports after a while (in October 2026, everything logged before about July 2024). Their fight
+list stays public, but their content is only readable by an account with an FFLogs subscription, through its
+user API. To let the tools read them, register a redirect address on the API client (at
+<https://www.fflogs.com/api/clients/>, for example `http://localhost:8765/fflogs-callback`) and log in once:
+
+```
+python tools/scorecard/fflogs.py --login [--redirect http://localhost:8765/fflogs-callback]
+python tools/scorecard/fflogs.py --check      # confirms an archived report can be read
+```
+
+The login opens FFLogs' sign-in page in the browser and catches the reply on that address (authorization code
+with PKCE). The user token is saved in `.cache/user_token.json` (git-ignored) and renewed automatically when
+FFLogs gives a refresh token. From then on, a query that FFLogs refuses as archived is asked again through the
+user API; everything else keeps using the app token.
+
 ## Publishing with a passphrase
 
 GitHub Pages sites are public, so the published copy carries its data encrypted and asks for a passphrase:
@@ -169,8 +186,9 @@ differently will see players blamed wrongly for it.
 
 ## The benchmark
 
-`benchmark.json` holds what players in other groups' clears do, per job: Savage P1 clears from 2025 and 2026
-that took 5:30–7:50, played at level 90 in capped gear like ours. Level 100 runs and lower-gear runs are left
+`benchmark.json` holds what players in other groups' clears do, per job: Savage P1 clears from Dawntrail on
+(28 June 2024, patch 7.0; jobs played differently before it, so no earlier clear is ever used) that took
+5:30–7:50, played at level 90 in capped gear like ours. Level 100 runs and lower-gear runs are left
 out, tincture damage is removed, and players who died are skipped. Each job's value is the average over
 distinct players, kept separately for peer clears (7:10 or slower) and fast ones. It covers 0:00–2:00 (rDPS,
 nDPS, uptime) and every phase of the fight (nDPS, uptime; only phases a kill lived through, so Superchain IIB
@@ -185,7 +203,10 @@ The file is a snapshot. To rebuild it:
 python tools/scorecard/build_benchmark.py [--since 2025-01-01] [--until 2026-10-18] [--out FILE]
 python tools/scorecard/build_benchmark.py --checkpoints-only     # only refit the HP checkpoints, same kills
 python tools/scorecard/build_benchmark.py --windows-only         # only redo the per-phase values, same kills
+python tools/scorecard/build_benchmark.py --add --since 2024-06-28 --until 2024-12-31   # add a period's clears
 ```
+
+`--since` is never earlier than 28 June 2024. Clears in archived reports count only after `fflogs.py --login`.
 
 A full rebuild reads several thousand report pages and can use an hour or more of the API's hourly budget; it
 waits out the rate limit by itself and caches its progress in `.cache/benchmark/`, so it can be stopped and
@@ -198,7 +219,7 @@ resumed. Run `build_site.py --reanalyse` afterwards so the site picks up the new
 | `build_site.py` | The command: adds reports to the website's data (`site/data.json`); `--publish` writes the passphrase-protected copy to `stats/` |
 | `scorecard.py` | The analysis: fetching, mistakes and wipes, damage against clearers, damage lost to deaths, damage per phase |
 | `classifier.py` | Mistake attribution |
-| `fflogs.py` | FFLogs v2 client: token, rate-limit waits, paged events, batched tables |
+| `fflogs.py` | FFLogs v2 client: token, rate-limit waits, paged events, batched tables; `--login` for archived reports |
 | `benchmark.json` | Benchmark snapshot used for the damage, uptime and HP checkpoint comparisons |
 | `build_benchmark.py` | Rebuilds `benchmark.json` |
 | `encrypt_data.js` | Encrypts the data for `--publish` (Node) |
