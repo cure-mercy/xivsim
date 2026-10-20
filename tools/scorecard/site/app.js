@@ -258,14 +258,6 @@ function shareBars(rows, { refName = "", barName = "" } = {}) {
   };
 }
 
-// the mechanics a mistake label is filed under, over every report
-let MECHS_OF = null;
-const mechsOf = label => {
-  if (!MECHS_OF) { MECHS_OF = {};
-    for (const r of reports()) for (const q of r.pulls) for (const m of q.mistakes) (MECHS_OF[m.label] = MECHS_OF[m.label] || new Set()).add(m.mechanic || "other"); }
-  return [...(MECHS_OF[label] || ["other"])];
-};
-
 // ---------- practice links and focus lists ----------
 // the trainer's drills and briefs (the repository root on GitHub Pages; this site lives in stats/), open mechanics only
 const DRILLS = { "Paradeigma I": "para1", "Paradeigma II": "engrave", "Superchain I": "superchain" };
@@ -279,8 +271,6 @@ const burstName = k => k === 1 ? "opener burst" : `${2 * (k - 1)}:00 burst`;
 const checkRate = c => c.unit === "s" ? `${c.ours.toFixed(1)} s/min vs ${c.clears.toFixed(1)}` : c.unit === "times" ? `${(c.ours * 10).toFixed(1)} vs ${(c.clears * 10).toFixed(1)} per 10 min`
   : `${c.ours.toFixed(1)} vs ${c.clears.toFixed(1)} per min`;
 // label -> mechanic, from the mistakes recorded in a report's pulls
-const mechOf = r => { const m = {}; for (const q of r.pulls) for (const x of q.mistakes) m[x.label] = m[x.label] || x.mechanic;
-  for (const q of r.pulls) if (q.wipe) m[q.wipe.label] = m[q.wipe.label] || q.wipe.mechanic; return m; };
 
 function focusList(items, empty) {
   if (!items.length) return el("p", { class: "empty" }, empty);
@@ -290,19 +280,19 @@ function focusList(items, empty) {
 
 // what one player should work on, most important first
 function playerFocus(r, entries, name) {
-  const p = entries[0], mech = mechOf(r), items = [];
-  const counts = {};
-  for (const q of r.pulls) for (const x of q.mistakes) if (x.who === name) counts[x.label] = (counts[x.label] || 0) + 1;
-  const wipes = Object.entries(p.wcauses_all || {}).sort((a, c) => c[1] - a[1]);
-  for (const [label, n] of wipes.slice(0, 2)) if (n >= 2 || n / p.pulls >= 0.1)
-    items.push({ title: label, detail: `Lost ${n} pull${n > 1 ? "s" : ""} (${pct(n / p.pulls)} of theirs); ${counts[label] || n} times in all.`,
-      links: [drillLinks(mech[label]), jumpTo("Every mistake", "See their mistakes")] });
+  const p = entries[0], info = causeInfo(r), items = [], mech = c => (info[c] || {}).mech;
+  const counts = mistakeCounts(r, name);
+  const wipes = Object.entries(wipeCounts(r, name)).sort((a, c) => c[1] - a[1]);
+  for (const [cause, n] of wipes.slice(0, 2)) if (n >= 2 || n / p.pulls >= 0.1)
+    items.push({ title: cause, detail: `Lost ${n} pull${n > 1 ? "s" : ""} (${pct(n / p.pulls)} of theirs); ${counts[cause] || n} times in all.`,
+      links: [drillLinks(mech(cause)), jumpTo("Every mistake", "See their mistakes")] });
   const listed = new Set(items.map(x => x.title));
   const other = Object.entries(counts).filter(([l]) => !listed.has(l)).sort((a, c) => c[1] - a[1])[0];
   if (other && other[1] >= 3) {
-    const hp = (p.lost_caused_by || {})[other[0]];
+    const lab = (info[other[0]] || {}).label, all = (p.mcauses_all || {})[lab];   // cost is stored per label: this mechanic's share of it
+    const hp = all ? ((p.lost_caused_by || {})[lab] || 0) * other[1] / all : null;
     items.push({ title: other[0], detail: `${other[1]} times (${(other[1] / p.pulls).toFixed(2)} per pull)${hp ? `; cost ${hpfmt(hp / p.pulls)} of the boss per pull` : ""}.`,
-      links: [drillLinks(mech[other[0]]), jumpTo("Every mistake", "See their mistakes")] });
+      links: [drillLinks(mech(other[0])), jumpTo("Every mistake", "See their mistakes")] });
   }
   for (const e of entries) {
     const rot = e.rotation;
@@ -323,15 +313,17 @@ function playerFocus(r, entries, name) {
 
 // what a raid leader should look at first in one group's night
 function groupFocus(r) {
-  const mech = mechOf(r), items = [], who = label => r.players.map(p => [p.name, (p.wcauses_all || {})[label] || 0]).filter(x => x[1]).sort((a, c) => c[1] - a[1]);
-  for (const [label, n] of Object.entries(r.wipe_causes || {}).sort((a, c) => c[1] - a[1]).slice(0, 2)) {
-    const w = who(label);
-    items.push({ title: label, detail: `Ended ${n} of ${r.pulls_total} pulls${w.length ? `: ${w.slice(0, 3).map(([n2, k]) => `${n2} ${k}`).join(", ")}` : ""}.`, links: drillLinks(mech[label]) });
+  const info = causeInfo(r), items = [], names = [...new Set(r.players.map(p => p.name))];
+  const pw = Object.fromEntries(names.map(n => [n, wipeCounts(r, n)])), pm = Object.fromEntries(names.map(n => [n, mistakeCounts(r, n)]));
+  const by = (counts, cause) => names.map(n => [n, counts[n][cause] || 0]).filter(x => x[1]).sort((a, c) => c[1] - a[1]);
+  for (const [cause, n] of Object.entries(wipeCounts(r)).sort((a, c) => c[1] - a[1]).slice(0, 2)) {
+    const w = by(pw, cause);
+    items.push({ title: cause, detail: `Ended ${n} of ${r.pulls_total} pulls${w.length ? `: ${w.slice(0, 3).map(([n2, k]) => `${n2} ${k}`).join(", ")}` : ""}.`, links: drillLinks((info[cause] || {}).mech) });
   }
-  const top = Object.entries(r.causes || {}).sort((a, c) => c[1] - a[1])[0];
+  const top = Object.entries(mistakeCounts(r)).sort((a, c) => c[1] - a[1])[0];
   if (top && !items.some(x => x.title === top[0])) {
-    const by = r.players.map(p => [p.name, (p.mcauses_all || {})[top[0]] || 0]).filter(x => x[1]).sort((a, c) => c[1] - a[1]);
-    items.push({ title: `Most common mistake: ${top[0]}`, detail: `${top[1]} times${by.length ? `: ${by.slice(0, 3).map(([n2, k]) => `${n2} ${k}`).join(", ")}` : ""}.`, links: drillLinks(mech[top[0]]) });
+    const w = by(pm, top[0]);
+    items.push({ title: `Most common mistake: ${top[0]}`, detail: `${top[1]} times${w.length ? `: ${w.slice(0, 3).map(([n2, k]) => `${n2} ${k}`).join(", ")}` : ""}.`, links: drillLinks((info[top[0]] || {}).mech) });
   }
   const rot = r.players.flatMap(p => (p.rotation ? p.rotation.checks : []).filter(c => c.cost >= 80).map(c => ({ p, c }))).sort((a, c) => c.c.cost - a.c.cost).slice(0, 3);
   if (rot.length) items.push({ title: "Biggest rotation losses", detail: rot.map(({ p, c }) => `${p.name} (${JOB[p.job] || p.job}): ${c.label}, about ${num(Math.round(c.cost))} DPS`).join("; ") + ".", links: jumpTo("Rotation") });
@@ -732,6 +724,27 @@ function linkRow(cells, href, numericFrom = 1) {
     cells.map((c, i) => el("td", { class: i >= numericFrom ? "num" : null }, c)));
   return tr;
 }
+// a mistake's name in the cause tables: the major mechanic it happened in, in the short form used for how far pulls
+// got, then the mistake ("SC I: Orange cone overlap"). Labels that name a mechanic themselves ("Paradeigma II: ...",
+// "... (Superchain)") lose it, so it is not said twice; one mistake in several mechanics gets a row per mechanic
+function causeName(mech, label) {
+  const rest = label.replace(/^(Paradeigma I{1,3}|Superchain I{1,2}[AB]?): /, "").replace(/ \(Superchain\)$/, "").replace(/^([^:]+): /, "$1, ");
+  if (!mech || mech === "other") return rest;
+  return `${shortMech(mech)}: ${rest.replace(new RegExp(`^${mech.split(" ")[0]} `), "")}`;   // "Superchain laser group" in SC I: "laser group"
+}
+const causeInfo = r => { const m = {};
+  for (const q of r.pulls) { for (const x of q.mistakes) m[causeName(x.mechanic, x.label)] = { mech: x.mechanic, label: x.label };
+    if (q.wipe) m[causeName(q.wipe.mechanic, q.wipe.label)] = m[causeName(q.wipe.mechanic, q.wipe.label)] || { mech: q.wipe.mechanic, label: q.wipe.label }; }
+  return m; };
+const countBy = keys => keys.reduce((a, k) => ((a[k] = (a[k] || 0) + 1), a), {});
+// every mistake until each pull was lost (of one player, if given), and the mistake that lost each pull
+const mistakeCounts = (r, who) => countBy(r.pulls.flatMap(q => q.mistakes.filter(m => !who || m.who === who).map(m => causeName(m.mechanic, m.label))));
+const wipeCounts = (r, who) => {
+  const c = countBy(r.pulls.filter(q => q.wipe && (!who || q.wipe.culprits.includes(who))).map(q => causeName(q.wipe.mechanic, q.wipe.label)));
+  if (!who && r.wipe_causes.Unclear) c.Unclear = r.wipe_causes.Unclear;   // wipes nobody could be blamed for have no wipe entry on the pull
+  return c;
+};
+
 function causeMatrix(title, caption, cols, getCounts) {   // causes x columns heatmap card
   const counts = cols.map(getCounts);
   const totals = {};
@@ -820,8 +833,8 @@ function dayPage(day) {
     el("div", { class: "grid wide" }, d.groups.map(r => card(r.group, `${r.pulls_total} pulls`, checkpointChart(r.hp), () => checkpointTable(r.hp), checkpointLegend()))));
   const cols = d.groups.map(r => ({ label: r.group, r }));
   app.append(el("h2", {}, "What went wrong"), el("div", { class: "grid wide" },
-    causeMatrix("All mistakes", "Every mistake until each pull was lost, by cause and group.", cols, c => c.r.causes),
-    causeMatrix("What wiped us", "The mistake that lost each pull, by cause and group.", cols, c => c.r.wipe_causes)));
+    causeMatrix("All mistakes", "Every mistake until each pull was lost, by cause and group.", cols, c => mistakeCounts(c.r)),
+    causeMatrix("What wiped us", "The mistake that lost each pull, by cause and group.", cols, c => wipeCounts(c.r))));
 }
 
 function groupPage(day, group) {
@@ -944,8 +957,8 @@ function groupPage(day, group) {
   const cols = [...r.players].filter((p, i, a) => a.findIndex(q => q.name === p.name) === i)
     .sort((a, c) => ROLES.indexOf(a.role) - ROLES.indexOf(c.role)).map(p => ({ label: p.name, p }));
   app.append(el("h2", {}, "Who made which mistakes"), el("div", { class: "grid wide" },
-    causeMatrix("All mistakes by player", "Every mistake until each pull was lost.", cols, c => c.p.mcauses_all),
-    causeMatrix("Wipes by player", "The mistake that lost the pull.", cols, c => c.p.wcauses_all)),
+    causeMatrix("All mistakes by player", "Every mistake until each pull was lost.", cols, c => mistakeCounts(r, c.p.name)),
+    causeMatrix("Wipes by player", "The mistake that lost the pull.", cols, c => wipeCounts(r, c.p.name))),
     el("p", { class: "note" }, `Light parties inferred from the White Flame baits: LP1 ${r.light_parties[0].join(", ")} · LP2 ${r.light_parties[1].join(", ")}.`));
 }
 
@@ -971,7 +984,7 @@ function playerPage(day, group, name) {
   const mine = r.pulls.flatMap(q => q.mistakes.filter(m => m.who === name).map(m => ({ ...m, pull: q.n })));
   const wiped = r.pulls.filter(q => q.wipe && q.wipe.culprits.includes(name));
   const lostIt = m => wiped.some(q => q.n === m.pull && Math.abs(q.wipe.t - m.t) < 2.5);   // as in the Every mistake table
-  const causeRows = Object.entries(p.mcauses_all).sort((a, c) => c[1] - a[1]).map(([label, value]) => { const of = mine.filter(m => m.label === label);
+  const causeRows = Object.entries(mistakeCounts(r, name)).sort((a, c) => c[1] - a[1]).map(([label, value]) => { const of = mine.filter(m => causeName(m.mechanic, m.label) === label);
     return { label, value, values: [of.filter(lostIt).length, of.filter(m => !lostIt(m) && m.kind !== "DD").length, of.filter(m => !lostIt(m) && m.kind === "DD").length] }; });
   app.append(el("h2", {}, "Mistakes"), el("div", { class: "grid wide" },
     causeRows.length ? card("Mistakes by cause", { info: `${p.mistakes} mistakes (${p.mdeath || 0} deaths, ${p.mdd || 0} Damage Downs), counted until each pull was lost. Lost the pull: the mistake that ended a pull (the pull's wipe names them, within 2.5 s), usually a death, sometimes a Damage Down; the rest split into other deaths and Damage Downs. A wipe put on them without a recorded mistake of theirs (an unsoaked tower, say) counts in Wipes caused but has no bar here.` },
@@ -1064,18 +1077,20 @@ function playerPage(day, group, name) {
   }
   app.append(el("h2", {}, "Every mistake"), el("div", { class: "table-wrap" }, mine.length ? el("table", {},
     el("thead", {}, el("tr", {}, ["Pull", "Time", "Mechanic", "What happened", "", "Practice"].map((h, i) => el("th", { class: i < 2 ? "num" : null }, h)))),
-    el("tbody", {}, mine.map(m => el("tr", {}, el("td", { class: "num" }, el("a", { href: `#/day/${day}/${group}/pulls/${m.pull}` }, String(m.pull))), el("td", { class: "num" }, mmss(m.t)), el("td", {}, m.mechanic),
+    el("tbody", {}, mine.map(m => el("tr", {}, el("td", { class: "num" }, el("a", { href: `#/day/${day}/${group}/pulls/${m.pull}` }, String(m.pull))), el("td", { class: "num" }, mmss(m.t)), el("td", {}, shortMech(m.mechanic || "")),
       el("td", { class: "wrap" }, m.cause), el("td", { class: "muted" }, wiped.some(q => q.n === m.pull && Math.abs(q.wipe.t - m.t) < 2.5) ? "lost the pull" : ""),
       el("td", {}, drillLinks(m.mechanic) || "")))))
     : el("div", { class: "empty", style: "padding:14px" }, "No mistakes recorded.")));
   // across raid days
   const hist = reports().flatMap(x => x.players.filter(q => q.name === name).map(q => ({ ...q, day: x.day, group: x.group }))).sort((a, c) => a.day.localeCompare(c.day));
   const byDay = Object.values(hist.reduce((a, q) => ((a[q.day + q.group] = a[q.day + q.group] || []).push(q), a), {}));
-  app.append(heading("h2", "Across raid days", "Their top issues: the three mistakes they made most over all raid days, each per pull that reached the mechanic it happens in (the pull not yet lost when the mechanic began), so getting further in later raid days does not read as more mistakes. A mistake that comes up in several mechanics (Trinity of Souls in Paradeigma I, Superchain I and Dialogos) counts one chance per mechanic reached. Rotation issues: the latest raid day's costliest, per minute alive, on the same job only. Trend: the later half of their raid days against the earlier half, 20% or more apart."));
+  app.append(heading("h2", "Across raid days", "Their top issues: the three mistakes they made most over all raid days, each per pull that reached the mechanic it happens in (the pull not yet lost when the mechanic began), so getting further in later raid days does not read as more mistakes. Each row is one mistake in one mechanic, named as in the mistake tables (Trinity of Souls in Para I and in Dialogos are separate rows). Rotation issues: the latest raid day's costliest, per minute alive, on the same job only. Trend: the later half of their raid days against the earlier half, 20% or more apart."));
   // their top issues, raid day by raid day
   if (byDay.length > 1) {
-    const total = {};
-    for (const es of byDay) for (const [l, c] of Object.entries(es[0].mcauses_all || {})) total[l] = (total[l] || 0) + c;
+    const reps = byDay.map(es => findGroup(es[0].day, es[0].group)), dayCounts = reps.map(x => x ? mistakeCounts(x, name) : {});
+    const total = {}, mechOfCause = {};
+    dayCounts.forEach(c => Object.entries(c).forEach(([l, n]) => (total[l] = (total[l] || 0) + n)));
+    reps.forEach(x => x && Object.entries(causeInfo(x)).forEach(([l, i]) => (mechOfCause[l] = mechOfCause[l] || i.mech)));
     const topM = Object.entries(total).sort((a, c) => c[1] - a[1]).slice(0, 3).map(x => x[0]);
     const latestRot = (byDay[byDay.length - 1][0].rotation || { checks: [] }).checks.filter(c => c.cost > 20).slice(0, 3).map(c => c.label);
     const trend = vals => { const v = vals.filter(x => x != null); if (v.length < 2) return ["–", null];
@@ -1083,12 +1098,11 @@ function playerPage(day, group, name) {
       const a = first.reduce((s, x) => s + x, 0) / first.length, b = last.reduce((s, x) => s + x, 0) / last.length;
       return b < a * 0.8 ? ["improving", "good"] : b > a * 1.2 ? ["worse", "bad"] : ["about the same", null]; };
     const rows = [
-      ...topM.map(l => {   // per pull that reached the mechanic(s) the mistake happens in
-        const starts = mechsOf(l).map(m => DATA.benchmark.mech_start[m] ?? 0);
-        const v = byDay.map(es => { const rep = findGroup(es[0].day, es[0].group); if (!rep) return null;
-          const live = rep.pulls.filter(q => q.players.includes(name)).map(q => q.kill ? Infinity : (q.wipe ? q.wipe.t : q.dur));
-          const chances = sum(starts.map(t => live.filter(x => x >= t).length));
-          return chances ? ((es[0].mcauses_all || {})[l] || 0) / chances : null; });
+      ...topM.map(l => {   // per pull that reached the mechanic the mistake happens in
+        const start = DATA.benchmark.mech_start[mechOfCause[l]] ?? 0;
+        const v = reps.map((rep, i) => { if (!rep) return null;
+          const chances = rep.pulls.filter(q => q.players.includes(name) && (q.kill ? Infinity : (q.wipe ? q.wipe.t : q.dur)) >= start).length;
+          return chances ? (dayCounts[i][l] || 0) / chances : null; });
         return [l, "per pull reaching it", v.map(x => x == null ? "–" : x.toFixed(2)), trend(v)]; }),
       ...latestRot.map(l => { const job = byDay[byDay.length - 1][0].job;      // rotation issues only compare days on the same job
         const v = byDay.map(es => { if (es[0].job !== job) return null; const c = (es[0].rotation || { checks: [] }).checks.find(x => x.label === l); return c ? c.ours : null; });
@@ -1181,7 +1195,7 @@ function pullPage(day, group, n) {
   const ms = [...p.mistakes].sort((a, c) => a.t - c.t);
   app.append(el("h2", {}, "Mistakes in order"), el("div", { class: "table-wrap" }, ms.length ? el("table", {},
     el("thead", {}, el("tr", {}, ["Time", "Who", "Mechanic", "What happened", ""].map((h, i) => el("th", { class: i === 0 ? "num" : null }, h)))),
-    el("tbody", {}, ms.map(m => el("tr", {}, el("td", { class: "num" }, mmss(m.t)), el("td", {}, m.who), el("td", {}, m.mechanic),
+    el("tbody", {}, ms.map(m => el("tr", {}, el("td", { class: "num" }, mmss(m.t)), el("td", {}, m.who), el("td", {}, shortMech(m.mechanic || "")),
       el("td", { class: "wrap" }, m.cause),
       el("td", { class: "muted" }, p.wipe && Math.abs(p.wipe.t - m.t) < 0.05 && p.wipe.culprits.includes(m.who) ? "lost the pull" : "")))))
     : el("div", { class: "empty", style: "padding:14px" }, "No mistakes recorded.")));

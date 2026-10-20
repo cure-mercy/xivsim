@@ -90,6 +90,10 @@ figcaption{ color: var(--muted); font-size: 13px; margin: 2px 0 8px; }
 .chart .axisline{ stroke: var(--axis); stroke-width: 1; }
 .chart .ref{ stroke: var(--muted); stroke-width: 1; }
 .chart .hit{ fill: transparent; cursor: default; }
+/* only what carries a tooltip (hover() gives it a tabindex) takes the pointer: bars, lines and numbers drawn over a
+   hover area let it through, so pointing inside a bar shows its tooltip, not only at its edges */
+.chart svg *:not([tabindex]){ pointer-events: none; }
+.chart svg [tabindex]{ pointer-events: all; }
 .chart .hit:hover + .mark, .chart .mark.hover{ filter: brightness(1.2); }
 .empty{ color: var(--muted); padding: 18px 0; }
 

@@ -93,11 +93,13 @@ appears (the page only asks when `data.json` is missing and `data.enc.json` is t
 | Page | What it shows |
 |---|---|
 | Raid days | Tiles: pulls, best pull, furthest seen (the longest pull, the mechanic it reached, its day, group and pull), latest day, mistakes per pull; the burndown; trends across days (how far pulls got, pulls clean through each mechanic, mistakes per pull and per minute, damage lost to mistakes, party DPS against the clears) and a table of days |
-| Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group |
+| Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group (rows named by mechanic, see below) |
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
 | Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull; every mistake with its pull and time; the player across raid days (mistakes per pull and per minute in pulls) |
 
 The player page's "What their mistakes cost" card (boss HP lost to deaths they caused, by cause) is hidden for now: set `SHOW_MISTAKE_COST` in `site/app.js` to `true` to bring it back.
+
+Wherever a mistake is named (the mistake and wipe heatmaps, Raid leader focus, a player's Work on this, Mistakes by cause and top issues), it starts with the major mechanic it happened in, in the short form of How far pulls get, then the mistake: "SC I: Orange cone overlap", "Para II: Soul tower in the wrong quadrant". A mistake that happens in several mechanics gets a row for each (Trinity of Souls in Para I, Dialogos and SC I). Labels that already name the mechanic don't repeat it. The stored labels are unchanged; the names are made when the page draws (`causeName` in `site/app.js`).
 
 Every chart has a Table button for the same numbers as a table and shows details on hover or keyboard focus.
 The theme follows the system and can be switched with the button (or `?theme=light` / `?theme=dark` in the
@@ -185,8 +187,8 @@ uptime in the phase against clearers of the role.
 - **Their top issues** (player page, Across raid days): their three most frequent mistakes and their costliest
   rotation issues per minute, raid day by raid day. Mistakes are per pull that reached the mechanic they happen in
   (still going when it began; start times from `MECH` in `classifier.py`, passed on as `mech_start`), so getting
-  further on later days doesn't read as more mistakes; a mistake filed under several mechanics (Trinity of Souls)
-  counts one chance per mechanic reached. Rotation issues are per minute alive, only on days with the same job. Trend:
+  further on later days doesn't read as more mistakes. Each row is one mistake in one mechanic (Trinity of Souls in
+  Para I and in Dialogos are separate rows). Rotation issues are per minute alive, only on days with the same job. Trend:
   improving or worse when the later days differ from the earlier by 20% or more.
 
 ### Focus lists and practice links
