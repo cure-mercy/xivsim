@@ -1195,9 +1195,10 @@ function notFound() {
 }
 
 // ---------- routing, theme, boot ----------
-function route() {
+function route(keepScroll = false) {   // keepScroll: redraw the same page in place (resize, theme), not a navigation
   if (LOCKED) return;   // the passphrase screen stays until it is unlocked
   hideTip();
+  const y = scrollY;
   const app = document.getElementById("app"); app.replaceChildren();
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   if (!DATA || !reports().length) { app.append(el("h1", {}, "No data yet"), el("p", { class: "lede" }, "Run build_site.py with some report links, then reload.")); return; }
@@ -1207,7 +1208,8 @@ function route() {
   else if (parts[0] === "day" && parts.length === 5 && parts[3] === "pulls") pullPage(parts[1], parts[2], +parts[4]);
   else if (parts[0] === "day" && parts.length === 4) playerPage(parts[1], parts[2], parts[3]);
   else home();
-  scrollTo(0, 0);
+  if (!keepScroll) scrollTo(0, 0);
+  else requestAnimationFrame(() => requestAnimationFrame(() => scrollTo(0, y)));   // after the charts have drawn and set the height
 }
 function setupTheme() {
   const btn = document.getElementById("theme"), root = document.documentElement;
@@ -1221,12 +1223,18 @@ function setupTheme() {
   btn.addEventListener("click", () => {
     root.dataset.theme = current() === "dark" ? "light" : "dark";
     try { localStorage.setItem("p12s-theme", root.dataset.theme); } catch (e) {}
-    label(); route();
+    label(); route(true);
   });
 }
-let resizeTimer = null;
-addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(route, 200); });
-addEventListener("hashchange", route);
+// redraw charts when the width changes; on phones the address bar showing or hiding while scrolling changes only the
+// height, and redrawing then (with a jump to the top) made scrolling up reset the page
+let resizeTimer = null, lastWidth = innerWidth;
+addEventListener("resize", () => {
+  if (innerWidth === lastWidth) return;
+  lastWidth = innerWidth;
+  clearTimeout(resizeTimer); resizeTimer = setTimeout(() => route(true), 200);
+});
+addEventListener("hashchange", () => route());
 // ---------- data: plaintext data.json (private hosting) or data.enc.json behind a passphrase (public hosting) ----------
 let LOCKED = false;
 const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
