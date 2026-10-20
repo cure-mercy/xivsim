@@ -295,7 +295,7 @@ window.Twelfth = (function(){
 
   // While the trainer is being playtested only these drills are open. The rest stay in the list under a
   // neutral name, locked, so their titles and phases give nothing away. Add an id here to open it again.
-  const OPEN = ['para1', 'engrave', 'superchain'];
+  const OPEN = ['para1', 'engrave', 'superchain', 'para3'];
   const PHASE_NAME = { 'Athena':'Phase 1', 'Pallas Athena':'Phase 2' };
 
   function register(m){
