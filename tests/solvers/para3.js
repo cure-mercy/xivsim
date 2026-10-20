@@ -2,7 +2,9 @@
 // mechanics/paradeigma-3.js, and clicks the plan's spot for each beat. Wrong plays, each of which must fail:
 // stays put, another platform's tower, soaks from the centre-line side, the DPS's near platform, the partner's
 // spot, the other job, the other drop, stays in its own + or X, never steps out of its tower, into the tower
-// before the bright Souls' AoEs, the other tower, walks off the platform. (The + and X supports always bait:
+// before the bright Souls' AoEs, the other tower, walks off the platform. Dropping the + or X off its spot where it
+// hits nobody must pause the pull with a warning instead, then either resume to an off-plan clear or retry from the
+// floor falling and clear cleanly. (The + and X supports always bait:
 // their yellow add stands on their own platform, so wherever they stand on it they are among its nearest two.)
 Probe.run('panel-para3', 'p3-clock', async ({ P, log, sleep, clockT, head, until, click, probe }) => {
   const D = window.__p3;
@@ -13,8 +15,30 @@ Probe.run('panel-para3', 'p3-clock', async ({ P, log, sleep, clockT, head, until
     wrongtower: s => true, centreline: s => s.mySoul === 'bright', stayin: s => s.mySoul === 'quartered' || s.mySoul === 'xmarked',
     wrongdrop: s => s.mySoul === 'bright', nostep: s => s.mySoul === 'bright',
     wrongjob: s => true, wrongsoak: s => s.job === 'soak', early: s => s.job === 'soak',
-    near: s => true, swap: s => true, walkoff: s => true, stay: s => true, right: s => true
+    near: s => true, swap: s => true, walkoff: s => true, stay: s => true, right: s => true,
+    offmark: s => s.mySoul === 'quartered' || s.mySoul === 'xmarked', offretry: s => s.mySoul === 'quartered' || s.mySoul === 'xmarked'
   };
+  // A spot on your own platform to drop the + or X that is off the plan's but whose arms catch nobody where the
+  // party stands, reachable in time from the plain tower, and a spot to wait out of its arms near the bait spot.
+  // The X's diagonals leave little room: most of its off spots catch someone, so this one may sit just past the
+  // threshold.
+  function offSpot(st){
+    const me = st.me, shape = st.mySoul === 'quartered' ? D.inPlus : D.inSaltire, t = st.home;
+    const want = D.plan(me, 'job'), first = D.plan(me, 'first'), bait = D.plan(me, 'bait');
+    const party = [].concat(...st.ids.filter(id => id !== me).map(id => ['job', 'clear'].map(ph => D.plan(id, ph))));
+    const d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+    const near = (p, q) => [[0, 0], [6, 0], [-6, 0], [0, 6], [0, -6]].some(o => shape(p, [q[0] + o[0], q[1] + o[1]]));
+    const grid = [];
+    for(let i = 0; i <= 24; i++) for(let j = 0; j <= 12; j++) grid.push([t.x + 12 + i * (t.w - 24) / 24, t.y + 12 + j * (t.h - 24) / 12]);
+    let best = null;
+    for(const p of grid){
+      if(d(p, want) < D.MARK_NEAR + 6 || d(p, first) > 190 || party.some(q => near(p, q))) continue;
+      const clear = grid.filter(q => !near(p, q) && d(p, q) < 200).sort((a, b) => d(a, bait) - d(b, bait))[0];
+      if(clear && (!best || d(p, want) > d(best.drop, want))) best = { drop: p, clear };
+    }
+    if(!best) log.push(`  no harmless off spot for ${st.mySoul} zig${st.zig} FAIL`);
+    return best || { drop: want, clear: D.plan(me, 'clear') };
+  }
   async function play(mode){
     P.querySelector('[data-history="reroll"]').click(); await sleep(30);
     for(let k = 0; k < 200 && !NEEDS[mode](D.st()); k++){ P.querySelector('[data-history="reroll"]').click(); await sleep(10); }
@@ -27,17 +51,39 @@ Probe.run('panel-para3', 'p3-clock', async ({ P, log, sleep, clockT, head, until
         if(mode === 'wrongtower'){ const other = st.safe.find(t => t.key !== st.home.key); click(D.supTowerSpot(other)); }
         else if(mode === 'centreline'){ const p = plan('first'); click([p[0], 2 * D.plainTower(st.home)[1] - p[1]]); }
         else click(plan('first'));
-        await until(L.laserHit + 0.3);
-        if(mode === 'walkoff'){ const t = st.home; click([t.cx, t.row <= 2 ? t.y + t.h + 40 : t.y - 40]); }
-        else if(mode === 'wrongdrop') click(st.towerSpot === 'centre' ? D.dropSpot('soak', st.home) : D.centreCorner(st.home, 16));
-        else click(plan('job'));
-        if(st.mySoul !== 'bright'){
-          await until(L.marks + 0.15);
-          if(mode !== 'stayin') click(plan('clear'));
-          if(st.mySoul === 'xmarked'){ await until(L.aoes + 0.05); if(mode !== 'stayin') click(plan('bait')); }
-        } else if(mode !== 'nostep'){
-          await until(L.drop + 0.3); click(plan('aside'));
-        }
+        // from the floor falling on: the drill's checkpoint, so a retry plays this part again
+        const fromFloor = async off => {
+          await until(L.laserHit + 0.3);
+          if(mode === 'walkoff'){ const t = st.home; click([t.cx, t.row <= 2 ? t.y + t.h + 40 : t.y - 40]); }
+          else if(mode === 'wrongdrop') click(st.towerSpot === 'centre' ? D.dropSpot('soak', st.home) : D.centreCorner(st.home, 16));
+          else click(off ? off.drop : plan('job'));
+          if(st.mySoul !== 'bright'){
+            await until(L.marks + 0.15);
+            if(mode !== 'stayin') click(off ? off.clear : plan('clear'));
+            await until(L.aoes + 0.05);
+            if(off){
+              // the + or X went off away from its spot and hit nobody: a warning, with the clock paused
+              const warn = head(), t = clockT();
+              await sleep(300);
+              const still = clockT() === t;
+              const btns = [...P.querySelectorAll('.feedback .btn')].map(b => b.textContent);
+              log.push(`  off by ${(Math.hypot(off.drop[0] - plan('job')[0], off.drop[1] - plan('job')[1]) / 12).toFixed(1)} y -> ${warn.slice(0, 32)} @${t.toFixed(1)}`
+                + (warn.startsWith('!') && still ? '' : ' FAIL') + ' | ' + btns.join(' / '));
+              const b = [...P.querySelectorAll('.feedback .btn')].find(b => b.textContent.startsWith(mode === 'offretry' ? 'Retry' : 'Resume'));
+              b.click(); await sleep(30);
+              if(mode === 'offretry'){
+                log.push(`  retry -> clock ${clockT().toFixed(1)}, ${head() ? 'FEEDBACK STILL UP FAIL' : 'paused'}`);
+                document.getElementById('p3-start').click();
+                mode = 'right';
+                return fromFloor(null);
+              }
+            }
+            if(st.mySoul === 'xmarked' && mode !== 'stayin') click(plan('bait'));
+          } else if(mode !== 'nostep'){
+            await until(L.drop + 0.3); click(plan('aside'));
+          }
+        };
+        await fromFloor(mode === 'offmark' || mode === 'offretry' ? offSpot(st) : null);
       } else {
         await until(L.tethers + 0.3);
         if(mode === 'near'){ const t = st.home === st.midW ? st.midE : st.midW; click([t.cx, t.cy]); }
@@ -75,6 +121,6 @@ Probe.run('panel-para3', 'p3-clock', async ({ P, log, sleep, clockT, head, until
     log.push(`pick ${id}: dealt ${[...seen].sort().join(',')}${ok && pressed ? '' : ' FAIL'}` + (want ? ' | ' + await play('right') : ''));
   }
   for(let i = 0; i < 12; i++) log.push('right: ' + await play('right'));
-  const wrong = support ? ['stay', 'wrongtower', 'centreline', 'walkoff', 'wrongdrop', 'nostep', 'stayin'] : ['stay', 'near', 'swap', 'walkoff', 'wrongjob', 'early', 'wrongsoak'];
+  const wrong = support ? ['stay', 'wrongtower', 'centreline', 'walkoff', 'wrongdrop', 'nostep', 'stayin', 'offmark', 'offmark', 'offretry', 'offretry'] : ['stay', 'near', 'swap', 'walkoff', 'wrongjob', 'early', 'wrongsoak'];
   for(const m of wrong) log.push(m + ': ' + await play(m));
 });
