@@ -32,7 +32,8 @@ SC_HOOK = ("    const newRound = T.trackRounds('superchain', startRound);",
 # and so does Paradeigma III's
 P3_HOOK = ("    const newRound = T.trackRounds('para3', startRound);",
            "    window.__p3 = { st: () => st, plan, LIVE, supTowerSpot, plainTower, centreCorner, dpsKey,\n"
-           "      dropSpot: (role, t) => mx(PLAN.drop[role][t.row]), baitSpotOf: id => baitSpot(st.actors[id]), soakSpotOf: id => soakSpot(st.actors[id]) };\n")
+           "      dropSpot: (role, t) => mx(PLAN.drop[role][t.row]), baitSpotOf: id => baitSpot(st.actors[id]), soakSpotOf: id => soakSpot(st.actors[id]),\n"
+           "      inPlus, inSaltire, MARK_NEAR };\n")
 
 PARA1 = dict(tab='para1', pace='twelfth-p1-pace', panel='panel-para1', clock='p1-clock')
 ENGRAVE = dict(tab='engrave', pace='twelfth-eg-pace', panel='panel-engrave', clock='eg-clock')

@@ -109,7 +109,7 @@
           <h2>Pace</h2>
           <span class="info-tip">
             <button type="button" class="info-btn" aria-label="About the pace" aria-expanded="false" aria-describedby="p3-paceTip">?</button>
-            <span class="info-pop" role="tooltip" id="p3-paceTip"><b>Step by step</b> pauses the fight at each step while you answer each call. <b>Real time</b> runs the fight clock from a log: click anywhere to move, and where you stand when each tower, laser, AoE and White Flame goes off is what counts. Once the tiles fall, walking off your platform drops you into the void.</span>
+            <span class="info-pop" role="tooltip" id="p3-paceTip"><b>Step by step</b> pauses the fight at each step while you answer each call. <b>Real time</b> runs the fight clock from a log: click anywhere to move, and where you stand when each tower, laser, AoE and White Flame goes off is what counts. Once the tiles fall, walking off your platform drops you into the void. Drop your + or X away from its spot and the pull pauses with a warning, even if it hits nobody.</span>
           </span>
         </div>
         <div class="role-select player-select cols-2" role="group" aria-label="Choose the pace">
@@ -220,6 +220,8 @@
     // a tether laser or White Flame line is about 4.7 wide, an arm of the + or X about 4.3 (the widest any log caught:
     // 2.2 off the line) and a bright Soul's AoE 3 in radius.
     const TOWER_R = 36, LASER_HALF = 28, FLAME_HALF = 28, ARM_HALF = 26, GLOW_R = 36;
+    // A + or X dropped more than 3 yalms from its planned spot is off it, even when it hits nobody.
+    const MARK_NEAR = 36;
     // A tether is stretched far enough about 29 yalms from its add: the straight spot is 31 away, so a little leeway.
     const MIN_STRETCH = 352;
     // Everyone runs at 7 yalms a second (a little above the real 6), and the rest of the party moves off about
@@ -348,9 +350,11 @@
       st.live = pace === 'live';
       st.fired = {}; st.over = false;
       st.marks = {}; st.drops = {}; st.tagged = false; st.phase = -1;
+      st.paused = false; st.warned = []; st.saved = null;
       ['p3-fx', 'p3-lasers', 'p3-target', 'p3-freeHits', 'p3-towers', 'p3-aoes'].forEach(id => { document.getElementById(id).innerHTML = ''; });
       clock.t = LIVE.start;
       panel.classList.toggle('p3-timed', st.live);
+      document.getElementById('p3-start').textContent = 'Start ▶';
       document.getElementById('p3-start').hidden = !st.live;
       document.getElementById('p3-start').style.visibility = '';
       document.getElementById('p3-start').parentNode.style.minHeight = '';
@@ -500,8 +504,15 @@
 
     /* ---------- the fight clock ---------- */
     function stopClock(){ clock.running = false; if(clock.timer) clearTimeout(clock.timer); clock.timer = 0; }
+    // Starts the pull, or picks it up again where a pause left it.
     function startClock(){
       if(!st.live || clock.running || st.over) return;
+      if(st.paused){
+        st.paused = false;
+        fb.hidden = true;
+        layer('p3-target');
+        drawFloorLive();
+      }
       clock.running = true;
       clock.last = performance.now();
       // the button keeps its room and, when the strip sits above the arena, the header its height, so the
@@ -513,6 +524,45 @@
       liveText();
       freePick(here(clock.t), livePick);
       clock.timer = setTimeout(tick, TICK_MS);
+    }
+    // Stops the clock mid-pull: everyone freezes where they are (moves run on the fight clock) and the floor
+    // takes no clicks until startClock picks it up again. A warning pauses the pull this way; a Pause button
+    // would call the same pair. The strip's button turns into Resume meanwhile.
+    function pauseClock(){
+      if(!clock.running || st.over) return;
+      stopClock();
+      st.paused = true;
+      endFreePick();
+      const b = document.getElementById('p3-start');
+      b.textContent = 'Resume ▶';
+      b.style.visibility = '';
+      renderLive();
+    }
+    // Takes the pull back to the moment the floor fell, as it stood then, and leaves it paused there.
+    function checkpoint(){
+      st.saved = { t: clock.t, moves: JSON.parse(JSON.stringify(st.moves)), fired: Object.assign({}, st.fired),
+                   tagged: st.tagged, phase: st.phase, warned: st.warned.slice() };
+    }
+    function rewind(){
+      const s = st.saved;
+      if(!s || !st.paused) return;
+      st.fxTimers.forEach(clearTimeout);
+      st.fxTimers = [];
+      clock.t = s.t;
+      st.moves = JSON.parse(JSON.stringify(s.moves));
+      st.fired = Object.assign({}, s.fired);
+      st.tagged = s.tagged; st.phase = s.phase; st.warned = s.warned.slice();
+      st.marks = {}; st.drops = {};
+      T.playBeams(document.getElementById('p3-lasers'), []);
+      layer('p3-fx'); layer('p3-target');
+      fb.hidden = true;
+      drawTiles();
+      drawAdds();
+      drawFloorLive();
+      drawLive();
+      renderBadges();
+      liveText();
+      renderLive();
     }
     // The clock only runs while you can see it: switching mechanic or tab pauses it.
     function tick(){
@@ -533,7 +583,8 @@
     }
     function onTime(){
       const t = clock.t;
-      const at = (key, time, fn) => { if(t >= time && !st.fired[key]){ st.fired[key] = true; if(!st.over) fn(); } };
+      // a beat due as the clock pauses waits for it to resume
+      const at = (key, time, fn) => { if(t >= time && !st.fired[key] && !st.paused){ st.fired[key] = true; if(!st.over) fn(); } };
       at('adds', LIVE.adds, () => drawAdds(true));
       at('debuffs', LIVE.debuffs, () => { renderBadges(); liveText(); });
       at('tethers', LIVE.tethers, () => { renderBadges(); liveText(); drawAdds(false); });
@@ -543,6 +594,7 @@
       at('p-sup', LIVE.enchain[0] + REACT, () => othersTo('first', 'support'));
       at('shock', LIVE.shock[0], () => drawPlainTowers(true));
       at('c-floor', LIVE.enchain[1], checkFloor);
+      at('save', LIVE.enchain[1], checkpoint);
       at('c-lasers', LIVE.lasers, checkLasers);
       at('tilts', LIVE.laserHit, () => { renderBadges(); liveText(); });
       at('enchained', LIVE.enchained, renderBadges);
@@ -665,16 +717,53 @@
       const pos = party(LIVE.aoes), me = st.me;
       fxMarks();
       const shapes = [['quartered', st.marks.plus, inPlus, 'plus'], ['xmarked', st.marks.x, inSaltire, 'X']];
+      let offSpot = null;
       for(const [soul, c, inside, word] of shapes){
         const owner = holderOf(soul), hit = st.ids.filter(id => inside(c, pos[id]));
         if(owner === me){
           if(hit.includes(me)) return liveFail(`Caught in your own ${word}`, `Your ${word} went off at ${sec(LIVE.aoes)} with you still in one of its arms. It is delayed: drop it, then step out of its arms before it lands. ${jobRule()}`, plan(me, 'clear'));
           const others = hit.filter(id => id !== me);
           if(others.length) return liveFail(`Your ${word} hit the party`, `Your ${word} dropped at ${LIVE.marks.toFixed(1)} s where its arms ran through ${names(others)} when it went off at ${sec(LIVE.aoes)}. It is fixed to true north, so the spot decides where the arms go. ${jobRule()}`, plan(me, 'job'));
+          if(dist(c, plan(me, 'job')) > MARK_NEAR) offSpot = [c, inside, word];
         } else if(hit.includes(me)){
           return liveFail(`Caught in the ${word}`, `${owner}'s ${word} went off at ${sec(LIVE.aoes)} with you in one of its arms. Both are fixed to true north: the plus runs along the walls from the north platform's outer corner, the X out to the corners from the south wall. ${isDps(me) || st.mySoul === 'bright' ? jobRule() : ''}`, plan(me, st.mySoul === 'quartered' || st.mySoul === 'xmarked' ? 'clear' : 'job'));
         }
       }
+      // it hit nobody, but it was not where the group drops it: a warning, with the pull paused
+      if(offSpot) warnOffSpot(...offSpot);
+    }
+    // How much of the middle of each platform, and whether the arena centre, an AoE's arms cover.
+    function armsOver(c, inside){
+      const out = { centre: inside(c, [300, 300]) };
+      st.safe.forEach(t => {
+        let n = 0;
+        for(let i = 0; i < 8; i++) for(let j = 0; j < 4; j++)
+          if(inside(c, [t.x + t.w / 4 + (i + 0.5) * t.w / 16, t.y + t.h / 4 + (j + 0.5) * t.h / 8])) n++;
+        out[t.key] = n / 32;
+      });
+      return out;
+    }
+    // The + or X went off where the plan does not drop it and caught nobody: pause, say what it cut through that
+    // the planned drop would not have, and offer to carry on, to take the drop again or a new pull.
+    function warnOffSpot(c, inside, word){
+      const want = plan(st.me, 'job'), off = dist(c, want);
+      const spot = word === 'plus' ? 'the outer corner of the north platform' : 'the south wall, at the inner corner of the south platform';
+      const now = armsOver(c, inside), planned = armsOver(want, inside);
+      const cut = st.safe.filter(t => now[t.key] >= 0.2 && now[t.key] - planned[t.key] >= 0.15)
+        .map(t => `the middle of ${t.key === st.home.key ? 'your own' : 'the ' + tileName(t).toLowerCase()} platform`);
+      if(now.centre && !planned.centre) cut.push('the arena centre, where the two middle platforms meet');
+      const risk = cut.length
+        ? `From there its arms cut through ${cut.join(' and ')}, so it missed the party only because nobody happened to be standing there.`
+        : `Its arms still miss the middle of every platform, but the party lines up on where the group drops it, and an AoE anywhere else is one they cannot plan around.`;
+      st.warned.push(`Your ${word} dropped ${yalms(off)} yalms off its spot`);
+      pauseClock();
+      (word === 'plus' ? drawPlus : drawSaltire)(layer('p3-aoes'), c[0], c[1], 0.3);
+      T.drawTarget(layer('p3-target'), want, c);
+      fb.dataset.noUndo = '1';
+      showFeedback(fb, 'warn', `${word === 'plus' ? 'Plus' : 'X'} dropped off its spot`,
+        `Your ${word} dropped at ${sec(LIVE.marks)}, ${yalms(off)} yalms from ${spot}, and when it went off at ${sec(LIVE.aoes)} it hit nobody. ${risk} ${jobRule()}<br><br>The pull is paused: resume from here, take the drop again from ${st.saved.t.toFixed(1)} s, as the floor falls, or start a new pull.`,
+        'Resume ▶', startClock,
+        [{ label: `Retry from ${st.saved.t.toFixed(1)} s ↺`, onClick: rewind }, { label: 'New pull ↻', onClick: () => newRound() }]);
     }
     // the bright Souls' small AoEs, on the spots where their towers dropped
     function checkGlow(){
@@ -764,6 +853,8 @@
         else items.push(`${st.mySoul === 'quartered' ? 'Plus' : 'X'} dropped at <b>${LIVE.marks.toFixed(1)} s</b> and clear of it at <b>${LIVE.aoes.toFixed(1)} s</b>`, `White Flame baited at <b>${LIVE.flame.toFixed(1)} s</b>`);
       }
       fb.dataset.noUndo = '1';
+      // a pull carried on past a warning clears, but not cleanly
+      if(st.warned.length) return showFeedback(fb, 'warn', 'Cleared, off plan', `You survived every beat, but not the way the group plays it.<ul>${items.concat(st.warned.map(w => `Off plan: ${w}`)).map(i => `<li>${i}</li>`).join('')}</ul>`, 'New pull ↻', () => newRound());
       showFeedback(fb, true, 'Paradeigma III cleared', `You were where you needed to be at every beat.<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`, 'New pull ↻', () => newRound());
     }
 
@@ -789,7 +880,7 @@
         clock.t < LIVE.engrave[0] ? 'Paradeigma has gone off. The adds are on their way.' : 'Nothing casting.', st.castSlots);
       document.getElementById('p3-liveNote').innerHTML = !clock.running && !st.over && clock.t <= LIVE.start
         ? '<span class="hint">Click to move as the fight unfolds: where you stand when each part goes off is what counts.</span>'
-        : '';
+        : st.paused ? 'Paused. Resume when you are ready.' : '';
     }
 
     function setPace(p){
