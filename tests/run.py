@@ -9,7 +9,8 @@ and any script errors.
     python tests/run.py superchain undo  only these
 
 Suites:
-    para1, engrave, superchain  real-time solvers: the right play clears, each kind of mistake fails as it should
+    para1, engrave, superchain, para3
+                                real-time solvers: the right play clears, each kind of mistake fails as it should
     undo                        step by step: undo and redo give back exactly the page they should
     steady                      the real-time solvers again, checking the arena never moves on the page,
                                 in a stacked layout (800 px) and with three columns (1400 px)
@@ -28,14 +29,20 @@ OUT = ROOT / 'tests' / 'out'
 # Superchain's solver reads the pull from inside the drill, through a hook added to a copy of its script.
 SC_HOOK = ("    const newRound = T.trackRounds('superchain', startRound);",
            "    window.__sc = { st: () => st, spotFirst, spotLaser, spotLast, spotTowers, towerSpot, CPOS };\n")
+# and so does Paradeigma III's
+P3_HOOK = ("    const newRound = T.trackRounds('para3', startRound);",
+           "    window.__p3 = { st: () => st, plan, LIVE, supTowerSpot, plainTower, centreCorner, dpsKey,\n"
+           "      dropSpot: (role, t) => mx(PLAN.drop[role][t.row]), baitSpotOf: id => baitSpot(st.actors[id]), soakSpotOf: id => soakSpot(st.actors[id]) };\n")
 
 PARA1 = dict(tab='para1', pace='twelfth-p1-pace', panel='panel-para1', clock='p1-clock')
 ENGRAVE = dict(tab='engrave', pace='twelfth-eg-pace', panel='panel-engrave', clock='eg-clock')
 SUPERCHAIN = dict(tab='superchain', pace='twelfth-sc-pace', panel='panel-superchain', clock='sc-clock')
+PARA3 = dict(tab='para3', pace='twelfth-p3-pace', panel='panel-para3', clock='p3-clock')
 
 # what the undo snapshots leave out: layers of passing effects, and a class that only animates
 UNDO_ENGRAVE = {'pace': 'steps', 'skip': ['eg-lasers', 'eg-fx', 'eg-debuffBadge'], 'strip': ['eg-untilted']}
 UNDO_SUPERCHAIN = {'pace': 'steps', 'skip': ['sc-beams', 'sc-fx']}
+UNDO_PARA3 = {'pace': 'steps', 'skip': ['p3-lasers', 'p3-fx']}
 NARROW, WIDE = '800,1000', '1400,1000'
 
 # suite -> pages: (page name, drill, slot, solvers, probe settings, virtual time budget in ms). The settings
@@ -44,13 +51,16 @@ SUITES = {
     'para1': [(f'para1-{s}', PARA1, s, 'para1', {}, 250_000) for s in ['R1', 'R2', 'T1', 'H2']],
     'engrave': [(f'engrave-{s}', ENGRAVE, s, 'engrave', {}, 1_600_000) for s in ['H1', 'M2']],
     'superchain': [(f'superchain-{s}', SUPERCHAIN, s, 'superchain', {}, 500_000) for s in ['T1', 'H2', 'M1', 'R2']],
+    'para3': [(f'para3-{s}', PARA3, s, 'para3', {}, 900_000) for s in ['H1', 'T2', 'M1']],
     'undo': [(f'undo-para1-{s}', PARA1, s, 'para1-undo', {'pace': 'steps'}, 120_000) for s in ['T1', 'R2']]
           + [(f'undo-engrave-{s}', ENGRAVE, s, 'undo', UNDO_ENGRAVE, 120_000) for s in ['H1', 'M1']]
-          + [(f'undo-superchain-{s}', SUPERCHAIN, s, 'undo', UNDO_SUPERCHAIN, 120_000) for s in ['T1', 'R2']],
+          + [(f'undo-superchain-{s}', SUPERCHAIN, s, 'undo', UNDO_SUPERCHAIN, 120_000) for s in ['T1', 'R2']]
+          + [(f'undo-para3-{s}', PARA3, s, 'undo', UNDO_PARA3, 120_000) for s in ['H2', 'M1']],
     'steady': [(f'steady-{name}-{w}', drill, slot, ['steady', name], {'arena': arena, 'window': size}, budget)
                for name, drill, slot, arena, budget in [('para1', PARA1, 'R1', 'p1-arena', 250_000),
                                                          ('engrave', ENGRAVE, 'H1', 'eg-arena', 1_600_000),
-                                                         ('superchain', SUPERCHAIN, 'T1', 'sc-arena', 500_000)]
+                                                         ('superchain', SUPERCHAIN, 'T1', 'sc-arena', 500_000),
+                                                         ('para3', PARA3, 'H1', 'p3-arena', 900_000)]
                for w, size in [('narrow', NARROW), ('wide', WIDE)]],
 }
 
@@ -72,11 +82,12 @@ def find_chrome():
 
 def build(name, drill, slot, solvers, extra):
     page = (ROOT / 'index.html').read_text(encoding='utf-8')
-    if drill is SUPERCHAIN:
-        src = (ROOT / 'mechanics' / 'superchain-1.js').read_text(encoding='utf-8')
-        assert SC_HOOK[0] in src, 'the hook point in superchain-1.js has moved'
-        (OUT / 'superchain-1.dbg.js').write_text(src.replace(SC_HOOK[0], SC_HOOK[1] + SC_HOOK[0]), encoding='utf-8')
-        page = page.replace('<script src="mechanics/superchain-1.js">', '<script src="tests/out/superchain-1.dbg.js">')
+    for d, script, hook in ((SUPERCHAIN, 'superchain-1', SC_HOOK), (PARA3, 'paradeigma-3', P3_HOOK)):
+        if drill is not d: continue
+        src = (ROOT / 'mechanics' / f'{script}.js').read_text(encoding='utf-8')
+        assert hook[0] in src, f'the hook point in {script}.js has moved'
+        (OUT / f'{script}.dbg.js').write_text(src.replace(hook[0], hook[1] + hook[0]), encoding='utf-8')
+        page = page.replace(f'<script src="mechanics/{script}.js">', f'<script src="tests/out/{script}.dbg.js">')
     probe = dict(extra, slot=slot, panel=drill['panel'], clock=drill['clock'])
     pace = extra.get('pace', 'live')
     setup = ('<base href="../../">'
