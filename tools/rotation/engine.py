@@ -28,6 +28,9 @@ class Move:
     need: float
     relocate: bool = True
     why: str = ""
+    # stretches of the path a dash can cover: (kind, yalms of the path before it, its length). "in": straight toward the
+    # boss, down to where a gap closer lands; "out": straight away from her, starting beside her (a backstep)
+    dash: tuple = ()
 
 
 @dataclass
@@ -122,6 +125,37 @@ def open_move(s, fight, t):
     while i < len(W) and W[i].hi <= t: i += 1
     if i < len(W) and W[i].lo <= t and W[i].need > 0 and W[i].relocate: return W[i]
     return None
+
+
+def dash_gain(s, fight, t, kind, dist=None):
+    """(segment index, seconds of running) a dash of this kind at t saves in the move window open at t, or None. The
+    free time so far in the window counts as run along the path (lazy accounting can't tell where the player is), so
+    the dash covers what is left of its segment once the path before it is behind. A gap closer ("in", dist None) covers
+    all of that; a backstep of `dist` yalms covers it too, or, overshooting a shorter rest, the rest less the walk back.
+    Each segment takes one dash; the state keeps them in `dashed`."""
+    W = fight.moves
+    i = s.mvi
+    while i < len(W) and W[i].hi <= t: i += 1
+    if i >= len(W) or not W[i].lo <= t < W[i].hi: return None
+    w = W[i]
+    run = ((s.acc if i == s.mvi else 0.0) + _overlap(s.free, t, w.lo, w.hi)) * RUN
+    for k, (kind_k, before, length) in enumerate(w.dash):
+        if kind_k != kind or (i, k) in s.dashed or run < before - 1e-9: continue
+        rest = min(length, before + length - run)
+        saved = rest if dist is None else dist if rest >= dist else 2 * rest - dist
+        if saved > 1e-9: return k, min(saved / RUN, w.need)
+    return None
+
+
+def dash(s, fight, t, kind, dist=None):
+    """Make the dash (see dash_gain): bank the running it saves toward the open window. Returns the seconds saved."""
+    settle(s, fight, t)
+    g = dash_gain(s, fight, t, kind, dist)
+    if g is None: return 0.0
+    k, secs = g
+    s.dashed = tuple(d for d in s.dashed if d[0] >= s.mvi) + ((s.mvi, k),)
+    s.acc += secs
+    return secs
 
 
 def move_credit(s, fight):

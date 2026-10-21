@@ -5,9 +5,9 @@ below, or settle them only indirectly. Each test says what the model assumes now
 disagrees. The most important ones come first.
 
 Where to test:
-- **Gauge and status rules** (tests 2 to 7, 9, 10) are the same at any level: a striking dummy is fine. Start each
+- **Gauge, status and movement rules** (tests 2 to 10) are the same at any level: a striking dummy is fine. Start each
   test in combat. The Balance Gauge shows both mana values as numbers.
-- **Potencies and recasts** (tests 1 and 8) must be read at **level 90**. Hover the actions inside a duty that
+- **Potencies** (test 1) must be read at **level 90**. Hover the actions inside a duty that
   syncs you to 90, e.g. P12S itself or a level-90 dungeon. The tooltips then show level-90 values.
 
 ## 1. Level-90 potencies (most important)
@@ -90,15 +90,24 @@ Cast Enchanted Reprise and read the GCD timer. Is it 2.5 s, or 1.5 s like Enchan
 
 If it is 1.5 s, add `"Enchanted Reprise": 1.5` to `RECAST` in `jobs/rdm.py`. It would then cover our runs better.
 
-## 8. Corps-a-corps and Displacement distances (for a future improvement)
+## 8. Displacement's backstep
 
-Nearly all of what our strategy costs a Red Mage (1.3%) is Paradeigma I's swap through the middle. Real players
-shorten that run with Corps-a-corps, but the optimizer has no dashes yet. To model them it needs:
+The optimizer now models dashes. Corps-a-corps is settled by the logs: from anywhere 11-19 y out, it lands you at
+Athena's hitbox edge, 10.5 y from her centre. Displacement has only 3 uses in our logs, so the model takes its tooltip
+on trust:
+- It jumps 15 y straight back, away from the target.
+- It works from inside the boss's hitbox. Our plan uses it from beside Athena, heading out to the wall in Paradeigma I
+  and out across the arena in Paradeigma II.
 
-- **Corps-a-corps:** from about 18 y out, where do you land? At the edge of the boss's hitbox, or closer?
-- **Displacement:** is the backstep 15 y? Does it go straight away from the target, whichever way you face?
+1. On a striking dummy, stand inside its ring, use Displacement and count the floor tiles you travel. Is it 15 y?
+2. Turn your character away from the dummy first, then use it. Do you still jump away from the dummy, or backwards
+   from where you face?
+3. In P12S, if you get the chance: use Displacement next to Athena with the wall behind you. Do you stop at the wall?
 
-A rough answer from P12S itself is enough, e.g. how many floor tiles or how far from Athena's ring.
+- **Not 15 y:** change `BACKSTEP` in `jobs/rdm.py`.
+- **It goes by your facing:** nothing changes. The model assumes you face Athena when you use it.
+- **It can't be used from inside the ring:** the "out" stretches in `p12s.DASH` must start at the ring (10.5 y), not
+  at Athena's centre.
 
 ## 9. Sprint cancels Dualcast (quick)
 

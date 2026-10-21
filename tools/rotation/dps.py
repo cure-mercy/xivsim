@@ -203,13 +203,16 @@ def player_rows(job, pulls, width):
 
 
 CAST_NOTE = re.compile(r"(\d+(?:\.\d+)?)s cast")     # a hard cast in the history's note: "2.00s cast"
+DASH_NOTE = re.compile(r"dash (\d+(?:\.\d+)?)s")        # running a dash saved (Red Mage): "dash 1.30s"
 
 
 def placed_runs(hist, fight):
     """[(start, end)]: where a rotation does its runs. The search only checks that each move window has the seconds it
     needs outside cast bars (a cast's last SLIDE counts), so this places them: in the window's longest stretches outside
-    cast bars first (instant GCDs, not slidecast slivers), as late as each stretch allows."""
+    cast bars first (instant GCDs, not slidecast slivers), as late as each stretch allows. A dash's saved running comes
+    off its window's."""
     busy = sorted((t, t + float(m.group(1)) - engine.SLIDE) for t, _, note in hist if (m := CAST_NOTE.search(note or "")))
+    dashed = [(t, float(m.group(1))) for t, _, note in hist if (m := DASH_NOTE.search(note or ""))]
     out = []
     for w in fight.moves:
         free, a = [], w.lo
@@ -218,7 +221,7 @@ def placed_runs(hist, fight):
             if b0 > a: free.append((a, b0))
             a = max(a, b1)
         if a < w.hi: free.append((a, w.hi))
-        left = w.need
+        left = w.need - sum(x for t, x in dashed if w.lo <= t < w.hi)
         for a, b in sorted(free, key=lambda x: (x[1] - x[0], x[1]), reverse=True):
             if left <= 1e-9: break
             take = min(left, b - a)

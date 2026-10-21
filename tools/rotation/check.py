@@ -62,16 +62,20 @@ def stand_cases():
 
 
 def replay(state, fight):
-    """Cast bars and casts from a rotation's history; cast times are in its notes."""
-    busy, casts = [], []
+    """Cast bars and casts from a rotation's history; cast times are in its notes, and the running a dash saved
+    (Red Mage) too."""
+    busy, casts, dashed = [], [], []
     for t, name, note in state.history():
         m = re.match(r"\s*([\d.]+)s cast", note)
         casts.append((t, name))
         if m: busy.append((t, t + float(m[1]) - SLIDE))
+        d = re.search(r"dash ([\d.]+)s", note)
+        if d: dashed.append((t, float(d[1])))
     short = []
     for w in fight.moves:
         if not w.need: continue
         free = (w.hi - w.lo) - sum(max(0, min(b, w.hi) - max(a, w.lo)) for a, b in busy)
+        free += sum(x for t, x in dashed if w.lo <= t < w.hi)
         if free < w.need - 1e-6: short.append(f"{w.lo:.1f}-{w.hi:.1f}s free {free:.2f} < {w.need:.2f}: {w.why}")
     away = [f"{name} at {t:.2f}" for t, name in casts if name in HARM and not fight.targetable(t)]
     return short, away, len(busy)
@@ -198,12 +202,54 @@ def rdm_cases():
     m = rdm.do_ogcd(s, g, "Manafication")
     expect(m is not None and rdm.do_gcd(m, g, "Enchanted Riposte", ev=True) is not None, "...unless Manafication extends its reach")
     expect(rdm.do_ogcd(m, g, "Engagement") is None, "Engagement never reaches from there")
+    print("\nRed Mage: dashes")
+    h = Fight(until=60, moves=[Move(10, 15, 4.0, dash=(("in", 0.0, 6.0),)), Move(20, 30, 4.0, dash=(("out", 3.0, 18.0),))])
+    s = rdm.State.initial(h); s.first = False; s.t, s.gcd, s.free = 9.0, 10.8, 9.0
+    c = rdm.do_ogcd(s, h, "Corps-a-Corps")
+    expect(c.history()[-1][0] == 10 and abs(c.acc - 1.0) < 1e-9, f"Corps-a-corps waits for the run to open and saves its 6 y "
+                                                                  f"({c.history()[-1][0]} s, {c.acc:.2f} s banked)")
+    s.t, s.gcd, s.free = 12.0, 13.0, 9.0
+    c = rdm.do_ogcd(s, h, "Corps-a-Corps")
+    expect(c is not None and c.acc == 0, f"2 s into the run (12 y behind: free time counts as run), it saves nothing ({c.acc:.2f} s)")
+    s.t, s.gcd, s.free = 20.2, 22.0, 20.0
+    expect(rdm.do_ogcd(s, h, "Displacement") is None, "Displacement only once the 3 y before its stretch are behind")
+    s.t, s.gcd, s.free = 21.0, 23.0, 20.0
+    d = rdm.do_ogcd(s, h, "Displacement")
+    expect(abs(d.acc - 2.5) < 1e-9, f"1 s in (6 y behind), its 15 y backstep saves 2.5 s of the 15 y left ({d.acc:.2f})")
+    s2 = rdm.State.initial(Fight(until=60, moves=[Move(20, 30, 2.0, dash=(("out", 0.0, 9.0),))])); s2.first = False
+    s2.t, s2.gcd, s2.free = 21.0, 23.0, 21.0
+    e = rdm.do_ogcd(s2, Fight(until=60, moves=[Move(20, 30, 2.0, dash=(("out", 0.0, 9.0),))]), "Displacement")
+    expect(abs(e.acc - 0.5) < 1e-9, f"a 9 y stretch: the backstep overshoots 6 y and walks back, saving 3 y ({e.acc:.2f} s)")
+    f = Fight(until=60, moves=[Move(10, 15, 4.0, dash=(("in", 0.0, 6.0),))], away=[Move(9.3, 10.7, 1.4)])
+    s = rdm.State.initial(f); s.first = False; s.t, s.gcd, s.free = 9.4, 11.5, 9.4
+    s.cds["Corps-a-Corps"] = (1, None)
+    c = rdm.do_ogcd(s, f, "Corps-a-Corps")
+    expect(c is not None and c.history()[-1][0] == 10, "at a far spot, Corps-a-corps waits for the snapshot (the bait), then dashes")
+    s.t = 9.5; s.gcd = 9.9
+    expect(rdm.do_ogcd(s, f, "Corps-a-Corps") is None, "...and can't be used before it")
 
 
 def far_hits(state, fight):
-    """Melee actions inside a far spot's stretch out of reach, not under Manafication."""
-    return [f"{name} at {t:.2f}" for t, name, note in state.history() if name in rdm.MELEE_ACTIONS and "Mfic" not in note
-            and any(w.lo < t < w.hi for w in fight.away)]
+    """Melee actions inside a far spot's stretch out of reach, not under Manafication, nor after a Corps-a-corps that
+    brought the player back once the spot's snapshot (the stretch's middle) was past."""
+    h = state.history()
+    back = lambda w, t: any(n == "Corps-a-Corps" and (w.lo + w.hi) / 2 - 1e-9 <= c <= t for c, n, _ in h)
+    return [f"{name} at {t:.2f}" for t, name, note in h if name in rdm.MELEE_ACTIONS and "Mfic" not in note
+            and any(w.lo < t < w.hi and not back(w, t) for w in fight.away)]
+
+
+def dash_faults(state, fight):
+    """Dashes that save more running than the window's stretch of their kind allows: a gap closer the stretch, a
+    backstep its length or the stretch."""
+    out = []
+    for t, name, note in state.history():
+        d = re.search(r"dash ([\d.]+)s", note)
+        if not d: continue
+        kind, dist = rdm.DASHES[name]
+        w = next((w for w in fight.moves if w.lo <= t < w.hi), None)
+        cap = max((min(length, dist or length) / engine.RUN for k, _, length in (w.dash if w else ()) if k == kind), default=0)
+        if float(d[1]) > cap + 0.01: out.append(f"{name} at {t:.2f} saves {d[1]} s, at most {cap:.2f}")
+    return out
 
 
 def rdm_searches(width=200):
@@ -214,10 +260,11 @@ def rdm_searches(width=200):
         f = p12s.fight(slot, var, far_spots=True)
         s = engine.beam(rdm, f, width=width)
         short, away, hard = replay(s, f)
-        bad = far_hits(s, f)
+        bad = far_hits(s, f) + dash_faults(s, f)
+        dashes = sum(1 for _, _, note in s.history() if "dash " in note)
         label = f"{slot}" + "".join(f", {v}" for v in var.values())
         expect(not short and not away and not bad, f"{label}: {sum(1 for w in f.moves if w.need)} windows, {len(f.away)} far spots, "
-                                                   f"{hard} hard casts, {s.dmg:,.0f} potency" + "".join(f"\n          {x}" for x in short + away + bad))
+                                                   f"{hard} hard casts, {dashes} dashes, {s.dmg:,.0f} potency" + "".join(f"\n          {x}" for x in short + away + bad))
     still = engine.beam(rdm, p12s.fight("R1", still=True), width=width)
     short, _, _ = replay(still, p12s.fight("R1"))
     expect(bool(short), f"control: the standing-still rotation breaks {len(short)} of the R1 windows")
