@@ -1,0 +1,1058 @@
+{
+ "built": "2026-10-21",
+ "kills": [
+  "wk7c14jF9ZxWrhCy#27",
+  "Za342LyX8HgdFqNW#12",
+  "gv3njx46N8mCHkcz#1",
+  "LDHv2BwkGJdxNrzC#1",
+  "VJ9DcZ4XzTKbwrqM#23",
+  "KtAxXbhHfkc3wTCR#7"
+ ],
+ "events": {
+  "On the Soul#0.begin": [
+   6.94,
+   0.15,
+   6
+  ],
+  "On the Soul#0": [
+   11.93,
+   0.14,
+   6
+  ],
+  "Paradeigma#0.begin": [
+   19.12,
+   0.14,
+   6
+  ],
+  "Paradeigma#0": [
+   22.11,
+   0.13,
+   6
+  ],
+  "unknown_8315#0": [
+   25.28,
+   0.13,
+   6
+  ],
+  "Trinity of Souls#0.begin": [
+   27.69,
+   0.13,
+   6
+  ],
+  "White Flame#0": [
+   37.6,
+   0.15,
+   6
+  ],
+  "Trinity of Souls#0": [
+   37.67,
+   0.13,
+   6
+  ],
+  "Trinity of Souls#1": [
+   40.28,
+   0.14,
+   6
+  ],
+  "White Flame#1": [
+   42.6,
+   0.15,
+   6
+  ],
+  "Trinity of Souls#2": [
+   42.85,
+   0.14,
+   6
+  ],
+  "Paradeigma#1.begin": [
+   55.2,
+   0.14,
+   6
+  ],
+  "Paradeigma#1": [
+   58.18,
+   0.14,
+   6
+  ],
+  "Engravement of Souls#0.begin": [
+   61.89,
+   0.13,
+   6
+  ],
+  "Engravement of Souls#0": [
+   65.86,
+   0.13,
+   6
+  ],
+  "Searing Radiance#0.begin": [
+   66.64,
+   0.14,
+   6
+  ],
+  "Shadowsear#0.begin": [
+   66.64,
+   0.14,
+   6
+  ],
+  "Polarized Glow#0": [
+   75.55,
+   0.13,
+   6
+  ],
+  "Shadowsear#0": [
+   75.76,
+   0.13,
+   6
+  ],
+  "Searing Radiance#0": [
+   75.76,
+   0.14,
+   6
+  ],
+  "Astral Glow#0": [
+   76.71,
+   0.13,
+   6
+  ],
+  "Umbral Glow#0": [
+   76.71,
+   0.13,
+   6
+  ],
+  "Ray of Light#0.begin": [
+   77.67,
+   0.15,
+   6
+  ],
+  "Astral Advance#0.begin": [
+   77.74,
+   0.13,
+   6
+  ],
+  "Umbral Advance#0.begin": [
+   77.74,
+   0.13,
+   6
+  ],
+  "Astral Advance#0": [
+   79.7,
+   0.12,
+   6
+  ],
+  "Umbral Advance#0": [
+   79.7,
+   0.12,
+   6
+  ],
+  "Ray of Light#0": [
+   82.67,
+   0.14,
+   6
+  ],
+  "On the Soul#1.begin": [
+   84.7,
+   0.12,
+   6
+  ],
+  "On the Soul#1": [
+   89.7,
+   0.12,
+   6
+  ],
+  "Glaukopis#0.begin": [
+   92.86,
+   0.12,
+   6
+  ],
+  "Glaukopis#0": [
+   97.95,
+   0.12,
+   6
+  ],
+  "Glaukopis#1": [
+   101.09,
+   0.13,
+   6
+  ],
+  "Superchain Theory I#0.begin": [
+   112.3,
+   0.12,
+   6
+  ],
+  "Superchain Theory I#0": [
+   117.29,
+   0.12,
+   6
+  ],
+  "Engravement of Souls#1.begin": [
+   120.46,
+   0.12,
+   6
+  ],
+  "Engravement of Souls#1": [
+   124.43,
+   0.12,
+   6
+  ],
+  "Superchain Burst#0.begin": [
+   128.57,
+   2.53,
+   6
+  ],
+  "Superchain Burst#0": [
+   129.55,
+   2.53,
+   6
+  ],
+  "Superchain Emission#0": [
+   367.32,
+   88.59,
+   6
+  ],
+  "Superchain Burst#1.begin": [
+   135.56,
+   2.55,
+   6
+  ],
+  "Superchain Coil#0.begin": [
+   135.53,
+   2.69,
+   6
+  ],
+  "Polarized Ray#0": [
+   135.66,
+   0.11,
+   6
+  ],
+  "Superchain Burst#1": [
+   136.54,
+   2.55,
+   6
+  ],
+  "Superchain Coil#0": [
+   136.51,
+   2.7,
+   6
+  ],
+  "Umbral Impact#0": [
+   136.82,
+   0.12,
+   6
+  ],
+  "Astral Impact#0": [
+   136.82,
+   0.12,
+   6
+  ],
+  "Superchain Burst#2.begin": [
+   140.56,
+   83.97,
+   6
+  ],
+  "Superchain Burst#2": [
+   141.54,
+   83.97,
+   6
+  ],
+  "Superchain Coil#1.begin": [
+   142.48,
+   2.63,
+   6
+  ],
+  "Superchain Coil#1": [
+   143.46,
+   2.63,
+   6
+  ],
+  "Polarized Glow#1": [
+   143.78,
+   0.11,
+   6
+  ],
+  "Astral Glow#1": [
+   144.94,
+   0.11,
+   6
+  ],
+  "Umbral Glow#1": [
+   144.94,
+   0.11,
+   6
+  ],
+  "Astral Advance#1.begin": [
+   145.97,
+   0.11,
+   6
+  ],
+  "Umbral Advance#1.begin": [
+   145.97,
+   0.11,
+   6
+  ],
+  "Theos's Holy#0": [
+   146.63,
+   0.13,
+   6
+  ],
+  "Astral Advance#1": [
+   147.93,
+   0.11,
+   6
+  ],
+  "Umbral Advance#1": [
+   147.93,
+   0.11,
+   6
+  ],
+  "Trinity of Souls#1.begin": [
+   148.91,
+   0.11,
+   6
+  ],
+  "Trinity of Souls#3": [
+   158.87,
+   0.12,
+   6
+  ],
+  "Trinity of Souls#4": [
+   161.46,
+   0.12,
+   6
+  ],
+  "Trinity of Souls#5": [
+   164.01,
+   0.13,
+   6
+  ],
+  "Peridialogos#0.begin": [
+   167.27,
+   0.15,
+   5
+  ],
+  "Peridialogos#0": [
+   172.27,
+   0.15,
+   5
+  ],
+  "Dialogos#0": [
+   173.48,
+   0.17,
+   6
+  ],
+  "On the Soul#2.begin": [
+   175.13,
+   0.18,
+   6
+  ],
+  "On the Soul#2": [
+   180.1,
+   0.19,
+   6
+  ],
+  "unknown_8315#1": [
+   191.33,
+   0.18,
+   6
+  ],
+  "Paradeigma#2.begin": [
+   193.74,
+   0.18,
+   6
+  ],
+  "Paradeigma#2": [
+   196.73,
+   0.18,
+   6
+  ],
+  "Engravement of Souls#2.begin": [
+   199.9,
+   0.18,
+   6
+  ],
+  "Engravement of Souls#2": [
+   203.87,
+   0.18,
+   6
+  ],
+  "Searing Radiance#1.begin": [
+   206.19,
+   0.2,
+   6
+  ],
+  "Shadowsear#1.begin": [
+   206.19,
+   0.2,
+   6
+  ],
+  "Unnatural Enchainment#0.begin": [
+   207.03,
+   0.18,
+   6
+  ],
+  "Shock#0.begin": [
+   210.07,
+   0.18,
+   6
+  ],
+  "Shock#0": [
+   214.04,
+   0.18,
+   6
+  ],
+  "Unnatural Enchainment#0": [
+   214.0,
+   0.19,
+   6
+  ],
+  "Sample#0": [
+   215.16,
+   0.19,
+   6
+  ],
+  "Searing Radiance#1": [
+   215.3,
+   0.19,
+   6
+  ],
+  "Shadowsear#1": [
+   215.3,
+   0.19,
+   6
+  ],
+  "Theos's Cross#0.begin": [
+   219.04,
+   0.19,
+   6
+  ],
+  "Theos's Saltire#0.begin": [
+   219.04,
+   0.19,
+   6
+  ],
+  "Polarized Glow#2": [
+   221.2,
+   0.18,
+   6
+  ],
+  "Theos's Cross#0": [
+   222.03,
+   0.19,
+   6
+  ],
+  "Theos's Saltire#0": [
+   222.03,
+   0.19,
+   6
+  ],
+  "White Flame#2": [
+   222.21,
+   0.2,
+   6
+  ],
+  "Astral Glow#2": [
+   222.36,
+   0.18,
+   6
+  ],
+  "Astral Advance#2.begin": [
+   223.38,
+   0.18,
+   6
+  ],
+  "Astral Advance#2": [
+   225.35,
+   0.18,
+   6
+  ],
+  "On the Soul#3.begin": [
+   226.33,
+   0.18,
+   6
+  ],
+  "On the Soul#3": [
+   231.3,
+   0.19,
+   6
+  ],
+  "Glaukopis#1.begin": [
+   238.48,
+   0.19,
+   6
+  ],
+  "Glaukopis#2": [
+   243.56,
+   0.18,
+   6
+  ],
+  "Glaukopis#3": [
+   246.72,
+   0.19,
+   6
+  ],
+  "unknown_8315#2": [
+   255.86,
+   0.19,
+   6
+  ],
+  "Ultima Blade#0": [
+   261.38,
+   0.19,
+   6
+  ],
+  "Ultima Blade#1": [
+   268.84,
+   0.2,
+   6
+  ],
+  "Palladion#0.begin": [
+   284.01,
+   0.2,
+   6
+  ],
+  "Clear Cut#0": [
+   292.74,
+   1.61,
+   6
+  ],
+  "Palladion#0": [
+   292.0,
+   0.2,
+   6
+  ],
+  "Shockwave#0": [
+   292.22,
+   0.2,
+   6
+  ],
+  "White Flame#3": [
+   292.96,
+   2.59,
+   6
+  ],
+  "Palladion#1": [
+   295.3,
+   0.2,
+   6
+  ],
+  "Shockwave#1": [
+   295.3,
+   0.2,
+   6
+  ],
+  "Clear Cut#1": [
+   297.48,
+   2.49,
+   6
+  ],
+  "Palladion#2": [
+   298.37,
+   0.2,
+   6
+  ],
+  "Shockwave#2": [
+   298.37,
+   0.2,
+   6
+  ],
+  "White Flame#4": [
+   300.07,
+   1.47,
+   6
+  ],
+  "Palladion#3": [
+   301.45,
+   0.2,
+   6
+  ],
+  "Shockwave#3": [
+   301.45,
+   0.2,
+   6
+  ],
+  "White Flame#5": [
+   304.75,
+   1.6,
+   6
+  ],
+  "Palladion#4": [
+   304.53,
+   0.2,
+   6
+  ],
+  "Shockwave#4": [
+   304.53,
+   0.2,
+   6
+  ],
+  "Clear Cut#2": [
+   304.97,
+   2.58,
+   6
+  ],
+  "Palladion#5": [
+   307.6,
+   0.21,
+   6
+  ],
+  "Shockwave#5": [
+   307.6,
+   0.21,
+   6
+  ],
+  "White Flame#6": [
+   309.49,
+   2.51,
+   6
+  ],
+  "Palladion#6": [
+   310.67,
+   0.21,
+   6
+  ],
+  "Shockwave#6": [
+   310.67,
+   0.21,
+   6
+  ],
+  "Clear Cut#3": [
+   312.07,
+   1.48,
+   6
+  ],
+  "Palladion#7": [
+   313.75,
+   0.21,
+   6
+  ],
+  "Shockwave#7": [
+   313.75,
+   0.21,
+   6
+  ],
+  "Palladion#8": [
+   318.92,
+   0.2,
+   6
+  ],
+  "Palladion#9": [
+   322.98,
+   0.21,
+   6
+  ],
+  "Theos's Ultima#0.begin": [
+   327.71,
+   0.21,
+   6
+  ],
+  "Theos's Ultima#0": [
+   334.67,
+   0.21,
+   6
+  ],
+  "Superchain Theory IIA#0.begin": [
+   349.14,
+   0.21,
+   6
+  ],
+  "Superchain Theory IIA#0": [
+   354.09,
+   0.22,
+   6
+  ],
+  "Trinity of Souls#2.begin": [
+   357.26,
+   0.22,
+   6
+  ],
+  "Superchain Burst#3.begin": [
+   366.38,
+   1.82,
+   6
+  ],
+  "Trinity of Souls#6": [
+   367.26,
+   0.22,
+   6
+  ],
+  "Superchain Burst#3": [
+   367.36,
+   1.82,
+   6
+  ],
+  "Superchain Emission#1": [
+   424.45,
+   26.09,
+   5
+  ],
+  "Superchain Coil#2.begin": [
+   368.86,
+   85.18,
+   6
+  ],
+  "Superchain Coil#2": [
+   369.84,
+   85.18,
+   6
+  ],
+  "Trinity of Souls#7": [
+   369.89,
+   0.22,
+   6
+  ],
+  "Superchain Burst#4.begin": [
+   371.42,
+   1.26,
+   6
+  ],
+  "Superchain Burst#4": [
+   372.4,
+   1.26,
+   6
+  ],
+  "Trinity of Souls#8": [
+   372.47,
+   0.22,
+   6
+  ],
+  "Superchain Burst#5.begin": [
+   374.88,
+   15.47,
+   6
+  ],
+  "Superchain Burst#5": [
+   375.86,
+   15.47,
+   6
+  ],
+  "Peridialogos#1.begin": [
+   376.79,
+   0.05,
+   4
+  ],
+  "Peridialogos#1": [
+   381.78,
+   0.06,
+   4
+  ],
+  "Dialogos#1": [
+   383.16,
+   0.22,
+   6
+  ],
+  "On the Soul#4.begin": [
+   384.81,
+   0.22,
+   6
+  ],
+  "On the Soul#4": [
+   389.79,
+   0.22,
+   6
+  ],
+  "unknown_8315#3": [
+   397.01,
+   0.23,
+   6
+  ],
+  "Superchain Theory IIB#0.begin": [
+   399.41,
+   0.23,
+   6
+  ],
+  "Superchain Theory IIB#0": [
+   404.38,
+   0.23,
+   6
+  ],
+  "Paradeigma#3.begin": [
+   407.55,
+   0.23,
+   6
+  ],
+  "Paradeigma#3": [
+   410.53,
+   0.23,
+   6
+  ],
+  "Parthenos#0.begin": [
+   415.7,
+   0.24,
+   6
+  ],
+  "Superchain Burst#6.begin": [
+   416.63,
+   2.54,
+   6
+  ],
+  "Superchain Coil#3.begin": [
+   416.63,
+   17.84,
+   6
+  ],
+  "Superchain Burst#6": [
+   417.61,
+   2.54,
+   6
+  ],
+  "Superchain Coil#3": [
+   417.61,
+   17.84,
+   6
+  ],
+  "Parthenos#0": [
+   420.68,
+   0.24,
+   6
+  ],
+  "Ray of Light#1.begin": [
+   422.0,
+   0.23,
+   6
+  ],
+  "Superchain Burst#7.begin": [
+   423.57,
+   3.31,
+   6
+  ],
+  "Superchain Burst#7": [
+   424.55,
+   3.31,
+   6
+  ],
+  "Ray of Light#1": [
+   426.99,
+   0.23,
+   6
+  ],
+  "Unnatural Enchainment#1.begin": [
+   429.35,
+   0.23,
+   6
+  ],
+  "Superchain Burst#8.begin": [
+   432.55,
+   0.24,
+   5
+  ],
+  "Superchain Burst#8": [
+   433.53,
+   0.24,
+   5
+  ],
+  "Superchain Radiation#0": [
+   129.56,
+   113.32,
+   6
+  ],
+  "Unnatural Enchainment#1": [
+   436.33,
+   0.24,
+   6
+  ],
+  "Sample#1": [
+   437.49,
+   0.24,
+   6
+  ],
+  "On the Soul#5.begin": [
+   439.48,
+   0.24,
+   6
+  ],
+  "On the Soul#5": [
+   444.46,
+   0.24,
+   6
+  ],
+  "On the Soul#6.begin": [
+   447.62,
+   0.24,
+   6
+  ],
+  "On the Soul#6": [
+   452.6,
+   0.24,
+   6
+  ],
+  "Superchain Radiation#1": [
+   375.86,
+   19.29,
+   5
+  ],
+  "Superchain Radiation#2": [
+   433.45,
+   3.41,
+   5
+  ]
+ },
+ "untargetable": [
+  [
+   281.65,
+   325.93
+  ]
+ ],
+ "kill_median": 449,
+ "enrage": 458,
+ "clears_path": {
+  "[\"Astral Advance#0\", \"Ray of Light#0\"]": [
+   1.6,
+   11
+  ],
+  "[\"Astral Advance#2\", \"Glaukopis#2\"]": [
+   11.6,
+   11
+  ],
+  "[\"Astral Impact#0\", [\"Polarized Glow#1\", -2.25]]": [
+   9.7,
+   11
+  ],
+  "[\"Dialogos#0\", [\"Searing Radiance#1.begin\", 1.0]]": [
+   4.5,
+   11
+  ],
+  "[\"Dialogos#1\", \"Superchain Theory IIB#0\"]": [
+   0.4,
+   11
+  ],
+  "[\"Glaukopis#2\", \"Ultima Blade#1\"]": [
+   1.6,
+   11
+  ],
+  "[\"Palladion#9\", \"Theos's Ultima#0\"]": [
+   3.3,
+   11
+  ],
+  "[\"Paradeigma#0\", [\"Paradeigma#0\", 5.2]]": [
+   0.0,
+   11
+  ],
+  "[\"Paradeigma#1\", [\"Searing Radiance#0.begin\", 1.0]]": [
+   0.7,
+   11
+  ],
+  "[\"Parthenos#0\", \"Ray of Light#1\"]": [
+   7.6,
+   11
+  ],
+  "[\"Polarized Glow#0\", \"Astral Advance#0\"]": [
+   4.6,
+   11
+  ],
+  "[\"Ray of Light#0\", \"Superchain Theory I#0\"]": [
+   7.4,
+   11
+  ],
+  "[\"Ray of Light#1\", \"Sample#1\"]": [
+   27.3,
+   11
+  ],
+  "[\"Sample#1\", \"On the Soul#6\"]": [
+   4.4,
+   6
+  ],
+  "[\"Searing Radiance#0\", \"Astral Advance#0\"]": [
+   4.6,
+   11
+  ],
+  "[\"Searing Radiance#1\", \"Theos's Cross#0\"]": [
+   3.4,
+   11
+  ],
+  "[\"Superchain Theory IIA#0\", \"Trinity of Souls#6\"]": [
+   18.0,
+   11
+  ],
+  "[\"Superchain Theory IIB#0\", \"Parthenos#0\"]": [
+   21.8,
+   11
+  ],
+  "[\"Theos's Cross#0\", \"Astral Advance#2\"]": [
+   0.7,
+   11
+  ],
+  "[\"Theos's Holy#0\", \"Trinity of Souls#3\"]": [
+   17.3,
+   11
+  ],
+  "[\"Theos's Ultima#0\", \"Superchain Theory IIA#0\"]": [
+   12.3,
+   11
+  ],
+  "[\"Trinity of Souls#2\", \"Paradeigma#1\"]": [
+   6.4,
+   11
+  ],
+  "[\"Trinity of Souls#3\", \"Trinity of Souls#4\"]": [
+   2.0,
+   11
+  ],
+  "[\"Trinity of Souls#4\", \"Trinity of Souls#5\"]": [
+   1.3,
+   11
+  ],
+  "[\"Trinity of Souls#5\", \"Dialogos#0\"]": [
+   8.7,
+   11
+  ],
+  "[\"Trinity of Souls#6\", \"Trinity of Souls#7\"]": [
+   7.5,
+   11
+  ],
+  "[\"Trinity of Souls#7\", \"Trinity of Souls#8\"]": [
+   14.3,
+   11
+  ],
+  "[\"Trinity of Souls#8\", \"Dialogos#1\"]": [
+   20.5,
+   11
+  ],
+  "[\"Ultima Blade#1\", \"Palladion#0.begin\"]": [
+   2.5,
+   11
+  ],
+  "[\"White Flame#0\", \"Trinity of Souls#2\"]": [
+   22.8,
+   11
+  ],
+  "[\"White Flame#0\", \"White Flame#1\"]": [
+   22.0,
+   11
+  ],
+  "[[\"Paradeigma#0\", 5.2], \"White Flame#0\"]": [
+   16.9,
+   11
+  ],
+  "[[\"Polarized Glow#1\", -0.3], \"Astral Advance#1\"]": [
+   10.4,
+   11
+  ],
+  "[[\"Polarized Glow#1\", -0.3], \"Theos's Holy#0\"]": [
+   8.3,
+   11
+  ],
+  "[[\"Polarized Glow#1\", -2.25], [\"Polarized Glow#1\", -0.3]]": [
+   6.1,
+   11
+  ],
+  "[[\"Polarized Ray#0\", -6.1], \"Astral Impact#0\"]": [
+   25.0,
+   11
+  ],
+  "[[\"Searing Radiance#0.begin\", 1.0], \"Polarized Glow#0\"]": [
+   13.5,
+   11
+  ],
+  "[[\"Searing Radiance#0.begin\", 1.0], \"Searing Radiance#0\"]": [
+   13.5,
+   11
+  ],
+  "[[\"Searing Radiance#1.begin\", 1.0], \"Unnatural Enchainment#0\"]": [
+   11.9,
+   11
+  ],
+  "[[\"Superchain Theory I#0\", 1.0], [\"Polarized Ray#0\", -6.1]]": [
+   17.4,
+   11
+  ]
+ }
+}
