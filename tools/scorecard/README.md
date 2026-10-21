@@ -96,7 +96,8 @@ appears (the page only asks when `data.json` is missing and `data.enc.json` is t
 | Raid days | Tiles: pulls, best pull, furthest seen (the longest pull, the mechanic it reached, its day, group and pull), latest day, mistakes per pull; the burndown; trends across days (how far pulls got, pulls clean through each mechanic, mistakes per pull and per minute, damage lost to mistakes, party DPS against the clears) and a table of days |
 | Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group (rows named by mechanic, see below) |
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
-| Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull, with the rotation ceiling for jobs the optimizer covers (see below); every mistake with its pull and time; the player across raid days (mistakes per pull and per minute in pulls) |
+| Rotations | The optimizer's rotations (`#/rotations`, linked in the header): a table of the jobs it covers; a job's GCDs with each rotation's potency, potency per second and expected DPS; a GCD's fight timeline (mechanics and the runs our strategy needs), rotation, casts per skill and resources wasted (see Rotation ceiling) |
+| Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull, with the rotation ceiling for jobs the optimizer covers and how far their pulls are from it, linking to its rotation (see below); every mistake with its pull and time; the player across raid days (mistakes per pull and per minute in pulls) |
 
 The player page's "What their mistakes cost" card (boss HP lost to deaths they caused, by cause) is hidden for now: set `SHOW_MISTAKE_COST` in `site/app.js` to `true` to bring it back.
 
@@ -169,13 +170,27 @@ at the group's average player DPS (party DPS / 8). The scorecard also splits eac
 
 ### Rotation ceiling
 
-For jobs the rotation optimizer covers (`tools/rotation`: Black Mage and Reaper so far), the rDPS on clean pulls chart
-marks each pull with a ceiling: the best rotation without raid buffs at the player's GCD over 0:00-2:00, converted to
+For jobs the rotation optimizer covers (`tools/rotation`: Black Mage, Reaper and Monk so far), the rDPS on clean pulls chart
+marks each pull with a ceiling: the best rotation without raid buffs at the player's GCD over 0:00-2:00, with the runs
+our strategy needs at their worst for the role (the Paradeigma I slot with the most running, R1 or M2, and each mechanic's
+variant with the most), converted to
 their DPS (their damage per potency and crit / direct-hit gain from their own hits), the same for every pull, plus what
 that pull's raid buffs added to the other players' damage (FFLogs' rDPS given: a Reaper's Arcane Circle), which rDPS
-credits to them. The table view splits the two. The player page's Optimized rotation section shows the rotation behind
-the ceiling: every GCD at its start time with the oGCDs woven after it. To refresh the ceilings, run
-`python tools/rotation/dps.py --job blm --site` (and `--job rpr`), then `build_site.py --reanalyse`.
+credits to them. The table view splits the two. The player page's Optimized rotation card gives the ceiling, how far
+their clean pulls are from it (median share and DPS, best pull) and links to the rotation behind it.
+
+The rotations live on their own pages, `#/rotations` (the Rotations link in the header): the jobs the optimizer covers,
+then a job's GCDs (every GCD it was searched at: our players' and any extra), then one GCD's rotation, every GCD at its
+start time with the oGCDs woven after it, with its potency, casts per skill and any resources wasted. On top, the
+fight timeline it plays around: each major mechanic's start (its boss cast), the windows in which our strategy needs a run
+(the seconds needed; darker for the raidplan's runs, lighter where the plan has none and the clears' median path is used),
+a melee's stretches out of reach and spots the plan fixes (positionals need True North), and the rotation's GCDs and
+oGCDs. The timeline comes with the rotations (`dps.py --site`, from `p12s.py`). Expected DPS there
+converts the potency at the median damage per potency and crit / direct-hit gain of our players on the job, the same at
+every GCD so they compare; the range is the same rotation at each player's own conversion. Monk's rotations also depend
+on the crit rate (its chakra), so its are per GCD and crit rate. To refresh them, run
+`python tools/rotation/dps.py --job blm --site` (and `--job rpr`, `--job mnk`; `--gcds 2.30,2.40` adds GCDs none of our
+players has), then `build_site.py --reanalyse` (the rotations themselves are picked up by any `build_site.py` run).
 
 ### Damage by phase
 

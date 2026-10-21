@@ -109,6 +109,12 @@ PLAN = {
     },
 }
 DEFAULT_VAR = {"Paradeigma II": "tether", "Superchain I": "spread", "Paradeigma III": "straight"}   # the most running
+# the major mechanics as the site's timeline marks them: when their boss cast's bar starts
+MECHANICS = [("Paradeigma#0.begin", "Paradeigma I"), ("Paradeigma#1.begin", "Paradeigma II"), ("Glaukopis#0.begin", "Glaukopis"),
+             ("Superchain Theory I#0.begin", "Superchain I"), ("Peridialogos#0.begin", "Dialogos"),
+             ("Paradeigma#2.begin", "Paradeigma III"), ("Ultima Blade#0", "Ultima Blade"), ("Palladion#0.begin", "Palladion"),
+             ("Theos's Ultima#0.begin", "Theos's Ultima"), ("Superchain Theory IIA#0.begin", "Superchain IIA"),
+             ("Superchain Theory IIB#0.begin", "Superchain IIB")]
 SHORT = {"para1": "Paradeigma I", "para2": "Paradeigma II", "sc1": "Superchain I", "para3": "Paradeigma III"}
 
 # --- what the clears ran where our plan has nothing (yet) ------------------------------------------------------------
@@ -301,6 +307,20 @@ def windows(slot="R1", var=None, data=None):
         out.append((lo, hi, got[0], mech, f"as the clears' {who} ran (median of {got[1]})",
                     "clears, provisional" if prov else "clears"))
     return sorted(out)
+
+
+def mechanics(data=None):
+    """[(t, name)]: when each major mechanic starts."""
+    data = data or load()
+    return [(_at(data["events"], ref), name) for ref, name in MECHANICS if ref in data["events"]]
+
+
+def worst_slot(melee_job=False, until=None, data=None):
+    """Of the two Paradeigma I slots of the job's role (R1 / R2, or M1 / M2), the one with the most running before
+    `until`: a rotation planned for it holds whichever the player is given (the variants default to the most already)."""
+    data = data or load()
+    run = lambda slot: sum(min(y / RUN, hi - lo) for lo, hi, y, *_ in windows(slot, None, data) if until is None or lo < until)
+    return max(("M1", "M2") if melee_job else ("R1", "R2"), key=run)
 
 
 def plan_spans(slot="R1", var=None, data=None):

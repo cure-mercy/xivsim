@@ -7,7 +7,9 @@ logged plain hits (no crit, no direct hit, buffs divided out).
 By default each log is replayed over the whole pull, up to the player's first death (a death strips the gauge and
 procs, which the model doesn't follow). A job model supplies the hooks at the end of jobs/<job>.py: LOG_NAME,
 LOGS_SINCE, OGCDS, REFERENCE, at, status, force, label, cast_label; optionally prepare(p) (read what the replay
-takes from the log itself, e.g. Monk's critical hits), force_ogcd, HASTE (a permanent GCD haste, e.g. Monk's 20%).
+takes from the log itself, e.g. Monk's critical hits), force_ogcd, HASTE (a permanent GCD haste, e.g. Monk's 20%),
+HASTE_STATUSES (statuses whose haste comes and goes, e.g. Bard's Army's Paeon: gcd_of leaves the GCDs under them out,
+as it does Ley Lines).
 """
 import argparse, collections, datetime, importlib, json, math, statistics as st, sys
 from pathlib import Path
@@ -100,12 +102,15 @@ def cut_of(p, until=None):
 
 
 def gcd_of(p):
-    """The player's unhasted GCD: the most common spacing of consecutive GCD starts outside Ley Lines (over the job's
-    permanent haste, if it has one)."""
+    """The player's unhasted GCD: the most common spacing of consecutive GCD starts outside Ley Lines and the job's other
+    hasting statuses (over the job's permanent haste, if it has one)."""
     n = p["names"]
     h = getattr(J, "HASTE", 1.0)
-    ll = [x["t"] for x in p["buffs"] if n[str(x["abilityGameID"])] == "Ley Lines" and x["type"] in ("applybuff", "removebuff")]
-    inll = lambda t: any(a <= t < b for a, b in zip(ll[0::2], ll[1::2]))
+    spans = []
+    for status in ("Ley Lines",) + getattr(J, "HASTE_STATUSES", ()):
+        ev = [x["t"] for x in p["buffs"] if n[str(x["abilityGameID"])] == status and x["type"] in ("applybuff", "removebuff")]
+        spans += zip(ev[0::2], ev[1::2])
+    inll = lambda t: any(a <= t < b for a, b in spans)
     starts, lb = [], {}
     for x in p["casts"]:
         name = n[str(x["abilityGameID"])]
@@ -188,7 +193,7 @@ def damage_check(L, until=None):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--job", default="blm", help="job model in jobs/ (blm, rpr, mnk)")
+    ap.add_argument("--job", default="blm", help="job model in jobs/ (blm, rpr, mnk, brd)")
     ap.add_argument("--since", default=None, help="first day of logs used (default: the job model's)")
     ap.add_argument("--until", type=float, default=None, help="end of the replay, s (default: the whole pull)")
     ap.add_argument("--ours", action="store_true", help="our groups' clean pulls instead of the benchmark clears")

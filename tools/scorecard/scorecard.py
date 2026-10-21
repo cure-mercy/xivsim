@@ -119,9 +119,16 @@ def fetch_tables(data, fights):
 
 
 def ceilings():
-    """Our players' rotation ceilings (unbuffed DPS over 0:00-2:00), {job: {name: {ceiling, gcd, pulls}}}, as
-    tools/rotation/dps.py --site saved them; empty when it hasn't been run."""
+    """Our players' rotation ceilings (unbuffed DPS over 0:00-2:00), {job: {name: {ceiling, gcd, pulls, rotation_key}}},
+    as tools/rotation/dps.py --site saved them; empty when it hasn't been run."""
     f = HERE.parent / "rotation" / ".cache" / "ceilings.json"
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+
+
+def rotations():
+    """The optimized rotations behind the ceilings, {job: {key: {gcd, crit, potency, dps, ..., rotation}}}, one per GCD,
+    as tools/rotation/dps.py --site saved them; empty when it hasn't been run."""
+    f = HERE.parent / "rotation" / ".cache" / "rotations.json"
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
 
 
@@ -402,7 +409,7 @@ def analyse(group, data, bench):
                                              for fid, rows in data["tables"].items() for y in rows if y["name"] == name and y["job"] == job],
                                 ceiling=ceil.get(job, {}).get(name, {}).get("ceiling"),
                                 ceiling_gcd=ceil.get(job, {}).get(name, {}).get("gcd"),
-                                ceiling_rotation=ceil.get(job, {}).get(name, {}).get("rotation"),
+                                ceiling_key=ceil.get(job, {}).get(name, {}).get("rotation_key"),
                                 dead_s=dead_s[name], lost_suffered=suffered[name], lost_caused=caused[name],
                                 lost_caused_by=dict(caused_by[name]), phases=phases, rotation=rotation.get((name, job)),
                                 pull_detail=pull_detail(name, job)))
