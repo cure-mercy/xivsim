@@ -135,9 +135,13 @@ def player_rows(job, pulls, width):
             model.append(convert(s, k, e, et, ec))
             logged.append(logged_unbuffed(p, job=job) / WINDOW)
             if p.get("rdps"): sc.append(p["rdps"])
-        top = convert(ceiling(job, gcd, width, own), k, e0, et, ec0)
+        opt = ceiling(job, gcd, width, own)
+        top = convert(opt, k, e0, et, ec0)
+        # the ceiling's rotation for the site: [time, action, "g" for a GCD / "o" for an oGCD], waits left out
+        rot = [[t, n, "g" if n in job.GCDS else "o"] for t, n, _ in opt.history() if t < WINDOW and not n.startswith("(")]
         rows.append(dict(name=name, pulls=len(ps), gcd=gcd, k=k, crit=crit, dh=dh, e=e, e0=e0, model=st.median(model),
-                         logged=st.median(logged), rdps=st.median(sc) if sc else None, best=max(sc) if sc else None, ceiling=top))
+                         logged=st.median(logged), rdps=st.median(sc) if sc else None, best=max(sc) if sc else None, ceiling=top,
+                         rotation=rot))
     return rows
 
 
@@ -169,7 +173,8 @@ def main():
           "  (a raid buff's credit for the others' damage, which rDPS includes, is not in it: the scorecard site adds it).")
     if a.site:
         saved = json.loads(SITE_FILE.read_text()) if SITE_FILE.exists() else {}
-        saved[jobname] = {r["name"]: dict(ceiling=round(r["ceiling"]), gcd=r["gcd"], pulls=r["pulls"]) for r in rows}
+        saved[jobname] = {r["name"]: dict(ceiling=round(r["ceiling"]), gcd=r["gcd"], pulls=r["pulls"], rotation=r["rotation"])
+                          for r in rows}
         SITE_FILE.parent.mkdir(exist_ok=True)
         SITE_FILE.write_text(json.dumps(saved, indent=1, ensure_ascii=False))
         print(f"\nsaved {len(rows)} ceilings to {SITE_FILE}")
