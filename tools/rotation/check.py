@@ -23,7 +23,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import engine, p12s                              # noqa: E402
 from engine import Fight, Move, SLIDE            # noqa: E402
-from jobs import blm, brd, drg, mnk, rdm, rpr, vpr    # noqa: E402
+from jobs import blm, brd, drg, mnk, rdm, rpr, sam, vpr    # noqa: E402
 
 HARM = {"Fire III", "Fire IV", "Despair", "Paradox", "Blizzard III", "Blizzard IV", "Thunder III", "Xenoglossy"}
 HARM |= (set(rpr.GCDS) - {"Soulsow"}) | rpr.AVATAR | {"Gluttony", "Lemure's Slice"}
@@ -32,6 +32,7 @@ HARM |= set(brd.POTENCY) | {"Apex Arrow", "Pitch Perfect"}
 HARM |= set(drg.POTENCY)
 HARM |= set(rdm.POTENCY)
 HARM |= set(vpr.POTENCY)
+HARM |= set(sam.POTENCY)
 fails = []
 
 
@@ -62,13 +63,15 @@ def stand_cases():
 
 
 def replay(state, fight):
-    """Cast bars and casts from a rotation's history; cast times are in its notes, and the running a dash saved
-    (Red Mage) too."""
+    """Cast bars and casts from a rotation's history; cast times are in its notes, the time a player stands still
+    without a cast bar (Samurai's Meditate) and the running a dash saved (Red Mage) too."""
     busy, casts, dashed = [], [], []
     for t, name, note in state.history():
         m = re.match(r"\s*([\d.]+)s cast", note)
         casts.append((t, name))
         if m: busy.append((t, t + float(m[1]) - SLIDE))
+        m = re.match(r"\s*stand ([\d.]+)s", note)
+        if m: busy.append((t, t + float(m[1])))
         d = re.search(r"dash ([\d.]+)s", note)
         if d: dashed.append((t, float(d[1])))
     short = []
@@ -278,6 +281,7 @@ if __name__ == "__main__":
     melee_searches(mnk, 2.43)
     melee_searches(drg, 2.49)
     melee_searches(vpr, 2.49)
+    melee_searches(sam, 2.40)
     bard_cases()
     bard_searches()
     rdm_cases()
