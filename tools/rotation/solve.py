@@ -1,6 +1,6 @@
 """Searches for the highest-damage rotation of a job over P12S phase 1 and prints it.
 
-    python tools/rotation/solve.py [--job blm|rpr|mnk|brd|drg] [--gcd 2.32] [--until 449] [--slot R1] [--var para2=debuff]
+    python tools/rotation/solve.py [--job blm|rpr|mnk|brd|drg|rdm] [--gcd 2.32] [--until 449] [--slot R1] [--var para2=debuff]
                                    [--party AST,SCH,DRG,DNC] [--still] [--move 30-36] [--pot] [--carry] [--width 1000]
                                    [--compare]
 
@@ -16,10 +16,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
 import engine, p12s                              # noqa: E402
 from engine import Move                          # noqa: E402
-from jobs import blm, brd, drg, mnk, rpr         # noqa: E402
+from jobs import blm, brd, drg, mnk, rdm, rpr    # noqa: E402
 
 JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard"),
-        "drg": (drg, "Dragoon")}
+        "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage")}
 CRIT, CRIT_DMG, DH = 0.25, 1.60, 0.36            # typical rates at this gear level, for the value of crit and direct hit buffs
 BUFFS = {   # name: (job, multiplier)
     "Divination": ("AST", 1.06), "Technical Finish": ("DNC", 1.05), "Brotherhood": ("MNK", 1.05), "Embolden": ("RDM", 1.05),
@@ -46,6 +46,7 @@ def buff_times():
 
 
 def fight_for(a, job=blm):
+    far_spots = getattr(job, "FAR", False)          # a ranged job with melee actions: out of reach at the plan's far spots
     party = {x.strip().upper() for x in a.party.split(",") if x.strip()}
     buffs = []
     if party:
@@ -56,7 +57,8 @@ def fight_for(a, job=blm):
                 t = times.get((name, i))
                 if t is not None: buffs.append((name, t, t + 20, m))
     f = p12s.fight(a.slot, p12s.parse_var(a.var), until=a.until, still=a.still,
-                   buffs=sorted(buffs, key=lambda b: b[1]), pot=a.pot, carry=a.carry)
+                   buffs=sorted(buffs, key=lambda b: b[1]), pot=a.pot, carry=a.carry,
+                   far_spots=far_spots)
     extra = [tuple(float(x) for x in w.split("-")) for w in a.move.split(",") if w.strip()]
     if extra: f = dataclasses.replace(f, moves=f.moves + [Move(s, e, e - s, why="--move") for s, e in extra])
     f.buffs = [b for b in f.buffs if b[1] < f.until]
@@ -81,7 +83,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--job", default="blm", choices=sorted(JOBS))
     ap.add_argument("--gcd", type=float, default=None, help="GCD length without haste, from the player's spell or skill speed "
-                    "(default: the benchmark clears' median, 2.32 s for BLM, 2.49 s for RPR, BRD and DRG; Monk's 20%% "
+                    "(default: the benchmark clears' median, 2.32 s for BLM, 2.49 s for RPR, BRD and DRG, 2.50 s for RDM; Monk's 20%% "
                     "Greased Lightning comes off it: 2.43 s is a 1.94 s GCD)")
     ap.add_argument("--crit", type=float, default=None, help="critical-hit rate, for jobs whose resources or buffs "
                     "turn on critical hits (Monk's chakra, Dragoon's Life Surge and Battle Litany; default 0.25)")
@@ -95,7 +97,7 @@ def main():
     ap.add_argument("--pot", action="store_true", help="allow one tincture")
     ap.add_argument("--carry", action="store_true", help="also value resources still held at the end")
     ap.add_argument("--width", type=int, default=None, help="beam width: states kept per step, per heuristic setting "
-                    "(default: the job's, 1,000 for BLM, 3,000 for RPR, MNK, BRD and DRG)")
+                    "(default: the job's, 1,000 for BLM and RDM, 3,000 for RPR, MNK, BRD and DRG)")
     ap.add_argument("--compare", action="store_true", help="replay the clears' logged rotations under the same buffs")
     a = ap.parse_args()
     job, jobname = JOBS[a.job]
@@ -107,8 +109,9 @@ def main():
     run = sum(m.need for m in fight.moves)
     print(f"forced running: {run:.0f} s in {sum(1 for m in fight.moves if m.need)} windows" +
           ("" if a.still or not fight.moves else f" (slot {a.slot}" + "".join(f", {v}" for v in a.var or []) + ")"))
-    if fight.away: print(f"out of reach: {sum(m.need for m in fight.away):.0f} s in {len(fight.away)} windows; spot fixed (positionals "
-                         f"need True North): {sum(b - a for a, b in fight.pinned):.0f} s")
+    if fight.away: print(f"out of reach: {sum(m.need for m in fight.away):.0f} s in {len(fight.away)} windows" +
+                         (f"; spot fixed (positionals need True North): {sum(b - a for a, b in fight.pinned):.0f} s" if fight.pinned
+                          else " (the plan's far spots: no melee action without Manafication)"))
     t0 = time.time()
     params = {"CRIT": a.crit} if a.crit is not None and hasattr(job, "CRIT") else None
     best, setting, scores = engine.search(a.job, fight, width=a.width, speed=job.SPEED, params=params)

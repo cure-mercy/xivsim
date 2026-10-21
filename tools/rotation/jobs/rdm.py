@@ -1,0 +1,521 @@
+"""Red Mage at level 90, Dawntrail patch 7.05 and later, single target.
+
+Rules follow the official job guide (na.finalfantasyxiv.com/jobguide/redmage) and the patch notes since 7.0
+(patchnotes.py). Both show level-100 values: Enchanted Blade Mastery (level 94) raises nearly every potency there, and
+Vice of Thorns (92), Grand Impact (96) and Prefulgence (100) lie above P12S. The patch notes since 7.0 only change those
+level-94+ values, AoE falloff and Manafication's durations (7.01 and 7.05: 30 s).
+
+FFLogs was down when this was written, so the level-90 potencies were measured in the scorecard's cached damage events
+(.cache/acts_*: our groups' 267 pulls by five Red Mages, Sep-Oct 2026, and 18 benchmark clears): each player's plain-hit
+cluster with others' damage buffs and the own Embolden divided out, scaled to Jolt III (360: Red Magic Mastery III at
+84 sets it, nothing since touches it). They are Endwalker's level-90 values; FFLogs' bonusPercent confirms the combo
+splits (Enchanted Redoublement 74% = (500 - 130) / 500).
+
+The loop: a hard-cast spell grants Dualcast, which makes the next spell instant, so a 2 s spell (Jolt III, or Verfire /
+Verstone on a proc) is hard-cast and the 5 s Verthunder III / Veraero III comes out instant. Black and White Mana (0-100
+each) build from the spells; the enchanted melee combo (Riposte -> Zwerchhau -> Redoublement, 20 / 15 / 15 of each)
+gives three Mana Stacks, which open Verflare or Verholy, then Scorch and Resolution as a combo. Manafication makes the
+next three enchanted actions free (Magicked Swordplay) and lets them reach 25 y; Embolden raises the own magic damage
+10% (Fleche, Contre Sixte, Corps-a-corps and Engagement are physical: the logs show no gain on them).
+
+From the logs (none of it in the guide):
+- Acceleration is spent before Dualcast and Swiftcast by an instant Verthunder / Veraero III, and Dualcast survives it
+  (18 of 18 casts); Dualcast is spent before Swiftcast. A spell made instant never grants Dualcast.
+- Verthunder / Veraero III proc their colour 49.4% of the time (4,158 casts), 100% under Acceleration.
+- Sprint cancels Dualcast (it is a general action, not an ability).
+- The enchanted combo's recasts are fixed at 1.5 / 1.5 / 2.2 s whatever the spell speed; Embolden's status lands 0.67 s
+  after the cast, every other status on the cast.
+
+Procs are random. The search counts them at their expected worth (as the Bard's Repertoire): a Verthunder III raises
+the chance that Verfire Ready is up by half of what is left, and casting "Verfire" means "Verfire if it is up, else
+Verstone if that is, else Jolt III" (all cast in 2 s), at the mixture's potency and mana. A log replay knows which spell
+was cast, so there a proc is "possibly up" once granted, and the spell is what the log says.
+
+Reach: the melee combo and Engagement need the player within reach of Athena (3 y beyond her ~11 y hitbox), except the
+combo under Manafication. Our plan keeps a ranged player in reach except at a few far spots (p12s.far), which the fight
+gives as `away` windows.
+"""
+import itertools
+from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, gcd_times, move_credit, open_move, settle, stand
+
+# level-90 potencies from the logs (see above); (out of combo, in combo) for combo steps
+POTENCY = {"Jolt III": 360, "Verthunder III": 380, "Veraero III": 380, "Verfire": 340, "Verstone": 340,
+           "Verflare": 600, "Verholy": 600, "Scorch": 680, "Resolution": 750,
+           "Enchanted Riposte": 280, "Enchanted Zwerchhau": (150, 340), "Enchanted Redoublement": (130, 500),
+           "Enchanted Reprise": 340, "Fleche": 460, "Contre Sixte": 380, "Corps-a-Corps": 130, "Engagement": 180,
+           "Displacement": 180,
+           # replays only: the plain melee actions (too little mana), AoE spells
+           "Riposte": 130, "Zwerchhau": (100, 150), "Redoublement": (100, 230), "Reprise": 100,
+           "Verthunder II": 140, "Veraero II": 140, "Impact": 210}
+PHYSICAL = {"Fleche", "Contre Sixte", "Corps-a-Corps", "Engagement", "Displacement", "Riposte", "Zwerchhau",
+            "Redoublement", "Reprise"}
+# mana gained (black, white) and spent (each colour)
+GAIN = {"Jolt III": (2, 2), "Verthunder III": (6, 0), "Veraero III": (0, 6), "Verfire": (5, 0), "Verstone": (0, 5),
+        "Verflare": (11, 0), "Verholy": (0, 11), "Scorch": (4, 4), "Resolution": (4, 4), "Verthunder II": (7, 0),
+        "Veraero II": (0, 7), "Impact": (3, 3)}
+COST = {"Enchanted Riposte": 20, "Enchanted Zwerchhau": 15, "Enchanted Redoublement": 15, "Enchanted Reprise": 5}
+ENCHANTED = ("Enchanted Riposte", "Enchanted Zwerchhau", "Enchanted Redoublement")     # Magicked Swordplay covers these
+# seconds from executing (a spell: resolving) to the damage landing, the logs' medians; buffs snapshot on execution
+DELAY = {"Jolt III": 0.80, "Verfire": 0.80, "Verstone": 0.80, "Verthunder III": 0.76, "Veraero III": 0.76,
+         "Verflare": 1.43, "Verholy": 1.43, "Scorch": 1.83, "Resolution": 1.56, "Enchanted Riposte": 0.63,
+         "Enchanted Zwerchhau": 0.63, "Enchanted Redoublement": 0.63, "Enchanted Reprise": 0.62, "Fleche": 1.16,
+         "Contre Sixte": 1.16, "Corps-a-Corps": 0.63, "Engagement": 0.58, "Displacement": 0.62}
+CAST = {"Jolt III": 2.0, "Verfire": 2.0, "Verstone": 2.0, "Verthunder III": 5.0, "Veraero III": 5.0,
+        "Verthunder II": 2.0, "Veraero II": 2.0, "Impact": 5.0, "Verraise": 10.0, "Vercure": 2.0}
+ACCELERATED = ("Verthunder III", "Veraero III", "Impact")
+RECAST = {"Enchanted Riposte": 1.5, "Enchanted Zwerchhau": 1.5, "Enchanted Redoublement": 2.2}   # fixed, not spell speed
+EMBOLDEN, EMB_DELAY = 1.10, 0.67                # own magic damage; the status lands 0.67 s after the cast
+PROC = 0.5                                      # a Verthunder / Veraero III's chance of its colour's proc
+FIN_PROC = (1.0, 0.2)                           # Verflare / Verholy: when the other colour leads, else
+DC_S, ACC_S, SWIFT_S, PROC_S, MS_S, MANA_S, EMB_S, COMBO_S = 15, 20, 10, 30, 30, 30, 20, 30
+CDS = {"Fleche": (25, 1), "Contre Sixte": (35, 1), "Corps-a-Corps": (35, 2), "Engagement": (35, 2),
+       "Embolden": (120, 1), "Manafication": (110, 1), "Acceleration": (55, 2), "Swiftcast": (60, 1),
+       "Tincture": (270, 1)}
+OGCD_ORDER = ["Tincture", "Embolden", "Manafication", "Fleche", "Contre Sixte", "Acceleration", "Swiftcast",
+              "Engagement", "Corps-a-Corps"]
+DAMAGE_OGCDS = {"Fleche", "Contre Sixte", "Corps-a-Corps", "Engagement", "Displacement"}
+MELEE_ACTIONS = {"Enchanted Riposte", "Enchanted Zwerchhau", "Enchanted Redoublement", "Engagement", "Riposte",
+                 "Zwerchhau", "Redoublement", "Reprise"}     # 3 y (the enchanted three reach 25 y under Manafication)
+NEXT = {"r": "Enchanted Zwerchhau", "z": "Enchanted Redoublement", "f": "Scorch", "s": "Resolution"}
+SPEED = 1.0                                     # spell speed factor on casts and GCDs: 2.50 s, our players and the clears
+# Older kits halved a colour's gains while it led by more than 30. The logs can't tell whether that still holds
+# (players pass 30 in 22 of ~10,000 gains, legal either way) and the searched rotations never get there, so it's off.
+IMBALANCE_HALVES = False
+
+
+class State:
+    __slots__ = ("t", "gcd", "black", "white", "stacks", "combo", "combo_until", "dc", "accel", "swift", "ms", "ms_until",
+                 "mana_until", "emb_from", "emb_until", "vf", "vf_until", "vs", "vs_until", "cds", "dmg", "waste", "pot_at",
+                 "first", "hist", "mvi", "acc", "free", "spot", "ai", "mlast")
+
+    @classmethod
+    def initial(cls, fight):
+        s = cls()
+        s.t = s.gcd = 0.0
+        s.black = s.white = 0.0
+        s.stacks, s.combo, s.combo_until = 0, None, -1.0
+        s.dc = s.accel = s.swift = s.ms_until = s.mana_until = s.emb_from = s.emb_until = -1.0
+        s.ms = 0
+        s.vf = s.vs = 0.0
+        s.vf_until = s.vs_until = -1.0
+        s.cds = {k: (n, None) for k, (_, n) in CDS.items()}
+        s.dmg, s.pot_at, s.first, s.hist = 0.0, None, True, None
+        s.waste = (0.0, 0.0, 0.0)
+        s.mvi, s.acc, s.free, s.spot = 0, 0.0, -30.0, 0        # forced movement (engine.stand)
+        s.ai, s.mlast = 0, -30.0                                # out of reach (fight.away)
+        return s
+
+    def copy(self):
+        c = State.__new__(State)
+        for k in State.__slots__: setattr(c, k, getattr(self, k))
+        c.cds = dict(self.cds)
+        return c
+
+    def key(self):
+        r = lambda x: round(x, 1)
+        left = lambda u: r(max(u - self.t, 0))
+        return (r(self.t), r(self.gcd), round(self.black / 3), round(self.white / 3), self.stacks,
+                self.combo if self.combo_until > self.t else None, self.dc > self.t, self.accel > self.t, self.swift > self.t,
+                self.ms if self.ms_until > self.t else 0, self.mana_until > self.t, left(self.emb_until),
+                round(self.vf * 4), round(self.vs * 4), self.pot_at is None,
+                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()),
+                self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai)
+
+    def log(self, t, action, note=""):
+        self.hist = (self.hist, (round(t, 2), action, note))
+
+    def history(self):
+        out, h = [], self.hist
+        while h: h, e = h; out.append(e)
+        return out[::-1]
+
+
+WASTE = ("mana overcapped", "procs lost (granted again while up, or lapsed)", "Dualcast dropped")
+
+
+def wasted(s, i, n=1.0):
+    w = list(s.waste); w[i] += n; s.waste = tuple(w)
+
+
+# --- time passing --------------------------------------------------------------------------------------------------
+
+def advance(s, fight, to):
+    """Procs that lapse by `to`."""
+    if s.vf_until != -1.0 and s.vf_until <= to:
+        wasted(s, 1, s.vf); s.vf, s.vf_until = 0.0, -1.0
+    if s.vs_until != -1.0 and s.vs_until <= to:
+        wasted(s, 1, s.vs); s.vs, s.vs_until = 0.0, -1.0
+
+
+def charges(s, name, at):
+    if name not in CDS: return 1, None              # Sprint
+    n, nxt = s.cds[name]
+    rec, mx = CDS[name]
+    while n < mx and nxt is not None and nxt <= at:
+        n += 1; nxt = nxt + rec if n < mx else None
+    return n, nxt
+
+
+def use_cd(s, name, at):
+    n, nxt = charges(s, name, at)
+    rec, mx = CDS[name]
+    if n == mx: nxt = at + rec
+    s.cds[name] = (n - 1, nxt)
+
+
+def cd_name(name):
+    return "Engagement" if name == "Displacement" else name
+
+
+def mult(s, fight, at, name):
+    """Damage multiplier on a hit executed at `at`: raid buffs, tincture, and Embolden on magic damage."""
+    m = fight.mult(at, s.pot_at)
+    if name not in PHYSICAL and s.emb_from <= at < s.emb_until: m *= EMBOLDEN
+    return m
+
+
+def hit(s, fight, at, potency, name):
+    land = at + DELAY.get(name, 0.8)
+    if 0 <= land < fight.until and fight.targetable(land): s.dmg += potency * mult(s, fight, at, name)
+
+
+def gain(s, b, w):
+    """Mana gained, capped at 100 each (the rest is wasted)."""
+    if IMBALANCE_HALVES:
+        if s.black - s.white > 30: b /= 2
+        if s.white - s.black > 30: w /= 2
+    nb, nw = s.black + b, s.white + w
+    over = max(0.0, nb - 100) + max(0.0, nw - 100)
+    if over > 1e-9: wasted(s, 0, over)
+    s.black, s.white = min(100.0, nb), min(100.0, nw)
+
+
+def grant(s, colour, chance, at, ev):
+    """A chance at Verfire Ready ("vf") or Verstone Ready ("vs"). The search counts its expectation: the chance it is up
+    afterwards, and the part already up that the grant overwrites as waste. A replay (ev False) only knows it may be up."""
+    p = getattr(s, colour)
+    if ev:
+        wasted(s, 1, p * chance)
+        setattr(s, colour, 1 - (1 - p) * (1 - chance))
+    else:
+        setattr(s, colour, 1.0)
+    setattr(s, colour + "_until", at + PROC_S)
+
+
+# --- reach (as jobs/drg.py) ----------------------------------------------------------------------------------------
+
+def reach(s, fight, t, commit=True):
+    """May a melee action land at t: no away window ([lo, hi] somewhere in which the player is out of reach for `need`
+    seconds on end) is left without such a stretch."""
+    W, i = fight.away, s.ai
+    while i < len(W) and W[i].lo < t:
+        w = W[i]
+        if min(t, w.hi) - max(s.mlast, w.lo) >= w.need - 1e-9: i += 1; continue
+        if w.hi - max(t, w.lo) >= w.need - 1e-9: break
+        return False
+    if commit: s.ai, s.mlast = i, t
+    return True
+
+
+def needs_reach(s, name, at):
+    return name in MELEE_ACTIONS and not (name in ENCHANTED and s.mana_until > at)
+
+
+# --- actions -------------------------------------------------------------------------------------------------------
+
+def cast_time(s, name, at):
+    """Cast time and the instant it spends: Acceleration (Verthunder / Veraero III, Impact) first, then Dualcast, then
+    Swiftcast."""
+    if name not in CAST: return 0.0, None
+    if name in ACCELERATED and s.accel > at: return 0.0, "acc"
+    if s.dc > at: return 0.0, "dc"
+    if s.swift > at: return 0.0, "swift"
+    return CAST[name] * SPEED, None
+
+
+def in_combo(s, name, at):
+    return s.combo_until > at and s.combo is not None and NEXT.get(s.combo) == name
+
+
+def payable(s, name, at):
+    if name in ENCHANTED and s.ms > 0 and s.ms_until > at: return True
+    c = COST.get(name, 0)
+    return s.black >= c - 1e-6 and s.white >= c - 1e-6
+
+
+def gcd_legal(s, name, at, ev):
+    if name in ("Verfire", "Verstone"):
+        return (s.vf > 0.05 or s.vs > 0.05) if ev else getattr(s, "vf" if name == "Verfire" else "vs") > 0
+    if name in ("Verflare", "Verholy"): return s.stacks == 3
+    if name in ("Scorch", "Resolution"): return in_combo(s, name, at)
+    if name in COST: return payable(s, name, at)
+    return name in POTENCY or name in CAST
+
+
+def do_gcd(s, fight, name, ev=False):
+    """Cast a GCD as soon as possible; returns the new state or None when it cannot be cast. `ev`: the search's
+    expected procs (see the module's docstring), else the spell is exactly what is named."""
+    s = s.copy()
+    start = max(s.t, s.gcd)
+    advance(s, fight, start)
+    settle(s, fight, start)
+    if not gcd_legal(s, name, start, ev): return None
+    harm = name not in ("Verraise", "Vercure")
+    if harm and not fight.targetable(start): return None
+    cast, used = cast_time(s, name, start)
+    if s.first:
+        s.first = False
+        if cast: start = RESOLVE - cast                     # the opener is pre-cast to resolve at 0:00
+    if cast and stand(s, fight, start, start + cast - SLIDE) is None: return None
+    if harm and fight.next_down(start) <= start + max(cast - RESOLVE, 0) + DELAY.get(name, 0.8): return None
+    if needs_reach(s, name, start) and not reach(s, fight, start): return None
+    snap, free, nxt = gcd_times(start, cast, RECAST.get(name, BASE_GCD * SPEED))
+    # instants: Acceleration leaves Dualcast up; anything else spends or cancels it
+    if used == "acc": s.accel = -1.0
+    else:
+        if s.dc > start and used != "dc": wasted(s, 2)
+        s.dc = -1.0
+        if used == "swift": s.swift = -1.0
+    combo = in_combo(s, name, snap)
+    note = ""
+    if name in ("Verfire", "Verstone") and ev:
+        # the named proc if it is up, else the other one if that is, else Jolt III; whichever is spent is gone, and the
+        # other stays up only if it was and the named one was spent
+        a, b = s.vf, s.vs
+        if name == "Verfire": pf, ps = a, (1 - a) * b
+        else: pf, ps = (1 - b) * a, b
+        pj = 1 - pf - ps
+        s.vf, s.vs = (0.0, a * b) if name == "Verfire" else (a * b, 0.0)
+        if not s.vf: s.vf_until = -1.0
+        if not s.vs: s.vs_until = -1.0
+        hit(s, fight, snap, pf * POTENCY["Verfire"] + ps * POTENCY["Verstone"] + pj * POTENCY["Jolt III"], "Verfire")
+        gain(s, pf * 5 + pj * 2, ps * 5 + pj * 2)
+        note = f"Verfire {pf:.0%}, Verstone {ps:.0%}, Jolt III {pj:.0%}"
+    else:
+        p = POTENCY.get(name, 0)
+        if isinstance(p, tuple): p = p[combo]
+        if p: hit(s, fight, snap, p, name)
+        if name == "Verfire": s.vf, s.vf_until = 0.0, -1.0
+        if name == "Verstone": s.vs, s.vs_until = 0.0, -1.0
+        if name in GAIN:
+            b, w = GAIN[name]
+            lead_w, lead_b = s.white > s.black, s.black > s.white
+            gain(s, b, w)
+            if name in ("Verthunder III", "Veraero III"):
+                grant(s, "vf" if name == "Verthunder III" else "vs", 1.0 if used == "acc" else PROC, snap, ev)
+            if name == "Verflare": grant(s, "vf", FIN_PROC[0] if lead_w else FIN_PROC[1], snap, ev)
+            if name == "Verholy": grant(s, "vs", FIN_PROC[0] if lead_b else FIN_PROC[1], snap, ev)
+    # mana, stacks and combos
+    if name in COST:
+        if name in ENCHANTED and s.ms > 0 and s.ms_until > snap: s.ms -= 1
+        else: s.black -= COST[name]; s.white -= COST[name]
+    if name in ENCHANTED: s.stacks = min(3, s.stacks + 1)
+    if name in ("Verflare", "Verholy"): s.stacks = 0
+    if name in ("Enchanted Riposte", "Riposte"): s.combo, s.combo_until = "r", snap + COMBO_S
+    elif name in ("Enchanted Zwerchhau", "Zwerchhau") and combo: s.combo, s.combo_until = "z", snap + COMBO_S
+    elif name in ("Verflare", "Verholy"): s.combo, s.combo_until = "f", snap + COMBO_S
+    elif name == "Scorch" and combo: s.combo, s.combo_until = "s", snap + COMBO_S
+    else: s.combo = None
+    if cast and used is None and name in CAST: s.dc = snap + DC_S          # a hard cast grants Dualcast
+    s.t, s.gcd = max(free, snap), nxt
+    how = f"{cast:.2f}s cast" if cast else ({"acc": "Acceleration", "dc": "Dualcast", "swift": "Swiftcast"}.get(used, "instant"))
+    s.log(start, name, gauge(s, how) + (f"  ({note})" if note else ""))
+    return s
+
+
+def gauge(s, how):
+    t = s.t
+    on = [n for n, u in (("DC", s.dc), ("Accel", s.accel), ("Swift", s.swift), ("Mfic", s.mana_until)) if u > t]
+    if s.emb_from <= t < s.emb_until: on.append("Emb")
+    if s.ms and s.ms_until > t: on.append(f"MS{s.ms}")
+    return (f"{how:<13} B{s.black:5.1f} W{s.white:5.1f} stacks {s.stacks}  VF {s.vf:.2f} VS {s.vs:.2f}  " + " ".join(on))
+
+
+def ogcd_legal(s, name, at, fight, policy=True):
+    name = cd_name(name) if name == "Displacement" else name
+    if name in CDS:
+        n, _ = charges(s, name, at)
+        if n < 1: return False
+    if name in DAMAGE_OGCDS or name in ("Embolden", "Manafication"):
+        if at < 0: return False
+    if name == "Manafication":                  # cancels combos; spent before the enchanted combo it pays for
+        return not policy or (s.stacks == 0 and not (s.ms > 0 and s.ms_until > at) and s.combo is None)
+    if name == "Acceleration": return not (policy and s.accel > at)
+    if name == "Swiftcast": return not (policy and s.swift > at)
+    if name == "Tincture": return fight.pot and s.pot_at is None
+    if name == "Sprint": return not policy          # replays only: a general action, it cancels Dualcast
+    return name in CDS
+
+
+def do_ogcd(s, fight, name, policy=True):
+    s = s.copy()
+    at = s.t
+    advance(s, fight, at)
+    settle(s, fight, at)
+    if not ogcd_legal(s, name, at, fight, policy): return None
+    if name in DAMAGE_OGCDS and not fight.targetable(at): return None
+    if name in ("Engagement", "Displacement") and not reach(s, fight, at): return None
+    if cd_name(name) in CDS: use_cd(s, cd_name(name), at)
+    if name in DAMAGE_OGCDS: hit(s, fight, at, POTENCY[name], name)
+    elif name == "Embolden": s.emb_from, s.emb_until = at + EMB_DELAY, at + EMB_DELAY + EMB_S
+    elif name == "Manafication":
+        s.ms, s.ms_until, s.mana_until = 3, at + MS_S, at + MANA_S
+        s.combo = None
+    elif name == "Acceleration": s.accel = at + ACC_S
+    elif name == "Swiftcast": s.swift = at + SWIFT_S
+    elif name == "Tincture": s.pot_at = at
+    elif name == "Sprint":
+        if s.dc > at: wasted(s, 2)
+        s.dc = -1.0
+    s.t = at + ANIM_LOCK
+    s.log(at, name, gauge(s, ""))
+    return s
+
+
+GCDS = ["Jolt III", "Verfire", "Verstone", "Verthunder III", "Veraero III", "Verflare", "Verholy", "Scorch",
+        "Resolution", "Enchanted Riposte", "Enchanted Zwerchhau", "Enchanted Redoublement", "Enchanted Reprise",
+        "Riposte", "Zwerchhau", "Redoublement", "Reprise", "Verthunder II", "Veraero II", "Impact", "Verraise", "Vercure"]
+
+
+def candidates(c, fight, now):
+    """The GCDs worth trying next. A combo or the finishers go on (their next step is all that is offered while it can
+    be cast); under Dualcast only the 5 s spells (anything else wastes it); Verthunder / Veraero III otherwise only
+    when Acceleration or Swiftcast makes them instant; the melee combo only whole (Magicked Swordplay or 50 of each
+    mana, no stacks left over: every logged finisher but four follows one unbroken combo); Enchanted Reprise only in a
+    move window."""
+    nxt = NEXT.get(c.combo) if c.combo_until > now else None
+    if nxt and gcd_legal(c, nxt, now, True) and not (needs_reach(c, nxt, now) and not reach(c, fight, now, commit=False)):
+        return [nxt]
+    if c.stacks == 3: return ["Verflare", "Verholy"]
+    if c.dc > now: return ["Verthunder III", "Veraero III"]
+    out = ["Jolt III"] + [g for g in ("Verfire", "Verstone") if gcd_legal(c, g, now, True)]
+    if c.accel > now or c.swift > now or c.first: out += ["Verthunder III", "Veraero III"]
+    if c.stacks == 0 and ((c.ms == 3 and c.ms_until > now + 4) or min(c.black, c.white) >= 50 - 1e-6):
+        out.append("Enchanted Riposte")
+    if payable(c, "Enchanted Reprise", now) and open_move(c, fight, now): out.append("Enchanted Reprise")
+    return out
+
+
+def expand(s, fight):
+    """Children: up to two oGCDs that fit before the next GCD, then a GCD."""
+    slots = int((s.gcd - s.t) / ANIM_LOCK + 1e-6) if not s.first else 0
+    ready = [o for o in OGCD_ORDER if ogcd_legal(s, o, s.t, fight)] if slots else []
+    out = []
+    for k in range(0, min(slots, 2) + 1):
+        for combo in itertools.combinations(ready, k):
+            c = s
+            for o in combo:
+                c = do_ogcd(c, fight, o)
+                if c is None: break
+            if c is None: continue
+            now = max(c.t, c.gcd)
+            any_gcd = False
+            for g in candidates(c, fight, now):
+                # Acceleration and Swiftcast only right before the spell they make instant, Manafication before the
+                # combo it pays for: anything else only multiplies the states
+                if ("Acceleration" in combo or "Swiftcast" in combo) and g not in CAST: continue
+                if "Acceleration" in combo and g not in ACCELERATED: continue
+                if "Manafication" in combo and g != "Enchanted Riposte": continue
+                n = do_gcd(c, fight, g, ev=True)
+                if n is None: continue
+                any_gcd = True
+                out.append(n)
+            down = not fight.targetable(now)
+            if not combo and (not any_gcd or down):
+                w = c.copy(); w.t = w.gcd = fight.back_up(now) if down else now + 0.5
+                w.log(c.t, "(boss away)" if down else "(wait)"); out.append(w)
+    return out
+
+
+# What holding a resource is worth, set so that each step of the combo chain ranks about level with the Jolt III ->
+# Verthunder III loop per second (a chain that dips mid-way gets dropped before it pays off): a point of mana what the
+# chain makes of it over the loop, spread over the mana it costs net of the 27 the finishers give back (~7); each chain
+# position (after Riposte, after Zwerchhau, three stacks, after Verflare, after Scorch) the chain's payoff still to
+# come; a Magicked Swordplay stack the mana it saves; Dualcast, Acceleration and Swiftcast an instant Verthunder III
+# over a loop step; a proc little (Verfire / Verstone about tie Jolt III with their mana); a second of Embolden its share
+# of the rotation's rate.
+VALUE = dict(mana=7, imbalance=3, chain_r=310, chain_z=490, chain_3=660, chain_f=500, chain_s=290, ms=230, dc=60,
+             acc=50, swift=50, proc=20, emb=15)
+RATE = 220                                            # potency per second, to compare states at slightly different times
+HEURISTICS = [(r, v, 0.0) for r, v in [(200, 1.0), (220, 1.0), (245, 1.0), (220, 0.5), (220, 1.5)]]
+WIDTH = 1000
+MOVE_WEIGHT = 0.0
+FAR = True                                            # p12s.fight: out of reach at the plan's far spots
+CHAIN = {"r": "chain_r", "z": "chain_z", "f": "chain_f", "s": "chain_s"}
+
+
+def held(s):
+    t = s.t
+    v = VALUE["mana"] * (s.black + s.white) - VALUE["imbalance"] * max(0.0, abs(s.black - s.white) - 20)
+    if s.stacks == 3: v += VALUE["chain_3"]
+    elif s.combo_until > t and s.combo in CHAIN: v += VALUE[CHAIN[s.combo]]
+    v += VALUE["ms"] * (s.ms if s.ms_until > t else 0)
+    v += VALUE["dc"] * (s.dc > t) + VALUE["acc"] * (s.accel > t) + VALUE["swift"] * (s.swift > t)
+    v += VALUE["proc"] * (s.vf + s.vs)
+    v += VALUE["emb"] * max(s.emb_until - max(t, s.emb_from), 0)
+    return v
+
+
+def rank(s, fight):
+    """No look-ahead at runs (the Black Mage's move_debt): tried at weights 1 and 2, it never found a better rotation."""
+    return s.dmg + held(s) - RATE * (s.t - move_credit(s, fight))
+
+
+def final(s, fight):
+    return s.dmg + (held(s) if fight.carry else 0)
+
+
+# --- calibration hooks (calibrate.py) -------------------------------------------------------------------------------
+LOG_NAME, LOGS_SINCE = "RedMage", "2024-08-06"      # 7.05: Manafication and Magicked Swordplay last 30 s
+OGCDS = set(OGCD_ORDER) | {"Displacement", "Sprint"}
+REFERENCE = ("Jolt III", 360)                       # no trait above level 84 or patch touches it
+
+
+def at(s, fight, t):
+    c = s.copy(); advance(c, fight, t)
+    return c
+
+
+def status(s, t):
+    return dict(black=round(s.black, 1), white=round(s.white, 1), stacks=s.stacks,
+                combo=s.combo if s.combo_until > t else None, dc=s.dc > t, acc=s.accel > t, swift=s.swift > t,
+                ms=s.ms if s.ms_until > t else 0, vf=s.vf > 0, vs=s.vs > 0)
+
+
+def force(s, fight, name, start):
+    """Cast it anyway, with what it needs granted (the replay carries on after an illegal cast)."""
+    s = s.copy()
+    if name == "Verfire": s.vf, s.vf_until = 1.0, start + 1
+    if name == "Verstone": s.vs, s.vs_until = 1.0, start + 1
+    if name in ("Verflare", "Verholy"): s.stacks = 3
+    if name in ("Scorch", "Resolution"): s.combo, s.combo_until = {"Scorch": "f", "Resolution": "s"}[name], start + 1
+    if name in COST: s.black, s.white = max(s.black, COST[name]), max(s.white, COST[name])
+    return do_gcd(s, fight, name) or s
+
+
+def force_ogcd(s, fight, name, t):
+    s = s.copy()
+    if cd_name(name) in CDS: s.cds[cd_name(name)] = (1, None)
+    return do_ogcd(s, fight, name, policy=False) or s
+
+
+def label(s, fight, name, t):
+    """(group, model potency) for a logged hit of `name` cast at t from state s."""
+    if name not in POTENCY: return None
+    p = POTENCY[name]
+    if isinstance(p, tuple):
+        combo = in_combo(s, name, t) or (name == "Enchanted Zwerchhau" and s.combo == "r" and s.combo_until > t)
+        return ("combo" if combo else "no combo"), p[combo]
+    return "", p
+
+
+def cast_label(s, name, t):
+    return ""
+
+
+def own_factor(p, h):
+    """The part of a logged hit's FFLogs multiplier that is the player's own: Embolden's 10% on magic damage (status id
+    1001239 in the scorecard's cached auras). FFLogs counts every damage-up on the hit, so dividing it out takes this
+    away too."""
+    name = p["names"].get(str(h.get("abilityGameID")), "")
+    return EMBOLDEN if "1001239." in (h.get("buffs") or "") and name not in PHYSICAL and name != "Attack" else 1.0

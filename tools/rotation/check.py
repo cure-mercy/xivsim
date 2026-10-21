@@ -12,6 +12,8 @@
    searches for Monk and Dragoon.
 4. Bard: Repertoire under each song and Army's Muse on hand-made states; then quick searches for R1 and R2 replayed:
    nothing cast at Athena while she is away, and (every action being instant) the strategy's running costs nothing.
+5. Red Mage: Dualcast, Acceleration's priority, the expected procs and the far spots' reach on hand-made states; then
+   quick searches for R1 and R2 replayed as in 2, plus no melee action at a far spot without Manafication.
 Exits non-zero on any failure.
 """
 import itertools, re, sys
@@ -21,13 +23,14 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import engine, p12s                              # noqa: E402
 from engine import Fight, Move, SLIDE            # noqa: E402
-from jobs import blm, brd, drg, mnk, rpr         # noqa: E402
+from jobs import blm, brd, drg, mnk, rdm, rpr    # noqa: E402
 
 HARM = {"Fire III", "Fire IV", "Despair", "Paradox", "Blizzard III", "Blizzard IV", "Thunder III", "Xenoglossy"}
 HARM |= (set(rpr.GCDS) - {"Soulsow"}) | rpr.AVATAR | {"Gluttony", "Lemure's Slice"}
 HARM |= mnk.HARM_GCDS | {"The Forbidden Chakra", "Enlightenment"}
 HARM |= set(brd.POTENCY) | {"Apex Arrow", "Pitch Perfect"}
 HARM |= set(drg.POTENCY)
+HARM |= set(rdm.POTENCY)
 fails = []
 
 
@@ -173,6 +176,52 @@ def bard_searches(width=200):
                                                            + "".join(f"\n          {x}" for x in away))
 
 
+def rdm_cases():
+    print("\nRed Mage: Dualcast, Acceleration, procs, reach")
+    f = Fight(until=60)
+    s = rdm.State.initial(f); s.first = False
+    s = rdm.do_gcd(s, f, "Jolt III", ev=True)
+    expect(s.dc > s.t and abs(s.black - 2) < 1e-9, "a hard-cast Jolt III grants Dualcast and 2 / 2 mana")
+    a = rdm.do_gcd(s, f, "Verthunder III", ev=True)
+    expect(a.dc < a.t and abs(a.vf - 0.5) < 1e-9, f"the next Verthunder III is instant, spends Dualcast, 50% Verfire Ready ({a.vf})")
+    b = rdm.do_gcd(rdm.do_gcd(a, f, "Jolt III", ev=True), f, "Verthunder III", ev=True)
+    expect(abs(b.vf - 0.75) < 1e-9 and abs(b.waste[1] - 0.25) < 1e-9, f"another: 75% up, 0.25 overwritten ({b.vf}, {b.waste[1]})")
+    c = rdm.do_gcd(b, f, "Verfire", ev=True)
+    expect(c.vf == 0 and abs(c.black - (b.black + 0.75 * 5 + 0.25 * 2)) < 1e-9, "Verfire at 75%: the mixture's mana, the proc gone")
+    d = rdm.do_ogcd(s, f, "Acceleration")
+    d = rdm.do_gcd(d, f, "Veraero III", ev=True)
+    expect(d.dc > d.t and d.accel < d.t and d.vs == 1.0, "under Dualcast and Acceleration: Acceleration is spent, Dualcast kept, a sure proc")
+    g = Fight(until=60, away=[Move(10, 12, 2.0)])
+    s = rdm.State.initial(g); s.first = False; s.black = s.white = 60.0; s.t = s.gcd = 10.5
+    expect(rdm.do_gcd(s, g, "Enchanted Riposte", ev=True) is None, "no melee combo at a far spot")
+    m = rdm.do_ogcd(s, g, "Manafication")
+    expect(m is not None and rdm.do_gcd(m, g, "Enchanted Riposte", ev=True) is not None, "...unless Manafication extends its reach")
+    expect(rdm.do_ogcd(m, g, "Engagement") is None, "Engagement never reaches from there")
+
+
+def far_hits(state, fight):
+    """Melee actions inside a far spot's stretch out of reach, not under Manafication."""
+    return [f"{name} at {t:.2f}" for t, name, note in state.history() if name in rdm.MELEE_ACTIONS and "Mfic" not in note
+            and any(w.lo < t < w.hi for w in fight.away)]
+
+
+def rdm_searches(width=200):
+    print(f"\nRed Mage searches (width {width}) replayed")
+    rdm.SPEED = 2.50 / engine.BASE_GCD
+    alt = {m: [v for v in vs if v != p12s.DEFAULT_VAR[m]] for m, vs in p12s.PLAN.items() if m in p12s.DEFAULT_VAR}
+    for slot, var in [("R1", {}), ("R2", {m: v[0] for m, v in alt.items()})]:
+        f = p12s.fight(slot, var, far_spots=True)
+        s = engine.beam(rdm, f, width=width)
+        short, away, hard = replay(s, f)
+        bad = far_hits(s, f)
+        label = f"{slot}" + "".join(f", {v}" for v in var.values())
+        expect(not short and not away and not bad, f"{label}: {sum(1 for w in f.moves if w.need)} windows, {len(f.away)} far spots, "
+                                                   f"{hard} hard casts, {s.dmg:,.0f} potency" + "".join(f"\n          {x}" for x in short + away + bad))
+    still = engine.beam(rdm, p12s.fight("R1", still=True), width=width)
+    short, _, _ = replay(still, p12s.fight("R1"))
+    expect(bool(short), f"control: the standing-still rotation breaks {len(short)} of the R1 windows")
+
+
 if __name__ == "__main__":
     stand_cases()
     searches()
@@ -182,5 +231,7 @@ if __name__ == "__main__":
     melee_searches(drg, 2.49)
     bard_cases()
     bard_searches()
+    rdm_cases()
+    rdm_searches()
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED"))
     sys.exit(1 if fails else 0)
