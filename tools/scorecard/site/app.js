@@ -1227,6 +1227,47 @@ const rotHref = (job, key) => `#/rotations${job ? `/${JOB[job] || job}` : ""}${k
 const speedStat = job => ["BlackMage", "Summoner", "RedMage", "Pictomancer", "WhiteMage", "Scholar", "Astrologian", "Sage"].includes(job) ? "Spell Speed" : "Skill Speed";
 const rotLabel = x => `${x.gcd.toFixed(2)} s GCD${x.crit != null ? ` · ${Math.round(100 * x.crit)}% crit` : ""}`;
 const rotClock = t => t < 0 ? `−${Math.abs(t).toFixed(1)} s` : `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;   // pre-cast before the pull
+// what P1 until Palladion asks of each job under our strategy, from the optimizer's findings (tools/rotation/README.md):
+// a line, then [where, what] points; "cost" figures are its best rotation over the whole phase against standing still
+const ROT_CHALLENGES = {
+  BlackMage: ["The most running of the hard-casting jobs: 36 s before Palladion, 26 s of it from our raidplan, and every run stops a hard cast and pulls you out of Ley Lines.", [
+    ["Paradeigma I", "R1 runs out to the wall end of the bait line (18 y, 3.1 s), then swaps 28 y through the middle: 4.7 s of running in 5.3 s. The rotation saves its instants for it (Xenoglossy, Paradox, a Firestarter Fire III after Transpose, Thunder): every GCD in the swap is one."],
+    ["Ley Lines", "Its circle is 3 y, so any longer run leaves it. Run as late as the mechanic allows to keep it while you can, and Between the Lines back once it's done."],
+    ["Superchain I", "Five runs of 7–15 y in 28 s (spread), covered by slidecasts and instants."],
+    ["Cost", "Only about 0.2% against standing still: nearly every run fits into instants, slidecasts and weaves."]]],
+  Reaper: ["Few casts to protect, so the fight takes its toll on positionals and reach.", [
+    ["Fixed spots", "Paradeigma I–III and Superchain I pin you to a spot for 77 s; Gibbet and Gallows only get their positional there under True North, so both charges go to those mechanics."],
+    ["Out of reach", "From On the Soul to Paradeigma III's tethers and just before Palladion, about 3.7 s away from Athena: fill it with Harpe, Harvest Moon or Communio, which reach from anywhere."],
+    ["Hard casts", "Communio, Harpe and Soulsow can't go during a run."],
+    ["Cost", "About 1.3% against standing still, mostly the order the rotation has to bend into around the fixed spots."]]],
+  Dragoon: ["Positionals and its DoT are what the mechanics squeeze.", [
+    ["Fixed spots", "Paradeigma I–III and Superchain I pin you to a spot for 77 s; the optimizer spends five or six True Norths there to keep the combo's positionals."],
+    ["Chaotic Spring and Power Surge", "Both have to be kept up through the mechanics; the rotation alternates the two combos to do it."],
+    ["Out of reach", "About 3.7 s away from Athena from On the Soul on and before Palladion: Elusive Jump into an Enhanced Piercing Talon fills it, and the jumps reach from anywhere."],
+    ["Cost", "About 0.9% against standing still."]]],
+  RedMage: ["Uptime in Paradeigma I is the hard part: a far spot and a long run come while the opener's cooldowns are still away.", [
+    ["Paradeigma I", "R1 baits at the wall end, 18.3 y from Athena's centre, out of reach of the melee combo for 1.4 s around the bait, then swaps 28 y through the middle: 4.7 s of running in 5.3 s. Swiftcast, Acceleration and Manafication are all still on cooldown from the opener, so nothing makes a spell instant: the rotation runs through on Enchanted Reprise (two at 2.49 s) or a Corps-a-corps it held back."],
+    ["Corps-a-corps", "From the wall right after the bait (0:37.6) it rushes you to Athena's hitbox edge and saves about 1.3 s of the swap, room for a hard cast, but only with a charge back: at 2.45–2.49 s the opener's two uses come out ahead, at 2.23 s the optimizer holds one."],
+    ["R2", "Crosses the middle first and heads out after, so Displacement comes too late to turn a GCD into a hard cast: R2 costs about 1.3% against R1's 0.5%."],
+    ["Superchain I", "The spread's Heavensflame corner is 21.5 y out, out of reach for 2.5 s at 2:25: finish the melee combo before you go and land Verholy, Scorch and Resolution (25 y) on the way."]]],
+  Viper: ["The melee job the fight costs least, about 0.4% against standing still.", [
+    ["Fixed spots", "Paradeigma I–III and Superchain I pin you to a spot for 77 s; six True Norths cover all ten finisher positionals there."],
+    ["Out of reach", "About 3.7 s away from Athena from On the Soul on and before Palladion: Uncoiled Fury (20 y) and the twinblade GCDs' 3 s recast fill it, so keep a Rattling Coil for when you have to leave."],
+    ["Reawaken", "Its Generations need you within 5 y, so line it up between the stretches out of reach."]]],
+  Samurai: ["Runs and fixed spots cost little; the stretches out of reach and Palladion are what to plan.", [
+    ["Iaijutsu", "The 1.3 s casts fit around every run of our strategy."],
+    ["Fixed spots", "Paradeigma I–III and Superchain I pin you to a spot for 77 s; True North takes Gekko's and Kasha's positionals there."],
+    ["Out of reach", "About 3.7 s away from Athena from On the Soul on and before Palladion, worth about 0.5%: Enpi (20 y) fills it, enhanced by Hissatsu: Yaten. Iaijutsu, Ogi Namikiri and Shoha reach 6–10 y and may still land a little farther out."],
+    ["Palladion", "Let Higanbana run out before 4:41 rather than refresh it into the 44 s downtime, and spend the downtime on Tengentsu and Meditate."],
+    ["Cost", "About 0.7% against standing still."]]],
+};
+function rotChallenges(job) {
+  const c = ROT_CHALLENGES[job];
+  if (!c) return el("p", { class: "lede" }, "The optimizer's best rotation at each GCD it was searched at, from the pull until Palladion with our strategy's runs. Pick a GCD for its rotation.");
+  return el("div", { class: "lede challenges" }, el("p", {}, c[0]),
+    el("ul", {}, c[1].map(([where, what]) => el("li", {}, el("strong", {}, `${where}. `), what))));
+}
+
 // a job whose conversion came from the scorecard's cached logs while FFLogs was down (dps.py --offline)
 const offlineNote = job => ((DATA.rotations || {})[job] || {}).offline ? " Converted from the scorecard's cached logs while FFLogs was down: they have no crit or direct-hit flags and no record of others' buffs on a hit, so hits under raid buffs are left out and crits are read from each player's damage. On Black Mage, where both are available, this reads 0–3% higher than the full logs." : "";
 const ROT_ABOUT = "The highest-damage rotation the optimizer (tools/rotation) finds for P12S P1 from the pull until Palladion takes Athena away (4:41), without anyone's raid buffs, with the runs our strategy needs at their worst for the role: the Paradeigma I slot with the most running (R1 or R2 for ranged, M1 or M2 for melee) and each mechanic's variant with the most, so it holds whichever the player is given. Expected DPS converts its potency at our players' damage per potency and crit / direct-hit gain on the job (the median), each player moved to the rotation's GCD first: the Spell or Skill Speed for a faster GCD comes out of the same gear budget as critical hit, direct hit and determination, so a faster GCD converts lower; a player's own ceiling, the best over 0:00–2:00 (the scorecard's window, a search of its own) at their own conversion, is on their page. It is the best for the player's own damage; a party's buff windows may favour holding a resource a little longer.";
@@ -1352,8 +1393,8 @@ function rotationJobPage(code) {
   crumbs([["Raid days", "#/"], ["Rotations", "#/rotations"], [code, null]]);
   const app = document.getElementById("app"), keys = Object.keys(rs).sort((a, c) => rs[a].gcd - rs[c].gcd || (rs[a].crit || 0) - (rs[c].crit || 0));
   const best = Math.max(...keys.map(k => rs[k].dps)), crit = keys.some(k => rs[k].crit != null), n = rs[keys[0]].conv_players;
-  app.append(heading("h1", `${jobName(job)} rotations`, ROT_ABOUT),
-    el("p", { class: "lede" }, `Optimized at ${keys.length} GCD${keys.length > 1 ? "s" : ""}${crit ? " and crit rates (the job's resources come from crits)" : ""}, each from the pull until Palladion (0:00–${mmss(rs[keys[0]].window)}) with our strategy's runs (slot ${(fightOf(job) || {}).slot || "–"}). Expected DPS is the median of our ${n} ${code} player${n > 1 ? "s" : ""}, each moved to the GCD (a faster GCD costs ${speedStat(job)} out of their other substats, about ${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per 0.01 s). Pick a GCD for its rotation.${offlineNote(job)}`));
+  app.append(heading("h1", `${jobName(job)} rotations`, `${ROT_ABOUT} Here: ${keys.length} GCD${keys.length > 1 ? "s" : ""}${crit ? " and crit rates (the job's resources come from crits)" : ""}, 0:00–${mmss(rs[keys[0]].window)}, Paradeigma I slot ${(fightOf(job) || {}).slot || "–"}; expected DPS is the median of our ${n} ${code} player${n > 1 ? "s" : ""}, each moved to the GCD (a faster GCD costs ${speedStat(job)} out of their other substats, about ${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per 0.01 s).${offlineNote(job)}`),
+    rotChallenges(job));
   app.append(el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, ["GCD", ...(crit ? ["Crit"] : []), `Potency 0:00–${mmss(rs[keys[0]].window)}`, "Potency/s", "Expected DPS", "vs best", "Ceiling 0:00–2:00", "Our players at it"]
       .map((h, i) => el("th", { class: i ? "num" : null }, h)))),

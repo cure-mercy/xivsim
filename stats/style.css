@@ -93,6 +93,10 @@ tr.moving td{ background: var(--series-wash); }
 h1{ font-size: 24px; font-weight: 650; margin: 4px 0 2px; }
 h2{ font-size: 17px; font-weight: 650; margin: 32px 0 10px; scroll-margin-top: 64px; }   /* jumps land below the sticky header */
 .lede{ color: var(--ink-2); margin: 0 0 18px; max-width: 72ch; }
+.lede.challenges p{ margin: 0 0 6px; }
+.lede.challenges ul{ margin: 0; padding-left: 18px; }
+.lede.challenges li{ margin: 4px 0; }
+.lede.challenges strong{ color: var(--ink); font-weight: 600; }
 
 /* stat tiles */
 .kpis{ display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin: 16px 0 8px; }
