@@ -1059,7 +1059,7 @@ function playerPage(day, group, name) {
   // a link to it on the rotations pages and how far their clean pulls are from it
   const optEntries = entries.filter(e => e.ceiling);
   if (optEntries.length) {
-    app.append(heading("h2", "Optimized rotation", "The highest-damage rotation the optimizer (tools/rotation) finds for 0:00–2:00 at their GCD, with the runs our strategy needs and without anyone's raid buffs: the rotation behind the ceiling on the rDPS on clean pulls chart. The ceiling is that rotation converted to their own DPS (their damage per potency and crit / direct-hit gain), plus what each pull's raid buffs gave the other players, which rDPS credits to them. The rotation itself is on the Rotations pages."),
+    app.append(heading("h2", "Optimized rotation", "The ceiling on the rDPS on clean pulls chart: the highest-damage rotation the optimizer (tools/rotation) finds for 0:00–2:00 (the scorecard's window) at their GCD, with the runs our strategy needs and without anyone's raid buffs, converted to their own DPS (their damage per potency and crit / direct-hit gain), plus what each pull's raid buffs gave the other players, which rDPS credits to them. The Rotations pages show the best rotation at their GCD on until Palladion; over a longer stretch it may hold a resource a 0:00–2:00 one spends just before 2:00."),
       el("div", { class: "grid wide" }, ...optEntries.map(e => {
         const x = e.ceiling_key && (rotsOf(e.job) || {})[e.ceiling_key];
         const tops = e.clean_pulls.map(c => ({ c, top: e.ceiling + (c.given || 0) })), of = tops.map(q => q.c.rdps / q.top);
@@ -1239,7 +1239,7 @@ const jobName = job => job.replace(/([a-z])([A-Z])/g, "$1 $2");
 const rotHref = (job, key) => `#/rotations${job ? `/${JOB[job] || job}` : ""}${key ? `/${key}` : ""}`;
 const rotLabel = x => `${x.gcd.toFixed(2)} s GCD${x.crit != null ? ` · ${Math.round(100 * x.crit)}% crit` : ""}`;
 const rotClock = t => t < 0 ? `−${Math.abs(t).toFixed(1)} s` : `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;   // pre-cast before the pull
-const ROT_ABOUT = "The highest-damage rotation the optimizer (tools/rotation) finds for 0:00–2:00 of P12S P1, without anyone's raid buffs, with the runs our strategy needs at their worst for the role: the Paradeigma I slot with the most running (R1 or R2 for ranged, M1 or M2 for melee) and each mechanic's variant with the most, so it holds whichever the player is given. Expected DPS converts its potency at the median damage per potency and crit / direct-hit gain of our players on the job, the same for every GCD so they compare; a player's own ceiling, at their own conversion, is on their page. It is the best for the player's own damage; a party's buff windows may favour holding a resource a little longer.";
+const ROT_ABOUT = "The highest-damage rotation the optimizer (tools/rotation) finds for P12S P1 from the pull until Palladion takes Athena away (4:41), without anyone's raid buffs, with the runs our strategy needs at their worst for the role: the Paradeigma I slot with the most running (R1 or R2 for ranged, M1 or M2 for melee) and each mechanic's variant with the most, so it holds whichever the player is given. Expected DPS converts its potency at the median damage per potency and crit / direct-hit gain of our players on the job, the same for every GCD so they compare; a player's own ceiling, the best over 0:00–2:00 (the scorecard's window, a search of its own) at their own conversion, is on their page. It is the best for the player's own damage; a party's buff windows may favour holding a resource a little longer.";
 
 // the fight under a rotation: major mechanics' starts, the windows in which our strategy needs a run (for the seconds
 // shown, somewhere in the window: the optimizer places it), a melee's stretches out of reach and spots fixed by the
@@ -1247,24 +1247,29 @@ const ROT_ABOUT = "The highest-damage rotation the optimizer (tools/rotation) fi
 const RUN_KINDS = { runs: ["Runs", "var(--series)"], away: ["Out of reach", "var(--div-neg)"], pinned: ["Spot fixed", "#e0a03a"] };
 function fightTimeline(f, rot) {
   return width => {
-    const narrow = width < 520, L = narrow ? 52 : 92, R = 10, T = 38, lh = 22, gap = 8, B = 24;
+    const narrow = width < 520, L = narrow ? 52 : 92, R = 10, lh = 22, gap = 8, B = 24, w = width - L - R;
     const lanes = ["runs", ...(f.away.length ? ["away"] : []), ...(f.pinned.length ? ["pinned"] : []), "gcds"];
-    const H = T + lanes.length * (lh + gap) + B, w = width - L - R;
     const x0 = Math.min(0, Math.floor(rot.length ? rot[0][0] : 0)), x1 = f.window;
-    const X = t => L + (Math.max(x0, Math.min(x1, t)) - x0) / (x1 - x0) * w, Y = k => T + lanes.indexOf(k) * (lh + gap);
+    const X = t => L + (Math.max(x0, Math.min(x1, t)) - x0) / (x1 - x0) * w;
+    // mechanic names above their start lines, each on the first row where it clears the one before (left of its line at
+    // the right edge); the lanes start below the rows used
+    const ends = [], marks = f.mechanics.map(([t, name]) => {
+      const x = X(t), label = shortMech(name), est = label.length * 6.2, left = x + 3 + est > width - 2;
+      const a = left ? x - 3 - est : x, b = left ? x : x + 3 + est;
+      let row = ends.findIndex(e => a > e + 6); if (row < 0) { row = ends.length; ends.push(0); }
+      ends[row] = b;
+      return { x, label, left, row };
+    });
+    const T = 12 + Math.max(2, ends.length) * 13, H = T + lanes.length * (lh + gap) + B, Y = k => T + lanes.indexOf(k) * (lh + gap);
     const svg = sv("svg", { viewBox: `0 0 ${width} ${H}`, role: "img", "aria-label": "Fight timeline" });
-    for (let t = 0; t <= x1; t += narrow ? 30 : 15)
+    for (let t = 0, step = (x1 > 150 ? 2 : 1) * (narrow ? 30 : 15); t <= x1; t += step)
       svg.append(sv("line", { class: "gridline", x1: X(t), x2: X(t), y1: T - 4, y2: H - B }), sv("text", { x: X(t), y: H - 6, "text-anchor": "middle" }, mmss(t)));
     for (const [a, b] of f.untargetable) svg.append(sv("rect", { x: X(a), y: T - 4, width: X(b) - X(a), height: H - B - T + 4, fill: "var(--zone)" }));
     for (const k of lanes) svg.append(sv("text", { class: "lbl", x: L - 8, y: Y(k) + lh / 2 + 4, "text-anchor": "end" },
       k === "gcds" ? (narrow ? "GCDs" : "Rotation") : narrow ? RUN_KINDS[k][0].replace("Out of reach", "Away").replace("Spot fixed", "Fixed") : RUN_KINDS[k][0]));
-    // mechanics: a dotted line from each start, its name above (on a second row when the last one is too close)
-    const ends = [-Infinity, -Infinity];
-    for (const [t, name] of f.mechanics) {
-      const x = X(t), label = shortMech(name), row = x > ends[0] + 6 ? 0 : 1;
-      ends[row] = x + 3 + label.length * 6.2;
-      svg.append(sv("line", { class: "milestone", x1: x, x2: x, y1: 16 + row * 13, y2: H - B }), sv("text", { class: "lbl", x: x + 3, y: 12 + row * 13 }, label));
-    }
+    for (const { x, label, left, row } of marks)   // mechanics: a dotted line from each start, its name above
+      svg.append(sv("line", { class: "milestone", x1: x, x2: x, y1: 16 + row * 13, y2: H - B }),
+        sv("text", { class: "lbl", x: left ? x - 3 : x + 3, y: 12 + row * 13, "text-anchor": left ? "end" : "start" }, label));
     const band = (k, a, b, opacity, text, title, rows) => {
       const x = X(a) + 0.5, bw = Math.max(2, X(b) - X(a) - 1), r = sv("rect", { class: "hit", x, y: Y(k), width: bw, height: lh });
       hover(r, title, rows);
@@ -1283,16 +1288,39 @@ function fightTimeline(f, rot) {
       band("pinned", lo, hi, 0.55, "", `${mech}: spot fixed`, [[`${rotClock(lo)}–${rotClock(hi)}${past(hi)}`, "the plan fixes where they stand: positionals need True North", true]]);
     // the rotation: a full-height tick per GCD, a short one per oGCD; hover a GCD for what is woven after it
     const gs = rot.map((r, i) => [r, i]).filter(([r]) => r[2] === "g");
-    for (const [t, , kind] of rot) svg.append(sv("rect", { x: X(t) - 0.75, y: Y("gcds") + (kind === "g" ? 0 : lh * 0.55), width: 1.5,
-      height: kind === "g" ? lh : lh * 0.45, fill: kind === "g" ? "var(--ink-2)" : "var(--accent)" }));
+    for (const [t, , kind, cast, run] of rot) svg.append(sv("rect", { x: X(t) - (run ? 1.25 : 0.75), y: Y("gcds") + (kind === "g" ? 0 : lh * 0.55), width: run ? 2.5 : 1.5,
+      height: kind === "g" ? lh : lh * 0.45, fill: kind !== "g" ? "var(--accent)" : !run ? "var(--ink-2)" : cast ? "var(--series)" : "var(--good)" }));
     gs.forEach(([g, i], k) => {
       const next = gs[k + 1] ? gs[k + 1][0][0] : x1, woven = rot.slice(i + 1, gs[k + 1] ? gs[k + 1][1] : rot.length).map(r => r[1]);
       const hit = sv("rect", { class: "hit", x: X(g[0]), y: Y("gcds"), width: Math.max(1, X(next) - X(g[0])), height: lh });
-      hover(hit, `${rotClock(g[0])} · ${g[1]}`, [[woven.length ? woven.join(" · ") : "–", "woven after it"]]); svg.append(hit);
+      hover(hit, `${rotClock(g[0])} · ${g[1]}`, [...(g[4] ? [[`${g[4].toFixed(1)} s`, g[3] ? "running in its slidecast and after it" : "running through it (instant)", true]] : []),
+        [woven.length ? woven.join(" · ") : "–", "woven after it"]]); svg.append(hit);
     });
     return svg;
   };
 }
+// the compact rotation: each GCD's icon on the line with the oGCDs woven after it smaller and raised beside it, wrapped,
+// a line for each stretch between major mechanics; a bar under a GCD cast while running
+function rotationStrip(rows, f, icons) {
+  const segs = [{ name: "Opener", t: -Infinity }, ...(f ? f.mechanics.map(([t, n]) => ({ name: shortMech(n), t })) : [])];
+  const icon = (name, cls) => icons[name] ? el("img", { class: cls, src: icons[name], alt: name, draggable: "false" })
+    : el("span", { class: `${cls} noicon` }, name.split(/[\s']+/).map(w => w[0]).join("").slice(0, 3));   // no icon: initials
+  return el("div", { class: "rot-strip" }, segs.map((sg, i) => {
+    const end = i + 1 < segs.length ? segs[i + 1].t : Infinity, mine = rows.filter(r => r.t >= sg.t && r.t < end);
+    if (!mine.length) return null;
+    return el("div", { class: "rot-seg" }, el("div", { class: "rot-seg-label" }, sg.name, isFinite(sg.t) ? el("span", {}, rotClock(sg.t)) : null),
+      el("div", { class: "rot-icons" }, mine.map(r => {
+        const g = el("div", { class: `rot-g${r.run ? r.cast ? " moving" : " moving instant" : ""}`, role: "img", "aria-label": [r.gcd, ...r.weaves].filter(Boolean).join(", ") },
+          r.gcd ? icon(r.gcd, "gcd") : null, ...r.weaves.map(w => icon(w, "ogcd")));
+        hover(g, `${rotClock(r.t)} · ${r.gcd || r.weaves.join(" · ")}`, [
+          ...(r.gcd ? [[r.cast ? `${r.cast.toFixed(2)} s` : "instant", r.cast ? "cast" : ""]] : []),
+          ...(r.run ? [[`${r.run.toFixed(1)} s`, r.cast ? "running in its slidecast and after it" : "running through it", true]] : []),
+          ...(r.gcd && r.weaves.length ? [[r.weaves.join(" · "), "woven after it"]] : [])]);
+        return g;
+      })));
+  }));
+}
+
 function fightCard(f, rot) {
   const legend = [
     el("span", {}, el("i", { style: "width:14px;height:10px;border-radius:3px;background:var(--series);opacity:.9" }), "run, our plan"),
@@ -1300,6 +1328,8 @@ function fightCard(f, rot) {
     ...(f.away.length ? [el("span", {}, el("i", { style: "width:14px;height:10px;border-radius:3px;background:var(--div-neg);opacity:.8" }), "out of reach")] : []),
     ...(f.pinned.length ? [el("span", {}, el("i", { style: "width:14px;height:10px;border-radius:3px;background:#e0a03a;opacity:.55" }), "spot fixed")] : []),
     el("span", {}, el("i", { style: "width:2px;height:12px;background:var(--ink-2)" }), "GCD"),
+    el("span", {}, el("i", { style: "width:3px;height:12px;background:var(--good)" }), "instant GCD, run through"),
+    el("span", {}, el("i", { style: "width:3px;height:12px;background:var(--series)" }), "hard cast, run after"),
     el("span", {}, el("i", { style: "width:2px;height:7px;background:var(--accent)" }), "oGCD"),
   ];
   const rows = [...f.mechanics.map(([t, n]) => [rotClock(t), "", "Mechanic", "", n]),
@@ -1307,7 +1337,7 @@ function fightCard(f, rot) {
     ...f.away.map(([lo, hi, need, mech]) => [rotClock(lo), rotClock(hi), "Out of reach", `${need.toFixed(1)} s`, mech]),
     ...f.pinned.map(([lo, hi, mech]) => [rotClock(lo), rotClock(hi), "Spot fixed", "", `${mech}: positionals need True North`]),
     ...f.untargetable.map(([lo, hi]) => [rotClock(lo), rotClock(hi), "Boss away", "", ""])].sort((a, c) => parseClock(a[0]) - parseClock(c[0]));
-  return card("Fight timeline", info(`What the rotation plays around, slot ${f.slot}. Dotted lines: each major mechanic's start (its boss cast). Runs: our strategy (the raidplan) needs the player to run for the seconds shown somewhere in the band, and the optimizer chose when; a hard cast can't be running, except for its last 0.46 s (a slidecast). Darker bands are our plan's runs; lighter ones are stretches our plan doesn't cover, run as the clears' players did (their median path).${f.away.length ? " Out of reach: that long on end away from the boss, as the clears' melee were." : ""}${f.pinned.length ? " Spot fixed: the plan says where to stand, so a positional needs True North." : ""} Ticks: the rotation's GCDs (tall) and oGCDs (short); hover one for what is woven after it.`),
+  return card("Fight timeline", info(`What the rotation plays around, slot ${f.slot}. Dotted lines: each major mechanic's start (its boss cast). Runs: our strategy (the raidplan) needs the player to run for the seconds shown somewhere in the band, and the optimizer chose when; a hard cast can't be running, except for its last 0.46 s (a slidecast). Darker bands are our plan's runs; lighter ones are stretches our plan doesn't cover, run as the clears' players did (their median path).${f.away.length ? " Out of reach: that long on end away from the boss, as the clears' melee were." : ""}${f.pinned.length ? " Spot fixed: the plan says where to stand, so a positional needs True North." : ""} Ticks: the rotation's GCDs (tall; green for an instant one run through, blue for a hard cast with running in its slidecast and after) and oGCDs (short); hover a GCD for its running and what is woven after it.`),
     fightTimeline(f, rot), () => tableOf(["From", "To", "What", "Needs", "Detail"], rows, [0, 1, 3]), legend);
 }
 const parseClock = c => c.startsWith("−") ? -parseFloat(c.slice(1)) : +c.split(":")[0] * 60 + +c.split(":")[1];
@@ -1333,13 +1363,13 @@ function rotationJobPage(code) {
   const app = document.getElementById("app"), keys = Object.keys(rs).sort((a, c) => rs[a].gcd - rs[c].gcd || (rs[a].crit || 0) - (rs[c].crit || 0));
   const best = Math.max(...keys.map(k => rs[k].dps)), crit = keys.some(k => rs[k].crit != null), n = rs[keys[0]].conv_players;
   app.append(heading("h1", `${jobName(job)} rotations`, ROT_ABOUT),
-    el("p", { class: "lede" }, `Optimized at ${keys.length} GCD${keys.length > 1 ? "s" : ""}${crit ? " and crit rates (the job's resources come from crits)" : ""}, each over 0:00–2:00 with our strategy's runs (slot ${(fightOf(job) || {}).slot || "–"}). Expected DPS at the median conversion of our ${n} ${code} player${n > 1 ? "s" : ""}. Pick a GCD for its rotation.`));
+    el("p", { class: "lede" }, `Optimized at ${keys.length} GCD${keys.length > 1 ? "s" : ""}${crit ? " and crit rates (the job's resources come from crits)" : ""}, each from the pull until Palladion (0:00–${mmss(rs[keys[0]].window)}) with our strategy's runs (slot ${(fightOf(job) || {}).slot || "–"}). Expected DPS at the median conversion of our ${n} ${code} player${n > 1 ? "s" : ""}. Pick a GCD for its rotation.`));
   app.append(el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, ["GCD", ...(crit ? ["Crit"] : []), "Potency 0:00–2:00", "Potency/s", "Expected DPS", "vs best", "Our players at it"]
+    el("thead", {}, el("tr", {}, ["GCD", ...(crit ? ["Crit"] : []), `Potency 0:00–${mmss(rs[keys[0]].window)}`, "Potency/s", "Expected DPS", "vs best", "Ceiling 0:00–2:00", "Our players at it"]
       .map((h, i) => el("th", { class: i ? "num" : null }, h)))),
     el("tbody", {}, keys.map(k => { const x = rs[k];
       return linkRow([`${x.gcd.toFixed(2)} s`, ...(crit ? [x.crit != null ? pct(x.crit) : "–"] : []), num(x.potency), num(x.potency / x.window, 1),
-        num(x.dps), x.dps === best ? "best" : signed(x.dps / best - 1, 1), String(x.players)], rotHref(job, k)); })))));
+        num(x.dps), x.dps === best ? "best" : signed(x.dps / best - 1, 1), num(x.ceiling_2min), String(x.players)], rotHref(job, k)); })))));
 }
 
 function rotationPage(code, key) {
@@ -1347,29 +1377,36 @@ function rotationPage(code, key) {
   if (!x) return notFound();
   crumbs([["Raid days", "#/"], ["Rotations", "#/rotations"], [code, rotHref(job)], [rotLabel(x).replace(" GCD", ""), null]]);
   const app = document.getElementById("app"), rot = x.rotation, rows = [];
-  for (const [t, name, kind] of rot) {   // one row per GCD at the time it starts, with the oGCDs woven after it
-    if (kind === "g" || !rows.length) rows.push({ t, gcd: kind === "g" ? name : "", weaves: kind === "g" ? [] : [name] });
+  for (const [t, name, kind, cast, run] of rot) {   // one row per GCD at the time it starts, with the oGCDs woven after it
+    if (kind === "g" || !rows.length) rows.push({ t, gcd: kind === "g" ? name : "", weaves: kind === "g" ? [] : [name], cast: cast || 0, run: kind === "g" ? run || 0 : 0 });
     else rows[rows.length - 1].weaves.push(name);
   }
-  const nG = rot.filter(r => r[2] === "g").length, casts = {};
+  const nG = rot.filter(r => r[2] === "g").length, nRun = rows.filter(r => r.run).length, casts = {};
   for (const [t, name, kind] of rot) (casts[name] = casts[name] || { name, n: 0, kind, first: t }).n++;
   const castRows = Object.values(casts).sort((a, c) => c.n - a.n || a.first - c.first);
-  const waste = Object.entries(x.waste || {}), f = fightOf(job);
+  const waste = Object.entries(x.waste || {}), f = fightOf(job), icons = ((DATA.rotations || {})[job] || {}).icons || {};
   const plan = f ? [...new Map(f.runs.filter(w => w[6].startsWith("plan")).map(w => [w[4], w[6].replace("plan, ", "")])).entries()] : [];
   app.append(heading("h1", `${jobName(job)} at ${rotLabel(x)}`, ROT_ABOUT),
-    el("p", { class: "lede" }, `0:00–${mmss(x.window)}, no raid buffs${x.crit != null ? `, ${pct(x.crit)} critical-hit rate (the chakra it opens)` : ""}, with our strategy's runs${plan.length ? ` (${plan.map(([m, v]) => `${shortMech(m)} ${v}`).join(", ")})` : ""}. ${x.players ? `${x.players} of our players play at this GCD; their pages link here.` : "Searched as an extra GCD: none of our players is at it."}`));
+    el("p", { class: "lede" }, `0:00–${mmss(x.window)}, no raid buffs${x.crit != null ? `, ${pct(x.crit)} critical-hit rate (the chakra it opens)` : ""}, with our strategy's runs${plan.length ? ` (${plan.map(([m, v]) => `${shortMech(m)} ${v}`).join(", ")})` : ""}. ${x.players ? `${x.players} of our players ${x.players > 1 ? "play" : "plays"} at this GCD; their pages link here.` : "Searched as an extra GCD: none of our players is at it."}`));
   if (f) app.append(fightCard(f, rot));
   app.append(tiles([
     ["Expected DPS", num(x.dps), `at our ${x.conv_players} ${code} player${x.conv_players > 1 ? "s'" : "'s"} median conversion · ${num(x.dps_lo)}–${num(x.dps_hi)} at each one's own`],
     ["Potency", num(x.potency), `${num(x.potency / x.window, 1)} per second over 0:00–${mmss(x.window)}`],
-    ["GCDs", String(nG), `at ${x.gcd.toFixed(2)} s, with ${rot.length - nG} oGCDs`],
+    ["Ceiling 0:00–2:00", num(x.ceiling_2min), "DPS of the best rotation over 0:00–2:00 alone (the scorecard's window, behind players' ceilings), at the same median conversion"],
+    ["GCDs", String(nG), `at ${x.gcd.toFixed(2)} s, with ${rot.length - nG} oGCDs · ${nRun} while running`],
     ["Resources wasted", waste.length ? String(waste.reduce((s2, [, v]) => s2 + v, 0)) : "none", waste.length ? waste.map(([w, v]) => `${w} ×${v}`).join(" · ") : "nothing overcapped or dropped"],
   ]));
-  app.append(el("div", { class: "grid wide" },
-    card("Rotation", `${nG} GCDs; each row is a GCD at the time it starts, with the oGCDs woven after it. A negative time is a pre-cast before the pull.`,
-      () => el("div", { class: "table-wrap" }, tableOf(["Time", "GCD", "Woven after it"], rows.map(r => [rotClock(r.t), r.gcd, r.weaves.join(" · ")]), [0])),
-      () => tableOf(["Time", "Action", ""], rot.map(([t, name, kind]) => [rotClock(t), name, kind === "g" ? "GCD" : "oGCD"]), [0])),
-    card("Casts per skill", info("How often the rotation casts each skill over 0:00–2:00; the table adds whether it is a GCD and its first use."),
+  app.append(
+    card("Rotation", { info: `${nG} GCDs, read left to right, a line for each stretch between major mechanics. Each GCD's icon sits on the line with the oGCDs woven after it smaller and raised beside it; hover one for its time, cast and running. A bar under a GCD: the player runs between it and the next GCD (part of the runs our strategy needs). Green: the GCD is instant (a proc, Swiftcast or Triplecast, or an instant skill), so they run right through it. Blue: it is a hard cast, so the run fits only in its slidecast and the gap before the next GCD. The optimizer only makes sure each run fits outside cast bars (a hard cast's last 0.46 s, its slidecast, counts); here each is placed in its window's longest stretches outside cast bars first, as late as they allow, so it lands on instant GCDs where it can. The table has the times; there "after its cast" means the GCD is a hard cast and the run comes in its slidecast and the gap before the next GCD. A negative time is a pre-cast before the pull.` },
+      () => rotationStrip(rows, f, icons),
+      () => { const tbl = tableOf(["Time", "GCD", "Cast", "Running", "Woven after it"], rows.map(r => [rotClock(r.t), r.run ? `▸ ${r.gcd}` : r.gcd,
+          r.gcd ? r.cast ? `${r.cast.toFixed(2)} s` : "instant" : "", r.run ? `${r.run.toFixed(1)} s${r.cast ? ", after its cast" : ""}` : "", r.weaves.join(" · ")]), [0, 2, 3]);
+        [...tbl.tBodies[0].rows].forEach((tr, i) => { if (rows[i].run) tr.classList.add("moving"); });
+        return tbl; },
+      [el("span", {}, el("i", { style: "width:16px;height:3px;border-radius:2px;background:var(--good)" }), "instant, run through it"),
+       el("span", {}, el("i", { style: "width:16px;height:3px;border-radius:2px;background:var(--series)" }), "hard cast, run in its slidecast and after"),
+       el("span", {}, "small, raised: oGCDs woven after the GCD")]),
+    el("div", { class: "grid wide" }, card("Casts per skill", info(`How often the rotation casts each skill over 0:00–${mmss(x.window)}; the table adds whether it is a GCD and its first use.`),
       hbarChart(castRows.map(c => ({ label: c.name, value: c.n, sub: c.kind === "g" ? "casts (GCD)" : "casts (oGCD)" })), { fmt: v => String(v) }),
       () => tableOf(["Skill", "Casts", "Kind", "First at"], castRows.map(c => [c.name, String(c.n), c.kind === "g" ? "GCD" : "oGCD", rotClock(c.first)]), [1, 3]))));
 }

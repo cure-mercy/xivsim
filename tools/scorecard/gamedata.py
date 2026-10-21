@@ -1,6 +1,7 @@
 """Action data from the game files (via XIVAPI): whether an action is on the GCD, its base recast and charges.
-Cached in .cache/actions.json. Base values are before traits, so level-90 cooldowns are read off the clears (checks.py)."""
-import json, urllib.request
+Cached in .cache/actions.json. Base values are before traits, so level-90 cooldowns are read off the clears (checks.py).
+Also action icons by name, for the site's rotations (cached in .cache/icons/)."""
+import base64, json, urllib.parse, urllib.request
 import fflogs
 
 URL = ("https://v2.xivapi.com/api/sheet/Action?rows={}&fields=Name,ActionCategory.Name,CooldownGroup,"
@@ -38,3 +39,49 @@ def actions(ids):
         for a in part: have.setdefault(str(a), None)
     CF.write_text(json.dumps(have))
     return {int(k): v for k, v in have.items() if v and int(k) in {int(i) for i in ids}}
+
+
+# --- icons -----------------------------------------------------------------------------------------------------------
+SEARCH = "https://v2.xivapi.com/api/search?sheets=Action&query={}&fields=Name,Icon,IsPvP,ClassJob.Abbreviation,ClassJobCategory.Name"
+ASSET = "https://v2.xivapi.com/api/asset?path={}&format=png"
+ICONS = fflogs.CACHE / "icons"
+ABBR = {"Paladin": "PLD", "Warrior": "WAR", "DarkKnight": "DRK", "Gunbreaker": "GNB", "WhiteMage": "WHM", "Scholar": "SCH",
+        "Astrologian": "AST", "Sage": "SGE", "Monk": "MNK", "Dragoon": "DRG", "Ninja": "NIN", "Samurai": "SAM", "Reaper": "RPR",
+        "Viper": "VPR", "Bard": "BRD", "Machinist": "MCH", "Dancer": "DNC", "BlackMage": "BLM", "Summoner": "SMN",
+        "RedMage": "RDM", "Pictomancer": "PCT"}
+
+
+def _icon_path(name, abbr):
+    """The high-resolution icon of the job's PvE action of that name: the job's own, else one its category includes
+    (role actions, a base class's spells); None if there is none. Not filtered on IsPlayerAction: actions that replace
+    another on the hotbar (Paradox, Void Reaping) are not marked as player actions."""
+    q = urllib.parse.quote(f'Name="{name}"')
+    with urllib.request.urlopen(urllib.request.Request(SEARCH.format(q), headers=UA), timeout=60) as r:
+        rows = [x["fields"] for x in json.load(r)["results"] if not x["fields"].get("IsPvP") and x["fields"].get("Name") == name]
+    job = lambda f: ((f.get("ClassJob") or {}).get("fields") or {}).get("Abbreviation")
+    cat = lambda f: (((f.get("ClassJobCategory") or {}).get("fields") or {}).get("Name") or "").split()
+    pick = next((f for f in rows if job(f) == abbr), None) or next((f for f in rows if abbr in cat(f)), None)
+    return pick["Icon"]["path_hr1"] if pick else None
+
+
+def icons(job, names):
+    """{action name: PNG data URI} for a job's actions (job as in the logs, e.g. "BlackMage"); names without an icon are
+    left out. Icon paths are cached in .cache/icons/paths.json, the images beside it."""
+    ICONS.mkdir(parents=True, exist_ok=True)
+    pf = ICONS / "paths.json"
+    paths = json.loads(pf.read_text()) if pf.exists() else {}
+    abbr, out = ABBR.get(job, job), {}
+    for n in sorted(set(names)):
+        key = f"{abbr}:{n}"
+        if key not in paths:
+            try: paths[key] = _icon_path(n, abbr)
+            except Exception: continue   # XIVAPI down: try again next time
+        if not paths[key]: continue
+        f = ICONS / (paths[key].rsplit("/", 1)[-1].replace(".tex", ".png"))
+        if not f.exists():
+            try:
+                with urllib.request.urlopen(urllib.request.Request(ASSET.format(paths[key]), headers=UA), timeout=60) as r: f.write_bytes(r.read())
+            except Exception: continue
+        out[n] = "data:image/png;base64," + base64.b64encode(f.read_bytes()).decode()
+    pf.write_text(json.dumps(paths, indent=1))
+    return out

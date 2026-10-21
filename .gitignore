@@ -3,3 +3,4 @@ __pycache__/
 tools/scorecard/.cache/
 tools/scorecard/site/data.json
 tools/rotation/.cache/
+scratch/
