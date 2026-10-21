@@ -8,7 +8,8 @@
    each rotation is replayed from its printed history: every move window must get its running time outside cast bars
    (up to the slide point), and nothing may be cast at Athena while she is away.
 3. Reaper: the reach rule on hand-made away windows and positionals in pinned ones; then quick searches for M1 and M2,
-   replayed the same way, plus every away window must hold a stretch of its length without a melee action.
+   replayed the same way, plus every away window must hold a stretch of its length without a melee action. The same
+   searches for Monk.
 Exits non-zero on any failure.
 """
 import itertools, re, sys
@@ -18,10 +19,11 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import engine, p12s                              # noqa: E402
 from engine import Fight, Move, SLIDE            # noqa: E402
-from jobs import blm, rpr                        # noqa: E402
+from jobs import blm, mnk, rpr                   # noqa: E402
 
 HARM = {"Fire III", "Fire IV", "Despair", "Paradox", "Blizzard III", "Blizzard IV", "Thunder III", "Xenoglossy"}
 HARM |= (set(rpr.GCDS) - {"Soulsow"}) | rpr.AVATAR | {"Gluttony", "Lemure's Slice"}
+HARM |= mnk.HARM_GCDS | {"The Forbidden Chakra", "Enlightenment"}
 fails = []
 
 
@@ -87,9 +89,9 @@ def reach_cases():
     expect(rpr.flank_rear(s, f, 35) and not rpr.flank_rear(s, f, 37), "True North gets them in it, for its 10 s")
 
 
-def gaps(state, fight):
+def gaps(state, fight, job=rpr):
     """Away windows without a stretch of their length free of melee actions."""
-    hits = sorted(t for t, name, _ in state.history() if name in rpr.MELEE_ACTIONS)
+    hits = sorted(t for t, name, _ in state.history() if name in job.MELEE_ACTIONS)
     bad = []
     for w in fight.away:
         pts = [w.lo] + [t for t in hits if w.lo < t < w.hi] + [w.hi]
@@ -97,20 +99,20 @@ def gaps(state, fight):
     return bad
 
 
-def melee_searches(width=200):
-    print(f"\nReaper searches (width {width}) replayed")
-    rpr.SPEED = 2.49 / engine.BASE_GCD
+def melee_searches(job=rpr, gcd=2.49, width=200):
+    print(f"\n{job.LOG_NAME} searches (width {width}) replayed")
+    job.SPEED = gcd / engine.BASE_GCD
     alt = {m: [v for v in vs if v != p12s.DEFAULT_VAR[m]] for m, vs in p12s.PLAN.items() if m in p12s.DEFAULT_VAR}
     for slot, var in [("M1", {}), ("M2", {m: v[0] for m, v in alt.items()})]:
         f = p12s.fight(slot, var)
-        s = engine.beam(rpr, f, width=width)
+        s = engine.beam(job, f, width=width)
         short, away, hard = replay(s, f)
-        bad = gaps(s, f)
+        bad = gaps(s, f, job)
         label = f"{slot}" + "".join(f", {v}" for v in var.values())
         expect(not short and not away and not bad, f"{label}: {len(f.away)} away windows, {hard} hard casts, "
                                                    f"{s.dmg:,.0f} potency" + "".join(f"\n          {x}" for x in short + away + bad))
-    still = engine.beam(rpr, p12s.fight("M1", still=True), width=width)
-    bad = gaps(still, p12s.fight("M1"))
+    still = engine.beam(job, p12s.fight("M1", still=True), width=width)
+    bad = gaps(still, p12s.fight("M1"), job)
     expect(bool(bad), f"control: the standing-still rotation breaks {len(bad)} of the M1 away windows")
 
 
@@ -136,5 +138,6 @@ if __name__ == "__main__":
     searches()
     reach_cases()
     melee_searches()
+    melee_searches(mnk, 2.43)
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED"))
     sys.exit(1 if fails else 0)

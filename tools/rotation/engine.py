@@ -140,9 +140,10 @@ HEURISTICS = [(r, v, m) for r, v in [(200, 0.5), (220, 0.5), (220, 0.1), (245, 0
 
 def _search_one(args):
     import importlib
-    jobname, speed, fight, width, (rate, scale, mw) = args
+    jobname, speed, fight, width, (rate, scale, mw), params = args
     job = importlib.import_module(f"jobs.{jobname}")
     job.SPEED, job.RATE, job.MOVE_WEIGHT = speed, rate, mw
+    for k, v in (params or {}).items(): setattr(job, k, v)
     if not hasattr(job, "VALUE0"): job.VALUE0 = dict(job.VALUE)     # a worker may run several settings
     job.VALUE = {k: v * scale for k, v in job.VALUE0.items()}
     s = beam(job, fight, width)
@@ -150,14 +151,15 @@ def _search_one(args):
     return job.final(s, fight), (rate, scale, mw), s, h
 
 
-def search(jobname, fight, width=None, speed=None, settings=None, procs=None):
+def search(jobname, fight, width=None, speed=None, settings=None, procs=None, params=None):
     """The best rotation over the heuristic settings (the job's own HEURISTICS and WIDTH if it has them), searched in
-    parallel. Returns (state, setting, all scores)."""
+    parallel; `params` sets other job constants in the workers (e.g. Monk's CRIT). Returns (state, setting, all
+    scores)."""
     import importlib, multiprocessing
     job = importlib.import_module(f"jobs.{jobname}")
     settings = settings or getattr(job, "HEURISTICS", HEURISTICS)
     width = width or getattr(job, "WIDTH", 1000)
-    args = [(jobname, speed or job.SPEED, fight, width, x) for x in settings]
+    args = [(jobname, speed or job.SPEED, fight, width, x, params) for x in settings]
     with multiprocessing.Pool(min(procs or len(args), len(args))) as pool:
         res = pool.map(_search_one, args)
     score, setting, s, h = max(res, key=lambda r: r[0])
