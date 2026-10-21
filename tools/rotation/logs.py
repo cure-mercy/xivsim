@@ -1,11 +1,11 @@
 """Detailed per-player logs for calibrating a job model: casts (with begin-casts and MP), hits (with the buffs on them)
 and the player's own statuses, for every clear in the scorecard benchmark that has the job. Cached in .cache/."""
-import json, sys
+import collections, json, math, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "scorecard"))
-import fflogs                                  # noqa: E402
+import acts, fflogs                            # noqa: E402
 
 CACHE = HERE / ".cache"
 BENCH = HERE.parent / "scorecard" / "benchmark.json"
@@ -68,6 +68,60 @@ def ours(job):
                 fid = fights[c["n"] - 1]["id"]
                 got = [x for x in player_log(r["code"], fid, job) if x["name"] == p["name"] and x["casts"]]
                 out += [dict(x, rdps=c["rdps"], group=r["group"], day=r["day"], n=c["n"]) for x in got]
+    return out
+
+
+ACTS = HERE.parent / "scorecard" / ".cache"
+CHANGE = {1: "applybuff", 0: "removebuff"}
+
+
+def from_acts(a, pid, code, fight, own=lambda p, h: 1.0):
+    """A player's log as player_log gives it, built from the scorecard's acts cache of the pull, for when FFLogs is down.
+    The cache has no crit / direct-hit flags (dps.flag_hits sets them), FFLogs multipliers or others' buffs on a hit:
+    hits under others' raid buffs (acts.buff_uses) and in tinctures are left out, and the rest carry the player's own
+    statuses as `buffs` and their own damage-ups (the job's own_factor, from those statuses) as `multiplier`."""
+    N = collections.defaultdict(lambda: "?", {str(k): v for k, v in a["names"].items()})
+    spans, on = collections.defaultdict(list), {}
+    for t, p, s, ch in a["auras"]:
+        if str(p) != pid: continue
+        if ch in (1, 2, 3): on.setdefault(s, t)
+        elif ch == 0 and s in on: spans[s].append((on.pop(s), t))
+    for s, t in on.items(): spans[s].append((t, math.inf))
+    pot = [b for s, w in spans.items() if N[str(s)] == "Medicated" for b, _ in w]
+    away = [(t, t + acts.BUFF_S) for t, _, _, src in acts.buff_uses(a) if str(src) != pid] + [(t, t + 30) for t in pot]
+    casts = sorted([dict(t=t, type="cast", abilityGameID=ab) for t, p, ab in a["casts"] if str(p) == pid] +
+                   [dict(t=t, type="begincast", abilityGameID=ab) for t, p, ab in a["begins"] if str(p) == pid],
+                   key=lambda x: (x["t"], x["type"] == "cast"))
+    out = dict(name=a["players"][pid][0], id=int(pid), code=code, fight=fight, end=a["end"], casts=casts, hits=[],
+               buffs=[dict(t=t, type=CHANGE[ch], abilityGameID=s) for t, p, s, ch in a["auras"] if str(p) == pid and ch in CHANGE],
+               names=N)
+    for t, p, ab, amt, tick, bonus in a["dmg"]:
+        if str(p) != pid or any(lo <= t < hi for lo, hi in away): continue
+        h = dict(t=t, type="damage", abilityGameID=ab, amount=amt, tick=bool(tick), bonusPercent=bonus,
+                 buffs="".join(f"{s}." for s, w in spans.items() if any(lo <= t < hi for lo, hi in w)))
+        h["multiplier"] = own(out, h)
+        out["hits"].append(h)
+    return out
+
+
+def ours_offline(job, own=lambda p, h: 1.0):
+    """ours() from the scorecard's acts caches (from_acts) instead of FFLogs: the same clean pulls, without crit flags,
+    hits under others' raid buffs or tincture hits. Built in memory only: player_log would take a cached copy for a full
+    log."""
+    reports = json.loads(SITE.read_text())["reports"]
+    out = []
+    for r in reports.values():
+        fights = json.loads((fflogs.CACHE / f"report_{r['code']}.json").read_text())["fights"]
+        pulls = json.loads((ACTS / f"acts_{r['code']}.json").read_text(encoding="utf-8"))
+        for p in r["players"]:
+            if p["job"] != job: continue
+            for c in p.get("clean_pulls") or []:
+                fid = fights[c["n"] - 1]["id"]
+                a = pulls.get(str(fid))
+                pid = next((k for k, (nm, j) in (a or {"players": {}})["players"].items() if nm == p["name"] and j == job), None)
+                if pid is None: continue
+                x = from_acts(a, pid, r["code"], fid, own)
+                if x["casts"]: out.append(dict(x, rdps=c["rdps"], group=r["group"], day=r["day"], n=c["n"]))
     return out
 
 

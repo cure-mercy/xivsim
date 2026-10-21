@@ -23,6 +23,7 @@ python tools/rotation/calibrate.py [--job rpr] [--ours]       # check the job mo
 python tools/rotation/patchnotes.py Reaper                    # the job's PvE changes in the official patch notes
 python tools/rotation/dps.py                                  # our players: ceiling in DPS next to their scorecard rDPS
 python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceilings and rotations for the scorecard site
+python tools/rotation/dps.py --job drg --site --offline      # ...from the scorecard's cached events, when FFLogs is down
 ```
 
 | Option | Meaning |
@@ -479,6 +480,21 @@ conversions fall 0.38% per 0.01 s of GCD), and DoT ticks gain as much per point 
 2.18 s GCD read 10% ahead of 2.45 s for a Black Mage; with it every GCD from 2.18 s to 2.45 s comes out within 0.7%
 (the search's noise), and for a Reaper 2.49 s leads 2.41 s by 1.2%. Not modelled: whether Skill Speed also raises a
 melee's auto-attacks.
+
+`--offline` takes our players' pulls from the scorecard's acts caches instead of FFLogs (`logs.ours_offline`, for
+when FFLogs is down; Dragoon, Red Mage, Viper and Samurai went on the site this way on 2026-10-22). Those have no crit
+or direct-hit flags, no FFLogs multiplier and no record of others' buffs on a hit, so `logs.from_acts` leaves out the
+hits under others' raid buffs (`acts.buff_uses`, 20 s each) and in tinctures, takes the player's own damage-ups from
+their own statuses (the job's `own_factor`, which reads the same status ids), and `flag_hits` reads crit and direct hit
+from the size of each hit against its plain level: hits of one action and bonusPercent at one model potency form a
+group, and its plain level is the median of the hits within 13% of its lowest tenth; above it by 1.12, 1.37 and 1.73
+a hit is a direct hit, a crit, and both (`PLAIN`, `DH`, `CRIT`). A target debuff (Reaper's Death's Design) can't be
+divided out this way. Against the full logs, on Black Mage (`scratch/offline/measure.py blm`): the GCD comes out the
+same for all seven players, damage per potency within 0.5% for six of them, crit gain within 2.2%, so the conversion
+reads 0-3% higher (about 1% at the median; one player 3%, likely a Dancer partner or Astrologian card the caches can't
+show). The replay check against the scorecard's rDPS gives the same picture: 0.97-1.00 offline, 1.00-1.02 from the full
+logs. 'logged' in the printed table misses the hits left out. The site says which jobs were converted this way.
+Rerun without `--offline` once FFLogs is back.
 
 ## How the job model was checked
 
