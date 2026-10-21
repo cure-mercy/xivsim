@@ -38,6 +38,10 @@ class Fight:
     buffs: list = field(default_factory=list)       # [(name, start, end, multiplier)]
     moves: list = field(default_factory=list)       # [Move], sorted and not overlapping
     untargetable: list = field(default_factory=list)  # [(start, end)]: nothing can be cast at the boss, DoTs don't tick
+    # melee: [Move] windows somewhere in which the player is out of reach for `need` seconds on end (no melee actions,
+    # no auto-attacks), and [(start, end)] stretches where the strategy fixes their spot, so a positional needs True North
+    away: list = field(default_factory=list)
+    pinned: list = field(default_factory=list)
     pot: bool = False                               # may the job use a tincture (once)?
     pot_mult: float = 1.1057                        # a Grade 4 tincture: +10.57% damage for DPS and healers, measured
     carry: bool = False                             # value the resources still held at `until`
@@ -146,10 +150,13 @@ def _search_one(args):
     return job.final(s, fight), (rate, scale, mw), s, h
 
 
-def search(jobname, fight, width=1000, speed=None, settings=HEURISTICS, procs=None):
-    """The best rotation over the heuristic settings, searched in parallel. Returns (state, setting, all scores)."""
+def search(jobname, fight, width=None, speed=None, settings=None, procs=None):
+    """The best rotation over the heuristic settings (the job's own HEURISTICS and WIDTH if it has them), searched in
+    parallel. Returns (state, setting, all scores)."""
     import importlib, multiprocessing
     job = importlib.import_module(f"jobs.{jobname}")
+    settings = settings or getattr(job, "HEURISTICS", HEURISTICS)
+    width = width or getattr(job, "WIDTH", 1000)
     args = [(jobname, speed or job.SPEED, fight, width, x) for x in settings]
     with multiprocessing.Pool(min(procs or len(args), len(args))) as pool:
         res = pool.map(_search_one, args)

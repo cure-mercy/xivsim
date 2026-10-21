@@ -426,7 +426,7 @@ function lineChart(points, { yFmt = v => v, yMax, yMin = 0, invert = false, refs
 function columnChart(bars, { yFmt = v => v, yMax, refs = [], barTip, tickStep, onBar } = {}) {
   return width => {
     const H = 220, L = 44, R = 70, T = 12, B = 26, w = width - L - R, h = H - T - B;
-    const raw = Math.max(...bars.map(b => b.value), ...refs.map(r => r.value)) * 1.05;
+    const raw = Math.max(...bars.map(b => Math.max(b.value, b.mark ?? 0)), ...refs.map(r => r.value)) * 1.05;
     const top = yMax ?? (tickStep ? Math.ceil(raw / tickStep) * tickStep : niceMax(raw));
     const band = w / Math.max(1, bars.length), bw = Math.min(24, band - 2);
     const Y = v => T + h - (v / top) * h;
@@ -442,6 +442,7 @@ function columnChart(bars, { yFmt = v => v, yMax, refs = [], barTip, tickStep, o
       if (barTip) hover(hit, ...barTip(b)); else hover(hit, b.label, [[yFmt(b.value), "", true]]);
       if (onBar) { hit.style.cursor = "pointer"; hit.addEventListener("click", () => onBar(b)); }
       svg.append(hit, m);
+      if (b.mark != null) svg.append(sv("line", { class: "barmark", x1: L + i * band + 1, x2: L + (i + 1) * band - 1, y1: Y(b.mark), y2: Y(b.mark) }));   // a per-bar target
       if (bars.length <= 16 || i % Math.ceil(bars.length / 16) === 0) svg.append(sv("text", { x: x + bw / 2, y: H - 8, "text-anchor": "middle" }, b.label));
     });
     svg.append(sv("line", { class: "axisline", x1: L, x2: L + w, y1: T + h, y2: T + h }));
@@ -994,10 +995,19 @@ function playerPage(day, group, name) {
     ...entries.filter(e => e.clean_pulls.length).map(e => {
       const jb = b.pools, refs = [];
       if (jb.clears.jobs[e.job]) refs.push({ value: jb.clears.jobs[e.job].rdps, label: "clears avg" });
-      const bars = e.clean_pulls.map(c => ({ label: String(c.n), value: c.rdps, c }));
-      return card(`${JOB[e.job] || e.job} rDPS on clean pulls`, info("0:00–2:00 of every pull with no death or Damage Down before 2:00; lines are other clearers' averages on the job."),
-        columnChart(bars, { yFmt: v => kfmt(v), refs, barTip: bar => [`Pull ${bar.c.n}`, [[num(bar.c.rdps), "rDPS", true], [`${bar.c.uptime}%`, "uptime"]]] }),
-        () => tableOf(["Pull", "rDPS", "Uptime"], e.clean_pulls.map(c => [String(c.n), num(c.rdps), `${c.uptime}%`])));
+      // ceiling: the optimizer's best unbuffed rotation at their GCD, the same for every pull, plus what that pull's
+      // raid buff (a Reaper's Arcane Circle) gave the others, which rDPS credits to them
+      const top = c => e.ceiling ? e.ceiling + (c.given || 0) : null;
+      const bars = e.clean_pulls.map(c => ({ label: String(c.n), value: c.rdps, mark: top(c), c }));
+      const tip = bar => [`Pull ${bar.c.n}`, [[num(bar.c.rdps), "rDPS", true], [`${bar.c.uptime}%`, "uptime"],
+        ...(e.ceiling ? [[num(top(bar.c)), "ceiling"], [`${Math.round(100 * bar.c.rdps / top(bar.c))}%`, "of the ceiling"]] : []),
+        ...(e.ceiling && bar.c.given ? [[num(bar.c.given), "of it from buffs on others"]] : [])]];
+      return card(`${JOB[e.job] || e.job} rDPS on clean pulls`, info("0:00–2:00 of every pull with no death or Damage Down before 2:00; lines are other clearers' averages on the job." +
+          (e.ceiling ? " Ticks: the ceiling, the best rotation without raid buffs at their GCD (the same every pull, from the optimizer, standing still), plus what that pull's raid buffs gave the other players, which rDPS credits to them." : "")),
+        columnChart(bars, { yFmt: v => kfmt(v), refs, barTip: tip }),
+        () => tableOf(["Pull", "rDPS", "Uptime", ...(e.ceiling ? ["Ceiling", "Of ceiling", "Buffs on others"] : [])],
+          e.clean_pulls.map(c => [String(c.n), num(c.rdps), `${c.uptime}%`,
+            ...(e.ceiling ? [num(top(c)), `${Math.round(100 * c.rdps / top(c))}%`, num(c.given || 0)] : [])])));
     })));
   // damage: cost of their mistakes and damage per phase
   const SHOW_MISTAKE_COST = false;   // "What their mistakes cost" card, hidden for now; set true to bring it back
