@@ -2,7 +2,7 @@
 
 Searches for the highest-potency rotation of a job over P12S phase 1 (level 90), from the pull to the kill, with the
 fight's fixed timeline: when Athena can't be hit, and where the player has to run under our groups' strategy. So far:
-Black Mage and Reaper.
+Black Mage, Reaper and Monk (Monk not yet checked against logs: see its section).
 
 ```
 python tools/rotation/solve.py                                # R1, 2.32 s GCD, no raid buffs, 0:00 to the median kill (449 s)
@@ -10,6 +10,7 @@ python tools/rotation/solve.py --slot R2 --var para2=debuff --var para3=cross
 python tools/rotation/solve.py --still                        # no forced movement: what running costs
 python tools/rotation/solve.py --gcd 2.14 --party RPR,SCH,RDM --until 120 --compare
 python tools/rotation/solve.py --job rpr [--slot M2]          # Reaper, 2.49 s GCD, M1 by default
+python tools/rotation/solve.py --job mnk [--crit 0.25]        # Monk, a 1.94 s GCD (2.43 s before Greased Lightning)
 python tools/rotation/p12s.py [--slot R2]                     # the move windows; --build refetches the timeline
 python tools/rotation/check.py                                # movement and downtime checks
 python tools/rotation/calibrate.py [--job rpr] [--ours]       # check the job model against the clears' (or our) logs
@@ -19,8 +20,9 @@ python tools/rotation/dps.py                                  # our players: cei
 
 | Option | Meaning |
 |---|---|
-| `--job` | `blm` (default) or `rpr` |
-| `--gcd` | the player's GCD without haste (spell or skill speed; default the clears' median); `--compare` prints each clear's |
+| `--job` | `blm` (default), `rpr` or `mnk` |
+| `--gcd` | the player's GCD without haste (spell or skill speed; default the clears' median); `--compare` prints each clear's. Monk's Greased Lightning takes 20% off it |
+| `--crit` | critical-hit rate, for a job whose resources come from crits (Monk's chakra; default 0.25) |
 | `--slot` | Paradeigma I: `R1` / `M1` line up for the first lasers, `R2` / `M2` for the second (our BLMs play both R slots; the melee slot varies with the lineup). Default `R1`, or `M1` for a melee |
 | `--var` | a mechanic's variant: `para2=tether/debuff`, `sc1=spread/laser`, `para3=straight/cross`; default: the one with the most running |
 | `--still` | no forced movement |
@@ -29,7 +31,7 @@ python tools/rotation/dps.py                                  # our players: cei
 | `--pot` | allow one tincture (off by default: the scorecard strips tinctures) |
 | `--carry` | also value resources still held at the end, instead of dumping everything |
 | `--until` | end of the scored window, seconds (default: the clears' median kill, 449 s; enrage is 458 s) |
-| `--width` | beam width per heuristic setting (default: the job's, 1,000 for BLM, 3,000 for RPR) |
+| `--width` | beam width per heuristic setting (default: the job's, 1,000 for BLM, 3,000 for RPR and MNK) |
 | `--compare` | replay every benchmark clear's logged rotation under the same buffs, downtime and window |
 
 Damage is in potency (Xenoglossy 890) times the raid buffs active when each hit lands; crit and direct-hit buffs count
@@ -184,6 +186,7 @@ of its length without a melee action (the standing-still rotation breaks one).
 | `engine.py` | timing (GCD, casts, slidecast, weaving), raid buffs, move windows, downtime, beam search |
 | `jobs/blm.py` | Black Mage: gauge, MP, procs, cooldowns, potencies, Ley Lines' circle |
 | `jobs/rpr.py` | Reaper: Soul and Shroud gauges, Enshroud, combos, positionals, Death's Design, auto-attacks |
+| `jobs/mnk.py` | Monk: forms, Fury, Perfect Balance, beast chakra and Nadi, chakra, positionals, auto-attacks |
 | `p12s.py`, `p12s_p1.json` | the fight: timeline, downtime, our strategy's runs, the clears' runs elsewhere |
 | `solve.py` | command line |
 | `logs.py` | detailed per-player logs from the benchmark clears, cached in `.cache/` |

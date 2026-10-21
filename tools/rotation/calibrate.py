@@ -6,7 +6,8 @@ logged plain hits (no crit, no direct hit, buffs divided out).
 
 By default each log is replayed over the whole pull, up to the player's first death (a death strips the gauge and
 procs, which the model doesn't follow). A job model supplies the hooks at the end of jobs/<job>.py: LOG_NAME,
-LOGS_SINCE, OGCDS, REFERENCE, at, status, force, label, cast_label.
+LOGS_SINCE, OGCDS, REFERENCE, at, status, force, label, cast_label; optionally prepare(p) (read what the replay
+takes from the log itself, e.g. Monk's critical hits), force_ogcd, HASTE (a permanent GCD haste, e.g. Monk's 20%).
 """
 import argparse, collections, datetime, importlib, json, math, statistics as st, sys
 from pathlib import Path
@@ -34,6 +35,7 @@ def cd_of(name):
 def replay(p, until, out, fight=None):
     n = p["names"]
     fight = fight or Fight(until=until + 30, pot=True)
+    if hasattr(J, "prepare"): J.prepare(p)
     s = J.State.initial(fight)
     seq = []
     last_begin = {}
@@ -46,7 +48,7 @@ def replay(p, until, out, fight=None):
     for t, b, name, mp in seq:
         if name.startswith("Grade") and "Gemdraught" in name: name = "Tincture"
         if name in J.GCDS:
-            start = b if b is not None and t - b < max(4, max(J.CAST.values()) + 0.5) else t
+            start = b if b is not None and t - b < max(4, max(J.CAST.values(), default=0) + 0.5) else t
             if not s.first:
                 if s.gcd - start > 0.15: out["early"].append((p["name"], t, name, round(s.gcd - start, 2)))
                 s.t = s.gcd = start
@@ -70,7 +72,7 @@ def replay(p, until, out, fight=None):
                 s.t = nxt; ns = J.do_ogcd(s, fight, name, policy=False)
             if ns is None:
                 out["illegal"].append((p["name"], round(t, 2), name, {"charges": J.charges(s, cd_of(name), t), **J.status(s, t)}))
-                ns = s
+                ns = J.force_ogcd(s, fight, name, t) if hasattr(J, "force_ogcd") else s
             s = ns
         else:
             s.t = max(s.t, t)       # role actions and movement tools: they only take time
@@ -98,8 +100,10 @@ def cut_of(p, until=None):
 
 
 def gcd_of(p):
-    """The player's unhasted GCD: the most common spacing of consecutive GCD starts outside Ley Lines."""
+    """The player's unhasted GCD: the most common spacing of consecutive GCD starts outside Ley Lines (over the job's
+    permanent haste, if it has one)."""
     n = p["names"]
+    h = getattr(J, "HASTE", 1.0)
     ll = [x["t"] for x in p["buffs"] if n[str(x["abilityGameID"])] == "Ley Lines" and x["type"] in ("applybuff", "removebuff")]
     inll = lambda t: any(a <= t < b for a, b in zip(ll[0::2], ll[1::2]))
     starts, lb = [], {}
@@ -109,7 +113,7 @@ def gcd_of(p):
         if x["type"] == "cast" and name in J.GCDS:
             b = lb.pop(name, None)
             starts.append(b if b is not None and x["t"] - b < 4 else x["t"])
-    gaps = sorted(round(b - a, 2) for a, b in zip(starts, starts[1:]) if 2.0 <= b - a <= 2.6 and not inll(a))
+    gaps = sorted(round((b - a) / h, 2) for a, b in zip(starts, starts[1:]) if 2.0 <= (b - a) / h <= 2.6 and not inll(a))
     return gaps[len(gaps) // 4] if gaps else None     # lower quartile: clean back-to-back GCDs, not delayed ones
 
 
@@ -134,14 +138,19 @@ def replay_fight(p, fight):
 def plain_hits(p, until):
     """[(action, group, logged damage with buffs divided out, model potency)] for the player's plain hits (no crit,
     no direct hit, no tincture) up to `until`; the group is the job's label for the state at the cast."""
+    return model_hits(p, until, lambda x: x.get("hitType") == 1 and not x.get("directHit"))
+
+
+def model_hits(p, until, keep):
+    """The same for the hits `keep` picks (outside tinctures)."""
     n = p["names"]
     pot = [x["t"] for x in p["buffs"] if n[str(x["abilityGameID"])] == "Medicated" and x["type"] == "applybuff"]
     plain = {}
     for x in p["hits"]:
-        if x["type"] == "damage" and x.get("hitType") == 1 and not x.get("directHit") and not x.get("tick") \
-                and not any(a <= x["t"] < a + 30 for a in pot):
+        if x["type"] == "damage" and keep(x) and not x.get("tick") and not any(a <= x["t"] < a + 30 for a in pot):
             plain.setdefault(n[str(x["abilityGameID"])], []).append((x["t"], x["amount"] / x.get("multiplier", 1)))
     fight = Fight(until=until + 30)
+    if hasattr(J, "prepare"): J.prepare(p)
     s = J.State.initial(fight)
     out = []
     for x in p["casts"]:
@@ -160,7 +169,7 @@ def plain_hits(p, until):
             nxt = J.charges(s, cd_of(name), x["t"])[1]
             if ns is None and nxt is not None and nxt - x["t"] <= 0.1:
                 s.t = nxt; ns = J.do_ogcd(s, fight, name, policy=False)
-            s = ns or s
+            s = ns or (J.force_ogcd(s, fight, name, x["t"]) if hasattr(J, "force_ogcd") else s)
     return out
 
 
@@ -179,7 +188,7 @@ def damage_check(L, until=None):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--job", default="blm", help="job model in jobs/ (blm, rpr)")
+    ap.add_argument("--job", default="blm", help="job model in jobs/ (blm, rpr, mnk)")
     ap.add_argument("--since", default=None, help="first day of logs used (default: the job model's)")
     ap.add_argument("--until", type=float, default=None, help="end of the replay, s (default: the whole pull)")
     ap.add_argument("--ours", action="store_true", help="our groups' clean pulls instead of the benchmark clears")

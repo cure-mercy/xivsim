@@ -1,6 +1,6 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
-    python tools/rotation/dps.py [--job blm|rpr] [--clears] [--site]
+    python tools/rotation/dps.py [--job blm|rpr|mnk] [--clears] [--site]
 
 Per player, from their clean pulls (alive through 2:00):
   damage per potency   their plain hits (no crit, no direct hit), external buffs divided out, over the model potency
@@ -8,6 +8,8 @@ Per player, from their clean pulls (alive through 2:00):
                        for the replay check (the log's hits carry others' crit buffs), and over the hits under no
                        crit or direct-hit raid buff for the ceiling (rDPS credits those buffs to their givers)
   DoT ticks            FFLogs reports ticks without crit or direct-hit flags; they count at the player's average tick
+  sure crits           hits that always crit (Monk's Bootshine in opo-opo form) count at their own average over the
+                       model potency
   GCD                  their unhasted GCD, from back-to-back casts
 Check: each pull's logged casts, replayed through the model without buffs and converted, against the pull's logged
 damage (buffs divided out) and against the scorecard's rDPS.
@@ -26,9 +28,9 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
 import calibrate, engine, logs                  # noqa: E402
 from engine import Fight                         # noqa: E402
-from jobs import blm, rpr                        # noqa: E402
+from jobs import blm, mnk, rpr                   # noqa: E402
 
-JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper")}
+JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk")}
 SITE_FILE = HERE / ".cache" / "ceilings.json"
 WINDOW = 120
 # raid buffs that raise crit or direct-hit rate (status ids as they appear on hits): Battle Voice, Battle Litany, Chain
@@ -42,7 +44,14 @@ def rates(pulls):
     return sum(x.get("hitType") == 2 for x in hits) / len(hits), sum(bool(x.get("directHit")) for x in hits) / len(hits)
 
 
-def crit_gain(pulls, unbuffed=False):
+def natural_crit(pulls, skip=()):
+    """The player's own critical-hit rate: hits under no crit raid buff, without the actions that always crit."""
+    hits = [x for p in pulls for x in p["hits"] if x["type"] == "damage" and not x.get("tick") and x.get("amount", 0) > 0
+            and p["names"][str(x["abilityGameID"])] not in skip and not CRIT_BUFFS & set((x.get("buffs") or "").strip(".").split("."))]
+    return sum(x.get("hitType") == 2 for x in hits) / len(hits)
+
+
+def crit_gain(pulls, unbuffed=False, skip=()):
     """The player's average direct hit over their average plain hit (no crit, no direct hit), per action and weighted
     by hits, in 0:00-2:00. `unbuffed`: only hits under no crit or direct-hit raid buff. (A formula from the crit rate
     overshoots by up to 3% when others' crit buffs raise the rate but not the crit damage.)"""
@@ -53,6 +62,7 @@ def crit_gain(pulls, unbuffed=False):
             if x["type"] != "damage" or x.get("tick") or not 0 <= x["t"] < WINDOW or x.get("amount", 0) <= 0: continue
             if unbuffed and CRIT_BUFFS & set((x.get("buffs") or "").strip(".").split(".")): continue
             a, v = n[str(x["abilityGameID"])], x["amount"] / x.get("multiplier", 1)
+            if a in skip: continue
             allh[a].append(v)
             if x.get("hitType") == 1 and not x.get("directHit"): plain[a].append(v)
     use = [a for a in allh if len(plain[a]) >= 5]
@@ -72,21 +82,35 @@ def tick_gain(pulls):
     return st.mean(v) / st.median(v) if v else 1.0
 
 
-def convert(s, k, e, et):
-    """DPS over the window from a simulated state: direct hits at the expected crit/direct-hit gain, ticks at theirs."""
-    dot = getattr(s, "dotp", 0.0)
-    return k * (e * (s.dmg - dot) + et * dot) / WINDOW
+def sure_gain(job, pulls, k, unbuffed=False):
+    """Hits that always crit: their average logged damage (others' buffs divided out) over k times the model potency.
+    `unbuffed`: only hits under no crit or direct-hit raid buff (a crit buff raises a sure crit's damage instead)."""
+    names = getattr(job, "AUTO_CRIT", ())
+    if not names: return None
+    keep = (lambda x: not CRIT_BUFFS & set((x.get("buffs") or "").strip(".").split("."))) if unbuffed else (lambda x: True)
+    v = [d / m for p in pulls for a, lab, d, m in calibrate.model_hits(p, WINDOW, keep)
+         if a in names and "sure crit" in lab and m]
+    return st.mean(v) / k if v else None
+
+
+def convert(s, k, e, et, ec=None):
+    """DPS over the window from a simulated state: direct hits at the expected crit/direct-hit gain, ticks and sure
+    crits at theirs."""
+    dot, sure = getattr(s, "dotp", 0.0), getattr(s, "critp", 0.0)
+    return k * (e * (s.dmg - dot - sure) + et * dot + (ec or e) * sure) / WINDOW
 
 
 _ceiling = {}
 
 
-def ceiling(job, gcd, width):
-    """The best unbuffed rotation over 0:00-2:00 at this GCD (cached per GCD), searched with the job's own settings."""
-    key = (job.__name__, round(gcd, 2))
+def ceiling(job, gcd, width, crit=None):
+    """The best unbuffed rotation over 0:00-2:00 at this GCD (and crit rate, for a job whose resources come from crits;
+    cached per both), searched with the job's own settings."""
+    key = (job.__name__, round(gcd, 2), round(crit, 2) if crit is not None else None)
     if key not in _ceiling:
         job.SPEED = key[1] / engine.BASE_GCD
-        _ceiling[key] = engine.search(job.__name__.split(".")[-1], Fight(until=WINDOW), width=width, speed=job.SPEED)[0]
+        _ceiling[key] = engine.search(job.__name__.split(".")[-1], Fight(until=WINDOW), width=width, speed=job.SPEED,
+                                      params={"CRIT": key[2]} if key[2] is not None else None)[0]
     return _ceiling[key]
 
 
@@ -99,16 +123,19 @@ def player_rows(job, pulls, width):
         if len(hits) < 10: continue
         k = st.median(v / m for _, _, v, m in hits)
         crit, dh = rates(ps)
-        e, e0, et = crit_gain(ps), crit_gain(ps, unbuffed=True), tick_gain(ps)
+        skip = getattr(job, "AUTO_CRIT", ())
+        e, e0, et = crit_gain(ps, skip=skip), crit_gain(ps, unbuffed=True, skip=skip), tick_gain(ps)
+        ec, ec0 = sure_gain(job, ps, k), sure_gain(job, ps, k, unbuffed=True)
+        own = natural_crit(ps, skip) if hasattr(job, "CRIT") else None
         gcd = st.median(g for g in (calibrate.gcd_of(p) for p in ps) if g)
         job.SPEED = gcd / engine.BASE_GCD
         model, logged, sc = [], [], []
         for p in ps:
             s = calibrate.replay_fight(p, Fight(until=WINDOW))
-            model.append(convert(s, k, e, et))
+            model.append(convert(s, k, e, et, ec))
             logged.append(logged_unbuffed(p, job=job) / WINDOW)
             if p.get("rdps"): sc.append(p["rdps"])
-        top = convert(ceiling(job, gcd, width), k, e0, et)
+        top = convert(ceiling(job, gcd, width, own), k, e0, et, ec0)
         rows.append(dict(name=name, pulls=len(ps), gcd=gcd, k=k, crit=crit, dh=dh, e=e, e0=e0, model=st.median(model),
                          logged=st.median(logged), rdps=st.median(sc) if sc else None, best=max(sc) if sc else None, ceiling=top))
     return rows
