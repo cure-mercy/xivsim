@@ -176,8 +176,9 @@ our strategy needs at their worst for the role (the Paradeigma I slot with the m
 variant with the most), converted to
 their DPS (their damage per potency and crit / direct-hit gain from their own hits), the same for every pull, plus what
 that pull's raid buffs added to the other players' damage (FFLogs' rDPS given: a Reaper's Arcane Circle), which rDPS
-credits to them. The table view splits the two. The player page's Optimized rotation card gives the ceiling, how far
-their clean pulls are from it (median share and DPS, best pull) and links to the rotation behind it.
+credits to them. The table view splits the two. The player page's "vs optimized rotation" card, under Damage, gives their
+median clean pull's share of the ceiling (and the gap in DPS), their best pull's and the ceiling itself, and links to the
+rotation at their GCD.
 
 The rotations live on their own pages, `#/rotations` (the Rotations link in the header): the jobs the optimizer covers,
 then a job's GCDs (every GCD it was searched at: our players' and any extra), then one GCD's rotation, with its potency,
@@ -192,11 +193,13 @@ hard cast whose run fits only in its slidecast and the gap after), with how much
 outside cast bars, so `dps.py` places them (longest stretches outside cast bars first, as late as they allow, which puts
 them on instant GCDs where it can). On top, the
 fight timeline it plays around: each major mechanic's start (its boss cast), the windows in which our strategy needs a run
-(the seconds needed; darker for the raidplan's runs, lighter where the plan has none and the clears' median path is used),
+(the seconds needed; "movement" for the raidplan's mechanics, lighter "movement, pre-position" between them, where the clears' median path is used),
 a melee's stretches out of reach and spots the plan fixes (positionals need True North), and the rotation's GCDs and
 oGCDs. The timeline comes with the rotations (`dps.py --site`, from `p12s.py`). Expected DPS there
-converts the potency at the median damage per potency and crit / direct-hit gain of our players on the job, the same at
-every GCD so they compare; the range is the same rotation at each player's own conversion. Monk's rotations also depend
+converts the potency at our players' damage per potency and crit / direct-hit gain on the job, the median of them, each
+player moved to the rotation's GCD first: Spell or Skill Speed comes out of the same gear budget as critical hit, direct
+hit and determination, so a faster GCD costs about 0.4% damage per potency per 0.01 s (level-90 formulas; our Black
+Mages' gear falls 0.38% per 0.01 s). The range is the same over those players. Monk's rotations also depend
 on the crit rate (its chakra), so its are per GCD and crit rate. To refresh them, run
 `python tools/rotation/dps.py --job blm --site` (and `--job rpr`, `--job mnk`; `--gcds 2.30,2.40` adds GCDs none of our
 players has), then `build_site.py --reanalyse` (the rotations themselves are picked up by any `build_site.py` run).

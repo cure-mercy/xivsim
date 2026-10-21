@@ -27,7 +27,8 @@ variant with the most, so the rotation holds whichever the player is given.
 scorecard's build_site.py picks both up. The site's rotations run on from the pull until Palladion takes Athena away
 (ROT_UNTIL, ~4:41): a second search per GCD, since the engine scores a whole window and a rotation that goes on holds
 resources a 0:00-2:00 one spends. Each also carries its 0:00-2:00 ceiling. A rotation's expected DPS
-is converted at the median of our players' damage per potency and gains on the job, so GCDs compare with each other.
+is the median of our players' conversions on the job, each moved to its GCD (the speed points that takes come out of
+their other substats), so GCDs compare with each other.
 """
 import argparse, collections, json, re, statistics as st, sys
 from pathlib import Path
@@ -43,6 +44,14 @@ JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"),
 SITE_FILE = HERE / ".cache" / "ceilings.json"
 ROT_FILE = HERE / ".cache" / "rotations.json"
 WINDOW = 120
+# Spell / Skill Speed comes out of the same substat budget as critical hit, direct hit and determination. Level-90
+# formulas (substat base 400, divisor 1900): a speed point takes 130/1900 per mille off the GCD (58.5 points per 0.01 s
+# of a 2.5 s GCD) and adds as much to DoT ticks; a point of the others is worth 0.068-0.074% damage at our players'
+# rates, and the cheapest (direct hit, determination: 0.068%) is what a meld gives up. That is 0.40% damage per potency
+# per 0.01 s of GCD; our Black Mages' conversions fall 0.38% per 0.01 s.
+SPEED_PTS = 1900 * 1000 / (engine.BASE_GCD * 130)   # speed points per second of GCD
+STAT_PT = 0.000068                                  # damage per point of the substat a speed point replaces
+DOT_PT = 130 / 1900 / 1000                          # DoT damage per speed point
 # raid buffs that raise crit or direct-hit rate (status ids as they appear on hits): Battle Voice, Battle Litany, Chain
 # Stratagem, Devilment, the Wanderer's Minuet, Army's Paeon
 CRIT_BUFFS = {"1000141", "1000786", "1001221", "1001825", "1002216", "1002218"}
@@ -236,23 +245,25 @@ def rotations(job, rows, width, extra=()):
     """The site's optimized rotations for a job, {fight: timeline, rotations: {key: ...}}: at every GCD (and crit rate)
     searched for our players' ceilings, plus the extra GCDs (at the job's default crit rate), the best rotation until
     ROT_UNTIL, with its expected DPS at the median of our players' conversions and their range, and the 0:00-2:00
-    ceiling's at the median."""
+    ceiling's at the median. Each player is moved to the rotation's GCD first (SPEED_PTS, STAT_PT): a faster GCD costs
+    them damage per potency, so GCDs compare at what a player would have there."""
     for g in extra: ceiling(job, g, width, getattr(job, "CRIT", None))
-    conv = lambda s, r, w=ROT_UNTIL: convert(s, r["k"], r["e0"], r["et"], r["ec0"], w)
-    sure = [r["ec0"] for r in rows if r["ec0"]]
-    mid = dict(k=st.median(r["k"] for r in rows), e0=st.median(r["e0"] for r in rows), et=st.median(r["et"] for r in rows),
-               ec0=st.median(sure) if sure else None)
+    def conv(s, r, gcd, w=ROT_UNTIL):
+        """The rotation in a player's DPS, the player moved to its GCD: the speed points that takes come out of their
+        other substats (or go back into them), and DoT ticks follow the speed."""
+        pts = SPEED_PTS * (r["gcd"] - gcd)
+        return convert(s, r["k"] * (1 - STAT_PT * pts), r["e0"], r["et"] * (1 + DOT_PT * pts), r["ec0"], w)
     out = {}
     for (jn, gcd, crit, until), s2 in sorted(_ceiling.items(), key=lambda x: (x[0][1], x[0][2] or 0)):
         if jn != job.__name__ or until != WINDOW: continue
         s = ceiling(job, gcd, width, crit, ROT_UNTIL)
-        key, each = rot_key(gcd, crit), [conv(s, r) for r in rows]
+        key, each = rot_key(gcd, crit), [conv(s, r, gcd) for r in rows]
         rot = site_rotation(job, s)
-        out[key] = dict(gcd=gcd, crit=crit, window=ROT_UNTIL, potency=round(s.dmg), dps=round(conv(s, mid)), dps_lo=round(min(each)),
-                        ceiling_2min=round(conv(s2, mid, WINDOW)),
+        out[key] = dict(gcd=gcd, crit=crit, window=ROT_UNTIL, potency=round(s.dmg), dps=round(st.median(each)), dps_lo=round(min(each)),
+                        ceiling_2min=round(st.median(conv(s2, r, gcd, WINDOW) for r in rows)),
                         dps_hi=round(max(each)), players=sum(r["key"] == key for r in rows), conv_players=len(rows),
                         waste={w: n for w, n in zip(job.WASTE, s.waste) if n}, rotation=rot)
-    return dict(fight=timeline(job), rotations=out)
+    return dict(fight=timeline(job), rotations=out, speed_cost=round(100 * STAT_PT * SPEED_PTS * 0.01, 2))
 
 
 def show(rows, title):

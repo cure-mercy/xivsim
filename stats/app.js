@@ -1022,16 +1022,19 @@ function playerPage(day, group, name) {
           (e.phases || []).map(ph => [ph.window, String(ph.n), ph.n ? num(ph.ndps) : "–", ph.vs ? signed(ph.vs[0]) : "–",
             ph.n ? `${ph.uptime.toFixed(1)}%` : "–", ph.uptime_diff != null ? `${ph.uptime_diff >= 0 ? "+" : "−"}${Math.abs(ph.uptime_diff).toFixed(1)}` : "–"])), divLegend());
     }),
+    ...entries.filter(e => e.ceiling).map(optCard),
     !SHOW_MISTAKE_COST ? null : costBy.length ? card("What their mistakes cost", info(`Boss HP lost to deaths they caused, all ${p.pulls} pulls together.`), hbarChart(costBy, { fmt: v => `${v.toFixed(2)}%` }),
       () => tableOf(["Cause", "Boss HP"], costBy.map(x => [x.label, `${x.value.toFixed(2)}%`])))
       : el("figure", { class: "card" }, el("div", { class: "card-head" }, el("h3", {}, "What their mistakes cost")), el("div", { class: "empty" }, "None of their mistakes caused a death."))));
+  // opener in the left column, rotation and abilities stacked in the right (see the end of these sections)
+  const left = el("div", { class: "col" }), right = el("div", { class: "col" });
   // opener against the best opener the clears play: what was cast and when the cooldowns went out, not the GCD order
   const opEntries = entries.filter(e => e.rotation && e.rotation.opener && e.rotation.opener.skills);
   if (opEntries.length) {
     const sec = v => v == null ? "–" : `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)} s`;
     const at = t => t == null ? "–" : t < 0 ? `${t.toFixed(1)} s` : mmss(t);
     const casts = v => Number.isInteger(v) ? String(v) : v.toFixed(1);
-    app.append(heading("h2", "Opener", "Their openers (casts from before the pull through as many GCDs as the clears' opener has; potions, Sprint and defensives left out) against the best opener the clears play (casts to 0:22). A job with fewer than three clears to compare with (Bard has none; White Mage now starts the pull with a Blood Lily, which every WHM clear predates) is compared within our own groups instead: every other player on the job counts like one clear, with their usual opener and median opener damage over all raid days; the player themselves is left out. With few players on a job this is thin: the reference may be one other player's opener. Openers within a few casts of each other count as one variant; the reference is the variant most clears play, unless another clearly does more opener damage (ahead by more than 1.5 standard errors, since gear and crits spread players of one opener more than most openers differ). Compared: how often each skill is cast over as many GCDs as the clears' opener has, so a slower GCD from gear does not count as a missing cast (flagged at half a cast or more per pull) and when each oGCD cooldown and raid buff first goes out (flagged at 1.5 s or more). The order of GCDs is not compared, since swapping two inside the opener changes nothing. Times are not adjusted for GCD speed. Opener damage is nDPS over 0:00–0:20 (tinctures removed) from pulls they were alive through. The dot grades it against all clears on the job (or our other players), as on the opener tile: green from −5%, yellow from −12%, red below."),
+    left.append(heading("h2", "Opener", "Their openers (casts from before the pull through as many GCDs as the clears' opener has; potions, Sprint and defensives left out) against the best opener the clears play (casts to 0:22). A job with fewer than three clears to compare with (Bard has none; White Mage now starts the pull with a Blood Lily, which every WHM clear predates) is compared within our own groups instead: every other player on the job counts like one clear, with their usual opener and median opener damage over all raid days; the player themselves is left out. With few players on a job this is thin: the reference may be one other player's opener. Openers within a few casts of each other count as one variant; the reference is the variant most clears play, unless another clearly does more opener damage (ahead by more than 1.5 standard errors, since gear and crits spread players of one opener more than most openers differ). Compared: how often each skill is cast over as many GCDs as the clears' opener has, so a slower GCD from gear does not count as a missing cast (flagged at half a cast or more per pull) and when each oGCD cooldown and raid buff first goes out (flagged at 1.5 s or more). The order of GCDs is not compared, since swapping two inside the opener changes nothing. Times are not adjusted for GCD speed. Opener damage is nDPS over 0:00–0:20 (tinctures removed) from pulls they were alive through. The dot grades it against all clears on the job (or our other players), as on the opener tile: green from −5%, yellow from −12%, red below."),
       el("div", { class: "grid wide" }, ...opEntries.map(e => {
         const o = e.rotation.opener, d = o.dmg, groups = o.source === "groups", them = groups ? "the others" : "the clears";
         const diffs = [
@@ -1046,32 +1049,13 @@ function playerPage(day, group, name) {
         const body = () => el("div", { class: "opener" },
           el("p", { class: "summary" }, dmgText),
           diffs.length ? el("ul", { class: "diffs" }, ...diffs.map(x => el("li", {}, x))) : el("p", { class: "note" }, `Same skills and cooldown timings as ${groups ? "our groups'" : "the clears'"} opener; only the order differs, which does not matter.`),
-          tableOf(["#", groups ? "Our groups' opener" : "Clears' opener", "At", "Their usual opener", "At"], side, [2, 4]));
+          el("div", { class: "table-wrap" }, tableOf(["#", groups ? "Our groups' opener" : "Clears' opener", "At", "Their usual opener", "At"], side, [2, 4])));
         return card(el("span", {}, `${JOB[e.job] || e.job} opener`, gradeChip(d ? grade("damage", d.vs) : null)), `${groups
             ? `${o.change}, so the opener is compared within our groups: ${o.pulls} pulls against the ${o.basis === "damage" ? "highest-damage" : "most played"} opener of our other ${JOB[e.job] || e.job}s (${o.clears} of ${o.clears_all} players play it; their own left out${o.clears_all < 5 ? "; thin data" : ""}).`
             : `${o.pulls} pulls against the ${o.basis === "damage" ? "highest-damage" : "most played"} clear opener (${o.clears} of ${o.clears_all} clears play it).`} Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s${e.rotation.clear_gcd ? `, clears' ${e.rotation.clear_gcd.toFixed(2)} s` : ""}. · marks an oGCD; red: not in the other opener.`,
           () => body(), () => tableOf(["Skill", "Clears' casts", "Theirs", "Clears' first", "Their first"],
             o.skills.map(s => [s.name + (s.gcd ? "" : " ·"), String(s.clears), el("span", { class: s.fewer || s.more ? "bad" : null }, casts(s.theirs)),
               at(s.t_clears), el("span", { class: s.late != null ? "bad" : null }, at(s.t_theirs))]), [1, 2, 3, 4]));
-      })));
-  }
-  // the optimizer's best rotation at their GCD (tools/rotation), the one behind the ceiling on the clean-pulls chart:
-  // a link to it on the rotations pages and how far their clean pulls are from it
-  const optEntries = entries.filter(e => e.ceiling);
-  if (optEntries.length) {
-    app.append(heading("h2", "Optimized rotation", "The ceiling on the rDPS on clean pulls chart: the highest-damage rotation the optimizer (tools/rotation) finds for 0:00–2:00 (the scorecard's window) at their GCD, with the runs our strategy needs and without anyone's raid buffs, converted to their own DPS (their damage per potency and crit / direct-hit gain), plus what each pull's raid buffs gave the other players, which rDPS credits to them. The Rotations pages show the best rotation at their GCD on until Palladion; over a longer stretch it may hold a resource a 0:00–2:00 one spends just before 2:00."),
-      el("div", { class: "grid wide" }, ...optEntries.map(e => {
-        const x = e.ceiling_key && (rotsOf(e.job) || {})[e.ceiling_key];
-        const tops = e.clean_pulls.map(c => ({ c, top: e.ceiling + (c.given || 0) })), of = tops.map(q => q.c.rdps / q.top);
-        const gap = median(tops.map(q => q.c.rdps - q.top)), mid = median(of);
-        const text = tops.length
-          ? [`Their clean pulls reach a median ${pct(mid)} of the ceiling (`, el("b", {}, `${gap >= 0 ? "+" : "−"}${num(Math.abs(gap))} DPS`),
-             ` at a median ${num(median(tops.map(q => q.c.rdps)))} rDPS against ${num(median(tops.map(q => q.top)))}); their best pull ${pct(Math.max(...of))}.`]
-          : ["No clean pull to compare with yet."];
-        return el("figure", { class: "card" }, el("div", { class: "card-head" }, el("h3", {}, `${JOB[e.job] || e.job} optimized rotation`)),
-          el("p", { class: "summary" }, `Ceiling ${num(e.ceiling)} DPS at their ${e.ceiling_gcd ? e.ceiling_gcd.toFixed(2) + " s " : ""}GCD, before raid buffs given to others. `, ...text),
-          el("p", {}, x ? el("a", { href: rotHref(e.job, e.ceiling_key) }, `See the ${JOB[e.job] || e.job} rotation at ${rotLabel(x)} →`)
-            : el("a", { href: rotHref(rotsOf(e.job) ? e.job : null) }, "See the optimized rotations →")));
       })));
   }
   // rotation checks against the clears over the same stretch of fight
@@ -1083,7 +1067,7 @@ function playerPage(day, group, name) {
       : c.key === "interrupted" && c.ours > c.clears * 1.1 ? "time counted in the gap row"
       : c.unit === "per window" ? (c.ours < c.clears - 0.3 ? `${(c.clears - c.ours).toFixed(1)} fewer (${c.windows} windows)` : "–")
       : c.ours > c.clears * 1.1 && c.cost == null ? "more, uncosted" : "–";
-    app.append(heading("h2", "Rotation", "Simple rotation mistakes against clearers on the job, measured over the same stretch of each pull (0:00 until they died or the pull was lost) so mechanics that cost everyone time cancel out; 0:00–0:55 is compared with clears that move through Paradeigma I. Cost is the damage the difference is worth, from their own hits. GCD gaps are split by what filled them; burst windows count GCDs started inside their own damage buffs."),
+    right.append(heading("h2", "Rotation", "Simple rotation mistakes against clearers on the job, measured over the same stretch of each pull (0:00 until they died or the pull was lost) so mechanics that cost everyone time cancel out; 0:00–0:55 is compared with clears that move through Paradeigma I. Cost is the damage the difference is worth, from their own hits. GCD gaps are split by what filled them; burst windows count GCDs started inside their own damage buffs."),
       el("div", { class: "grid wide" }, ...rotEntries.map(e => {
         const r = e.rotation, costly = r.checks.filter(c => c.cost > 1).slice(0, 6), g = rotGain(r);
         return card(gainTitle(`${JOB[e.job] || e.job} rotation`, g), `${r.pulls} pulls, ${r.alive_min.toFixed(0)} min alive; against ${r.clears} clearers. Usual GCD ${r.gcd ? r.gcd.toFixed(2) + " s" : "–"}.${gainNote(g, "all costed checks")}`,
@@ -1095,7 +1079,7 @@ function playerPage(day, group, name) {
   // abilities against clearers on the job
   const abEntries = entries.filter(e => e.rotation && (e.rotation.abilities || []).length);
   if (abEntries.length) {
-    app.append(heading("h2", "Abilities", "Casts per minute of every damaging skill against clearers on the job, over the same stretch of each pull as the rotation checks (0:00–0:55 against clears that move through Paradeigma I). GCD skills are compared at the player's own GCD speed (a slower GCD from gear fits fewer casts, which is no mistake). Worth is the damage the difference in casts comes to, at their own average damage per cast (DoT ticks included); positive means fewer casts than the clearers. It overlaps with the GCD gaps above: those say when time was lost, this says which casts it cost."),
+    right.append(heading("h2", "Abilities", "Casts per minute of every damaging skill against clearers on the job, over the same stretch of each pull as the rotation checks (0:00–0:55 against clears that move through Paradeigma I). GCD skills are compared at the player's own GCD speed (a slower GCD from gear fits fewer casts, which is no mistake). Worth is the damage the difference in casts comes to, at their own average damage per cast (DoT ticks included); positive means fewer casts than the clearers. It overlaps with the GCD gaps above: those say when time was lost, this says which casts it cost."),
       el("div", { class: "grid wide" }, ...abEntries.map(e => {
         const A = e.rotation.abilities, short = A.filter(a => a.worth > 1).slice(0, 8), g = abGain(e.rotation);
         return card(gainTitle(`${JOB[e.job] || e.job} casts against clearers`, g), `Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s, clearers' ${e.rotation.clear_gcd ? e.rotation.clear_gcd.toFixed(2) : "–"} s; GCD skills compared at their speed.${gainNote(g, "worth of every skill, extra casts offsetting missing ones")}`,
@@ -1105,6 +1089,9 @@ function playerPage(day, group, name) {
             a.worth == null ? "–" : `${a.worth >= 0 ? "" : "−"}${num(Math.abs(Math.round(a.worth)))} DPS`]), 2));
       })));
   }
+  // side by side when both have something, else in the page's one column
+  if (left.childNodes.length && right.childNodes.length) app.append(el("div", { class: "cols" }, left, right));
+  else app.append(...left.childNodes, ...right.childNodes);
   app.append(el("h2", {}, "Every mistake"), el("div", { class: "table-wrap" }, mine.length ? el("table", {},
     el("thead", {}, el("tr", {}, ["Pull", "Time", "Mechanic", "What happened", "", "Practice"].map((h, i) => el("th", { class: i < 2 ? "num" : null }, h)))),
     el("tbody", {}, mine.map(m => el("tr", {}, el("td", { class: "num" }, el("a", { href: `#/day/${day}/${group}/pulls/${m.pull}` }, String(m.pull))), el("td", { class: "num" }, mmss(m.t)), el("td", {}, shortMech(m.mechanic || "")),
@@ -1237,14 +1224,15 @@ const fightOf = job => ((DATA.rotations || {})[job] || {}).fight;
 const jobOf = code => Object.keys(JOB).find(j => JOB[j] === code) || code;
 const jobName = job => job.replace(/([a-z])([A-Z])/g, "$1 $2");
 const rotHref = (job, key) => `#/rotations${job ? `/${JOB[job] || job}` : ""}${key ? `/${key}` : ""}`;
+const speedStat = job => ["BlackMage", "Summoner", "RedMage", "Pictomancer", "WhiteMage", "Scholar", "Astrologian", "Sage"].includes(job) ? "Spell Speed" : "Skill Speed";
 const rotLabel = x => `${x.gcd.toFixed(2)} s GCD${x.crit != null ? ` · ${Math.round(100 * x.crit)}% crit` : ""}`;
 const rotClock = t => t < 0 ? `−${Math.abs(t).toFixed(1)} s` : `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;   // pre-cast before the pull
-const ROT_ABOUT = "The highest-damage rotation the optimizer (tools/rotation) finds for P12S P1 from the pull until Palladion takes Athena away (4:41), without anyone's raid buffs, with the runs our strategy needs at their worst for the role: the Paradeigma I slot with the most running (R1 or R2 for ranged, M1 or M2 for melee) and each mechanic's variant with the most, so it holds whichever the player is given. Expected DPS converts its potency at the median damage per potency and crit / direct-hit gain of our players on the job, the same for every GCD so they compare; a player's own ceiling, the best over 0:00–2:00 (the scorecard's window, a search of its own) at their own conversion, is on their page. It is the best for the player's own damage; a party's buff windows may favour holding a resource a little longer.";
+const ROT_ABOUT = "The highest-damage rotation the optimizer (tools/rotation) finds for P12S P1 from the pull until Palladion takes Athena away (4:41), without anyone's raid buffs, with the runs our strategy needs at their worst for the role: the Paradeigma I slot with the most running (R1 or R2 for ranged, M1 or M2 for melee) and each mechanic's variant with the most, so it holds whichever the player is given. Expected DPS converts its potency at our players' damage per potency and crit / direct-hit gain on the job (the median), each player moved to the rotation's GCD first: the Spell or Skill Speed for a faster GCD comes out of the same gear budget as critical hit, direct hit and determination, so a faster GCD converts lower; a player's own ceiling, the best over 0:00–2:00 (the scorecard's window, a search of its own) at their own conversion, is on their page. It is the best for the player's own damage; a party's buff windows may favour holding a resource a little longer.";
 
 // the fight under a rotation: major mechanics' starts, the windows in which our strategy needs a run (for the seconds
 // shown, somewhere in the window: the optimizer places it), a melee's stretches out of reach and spots fixed by the
 // plan, the boss away, and the rotation's GCDs and oGCDs
-const RUN_KINDS = { runs: ["Runs", "var(--series)"], away: ["Out of reach", "var(--div-neg)"], pinned: ["Spot fixed", "#e0a03a"] };
+const RUN_KINDS = { runs: ["Movement", "var(--series)"], away: ["Out of reach", "var(--div-neg)"], pinned: ["Spot fixed", "#e0a03a"] };
 function fightTimeline(f, rot) {
   return width => {
     const narrow = width < 520, L = narrow ? 52 : 92, R = 10, lh = 22, gap = 8, B = 24, w = width - L - R;
@@ -1281,7 +1269,7 @@ function fightTimeline(f, rot) {
     for (const [lo, hi, need, y, mech, what, src] of f.runs)
       band("runs", lo, hi, src.startsWith("plan") ? 0.9 : 0.35, `${need.toFixed(1)} s`, `${mech}: ${what}`,
         [[`${need.toFixed(1)} s`, `of running (${y.toFixed(0)} y) somewhere in ${rotClock(lo)}–${rotClock(hi)}${past(hi)}`, true],
-         [src.startsWith("plan") ? "our plan" : "the clears", src.startsWith("plan") ? `raidplan, ${src.replace("plan, ", "")}` : "where our plan has nothing: the clears' median path"]]);
+         [src.startsWith("plan") ? "movement" : "movement, pre-position", src.startsWith("plan") ? `our raidplan, ${src.replace("plan, ", "")}` : "between our plan's mechanics: the clears' median path"]]);
     for (const [lo, hi, need, mech] of f.away)
       band("away", lo, hi, 0.8, `${need.toFixed(1)} s`, `${mech}: out of reach`, [[`${need.toFixed(1)} s`, `on end out of melee reach, somewhere in ${rotClock(lo)}–${rotClock(hi)}`, true]]);
     for (const [lo, hi, mech] of f.pinned)
@@ -1323,8 +1311,8 @@ function rotationStrip(rows, f, icons) {
 
 function fightCard(f, rot) {
   const legend = [
-    el("span", {}, el("i", { style: "width:14px;height:10px;border-radius:3px;background:var(--series);opacity:.9" }), "run, our plan"),
-    el("span", {}, el("i", { style: "width:14px;height:10px;border-radius:3px;background:var(--series);opacity:.35" }), "run, as the clears ran"),
+    el("span", {}, el("i", { style: "width:14px;height:10px;border-radius:3px;background:var(--series);opacity:.9" }), "movement"),
+    el("span", {}, el("i", { style: "width:14px;height:10px;border-radius:3px;background:var(--series);opacity:.35" }), "movement, pre-position"),
     ...(f.away.length ? [el("span", {}, el("i", { style: "width:14px;height:10px;border-radius:3px;background:var(--div-neg);opacity:.8" }), "out of reach")] : []),
     ...(f.pinned.length ? [el("span", {}, el("i", { style: "width:14px;height:10px;border-radius:3px;background:#e0a03a;opacity:.55" }), "spot fixed")] : []),
     el("span", {}, el("i", { style: "width:2px;height:12px;background:var(--ink-2)" }), "GCD"),
@@ -1333,11 +1321,11 @@ function fightCard(f, rot) {
     el("span", {}, el("i", { style: "width:2px;height:7px;background:var(--accent)" }), "oGCD"),
   ];
   const rows = [...f.mechanics.map(([t, n]) => [rotClock(t), "", "Mechanic", "", n]),
-    ...f.runs.map(([lo, hi, need, y, mech, what, src]) => [rotClock(lo), rotClock(hi), src.startsWith("plan") ? "Run, our plan" : "Run, as the clears ran", `${need.toFixed(1)} s (${y.toFixed(0)} y)`, `${mech}: ${what}`]),
+    ...f.runs.map(([lo, hi, need, y, mech, what, src]) => [rotClock(lo), rotClock(hi), src.startsWith("plan") ? "Movement" : "Movement, pre-position", `${need.toFixed(1)} s (${y.toFixed(0)} y)`, `${mech}: ${what}`]),
     ...f.away.map(([lo, hi, need, mech]) => [rotClock(lo), rotClock(hi), "Out of reach", `${need.toFixed(1)} s`, mech]),
     ...f.pinned.map(([lo, hi, mech]) => [rotClock(lo), rotClock(hi), "Spot fixed", "", `${mech}: positionals need True North`]),
     ...f.untargetable.map(([lo, hi]) => [rotClock(lo), rotClock(hi), "Boss away", "", ""])].sort((a, c) => parseClock(a[0]) - parseClock(c[0]));
-  return card("Fight timeline", info(`What the rotation plays around, slot ${f.slot}. Dotted lines: each major mechanic's start (its boss cast). Runs: our strategy (the raidplan) needs the player to run for the seconds shown somewhere in the band, and the optimizer chose when; a hard cast can't be running, except for its last 0.46 s (a slidecast). Darker bands are our plan's runs; lighter ones are stretches our plan doesn't cover, run as the clears' players did (their median path).${f.away.length ? " Out of reach: that long on end away from the boss, as the clears' melee were." : ""}${f.pinned.length ? " Spot fixed: the plan says where to stand, so a positional needs True North." : ""} Ticks: the rotation's GCDs (tall; green for an instant one run through, blue for a hard cast with running in its slidecast and after) and oGCDs (short); hover a GCD for its running and what is woven after it.`),
+  return card("Fight timeline", info(`What the rotation plays around, slot ${f.slot}. Dotted lines: each major mechanic's start (its boss cast). Movement: our strategy (the raidplan) needs the player to run for the seconds shown somewhere in the band, and the optimizer chose when; a hard cast can't be running, except for its last 0.46 s (a slidecast). Darker bands are our plan's mechanics; lighter ones (pre-position) are the stretches between them, where our plan says nothing and the player runs as the clears' players did (their median path) to get into place for what comes next.${f.away.length ? " Out of reach: that long on end away from the boss, as the clears' melee were." : ""}${f.pinned.length ? " Spot fixed: the plan says where to stand, so a positional needs True North." : ""} Ticks: the rotation's GCDs (tall; green for an instant one run through, blue for a hard cast with running in its slidecast and after) and oGCDs (short); hover a GCD for its running and what is woven after it.`),
     fightTimeline(f, rot), () => tableOf(["From", "To", "What", "Needs", "Detail"], rows, [0, 1, 3]), legend);
 }
 const parseClock = c => c.startsWith("−") ? -parseFloat(c.slice(1)) : +c.split(":")[0] * 60 + +c.split(":")[1];
@@ -1363,7 +1351,7 @@ function rotationJobPage(code) {
   const app = document.getElementById("app"), keys = Object.keys(rs).sort((a, c) => rs[a].gcd - rs[c].gcd || (rs[a].crit || 0) - (rs[c].crit || 0));
   const best = Math.max(...keys.map(k => rs[k].dps)), crit = keys.some(k => rs[k].crit != null), n = rs[keys[0]].conv_players;
   app.append(heading("h1", `${jobName(job)} rotations`, ROT_ABOUT),
-    el("p", { class: "lede" }, `Optimized at ${keys.length} GCD${keys.length > 1 ? "s" : ""}${crit ? " and crit rates (the job's resources come from crits)" : ""}, each from the pull until Palladion (0:00–${mmss(rs[keys[0]].window)}) with our strategy's runs (slot ${(fightOf(job) || {}).slot || "–"}). Expected DPS at the median conversion of our ${n} ${code} player${n > 1 ? "s" : ""}. Pick a GCD for its rotation.`));
+    el("p", { class: "lede" }, `Optimized at ${keys.length} GCD${keys.length > 1 ? "s" : ""}${crit ? " and crit rates (the job's resources come from crits)" : ""}, each from the pull until Palladion (0:00–${mmss(rs[keys[0]].window)}) with our strategy's runs (slot ${(fightOf(job) || {}).slot || "–"}). Expected DPS is the median of our ${n} ${code} player${n > 1 ? "s" : ""}, each moved to the GCD (a faster GCD costs ${speedStat(job)} out of their other substats, about ${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per 0.01 s). Pick a GCD for its rotation.`));
   app.append(el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, ["GCD", ...(crit ? ["Crit"] : []), `Potency 0:00–${mmss(rs[keys[0]].window)}`, "Potency/s", "Expected DPS", "vs best", "Ceiling 0:00–2:00", "Our players at it"]
       .map((h, i) => el("th", { class: i ? "num" : null }, h)))),
@@ -1390,10 +1378,10 @@ function rotationPage(code, key) {
     el("p", { class: "lede" }, `0:00–${mmss(x.window)}, no raid buffs${x.crit != null ? `, ${pct(x.crit)} critical-hit rate (the chakra it opens)` : ""}, with our strategy's runs${plan.length ? ` (${plan.map(([m, v]) => `${shortMech(m)} ${v}`).join(", ")})` : ""}. ${x.players ? `${x.players} of our players ${x.players > 1 ? "play" : "plays"} at this GCD; their pages link here.` : "Searched as an extra GCD: none of our players is at it."}`));
   if (f) app.append(fightCard(f, rot));
   app.append(tiles([
-    ["Expected DPS", num(x.dps), `at our ${x.conv_players} ${code} player${x.conv_players > 1 ? "s'" : "'s"} median conversion · ${num(x.dps_lo)}–${num(x.dps_hi)} at each one's own`],
-    ["Potency", num(x.potency), `${num(x.potency / x.window, 1)} per second over 0:00–${mmss(x.window)}`],
-    ["Ceiling 0:00–2:00", num(x.ceiling_2min), "DPS of the best rotation over 0:00–2:00 alone (the scorecard's window, behind players' ceilings), at the same median conversion"],
-    ["GCDs", String(nG), `at ${x.gcd.toFixed(2)} s, with ${rot.length - nG} oGCDs · ${nRun} while running`],
+    [el("span", {}, "Expected DPS", help(`The median of our ${x.conv_players} ${code} player${x.conv_players > 1 ? "s" : ""} (their damage per potency and crit / direct-hit gain), each moved to this ${x.gcd.toFixed(2)} s GCD: the ${speedStat(job)} that takes comes out of their critical hit, direct hit or determination, or goes back into them, about ${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per potency per 0.01 s (level-90 formulas; our Black Mages' gear shows the same). ${num(x.dps_lo)}–${num(x.dps_hi)} across them.`)), num(x.dps)],
+    ["Potency", num(x.potency), `${num(x.potency / x.window, 1)} per second`],
+    [el("span", {}, "Ceiling 0:00–2:00", help("DPS of the best rotation over 0:00–2:00 alone (the scorecard's window, behind players' ceilings), converted the same way.")), num(x.ceiling_2min)],
+    ["GCDs", String(nG), `with ${rot.length - nG} oGCDs · ${nRun} while running`],
     ["Resources wasted", waste.length ? String(waste.reduce((s2, [, v]) => s2 + v, 0)) : "none", waste.length ? waste.map(([w, v]) => `${w} ×${v}`).join(" · ") : "nothing overcapped or dropped"],
   ]));
   app.append(
@@ -1409,6 +1397,21 @@ function rotationPage(code, key) {
     el("div", { class: "grid wide" }, card("Casts per skill", info(`How often the rotation casts each skill over 0:00–${mmss(x.window)}; the table adds whether it is a GCD and its first use.`),
       hbarChart(castRows.map(c => ({ label: c.name, value: c.n, sub: c.kind === "g" ? "casts (GCD)" : "casts (oGCD)" })), { fmt: v => String(v) }),
       () => tableOf(["Skill", "Casts", "Kind", "First at"], castRows.map(c => [c.name, String(c.n), c.kind === "g" ? "GCD" : "oGCD", rotClock(c.first)]), [1, 3]))));
+}
+
+// a player's clean pulls against the optimizer's ceiling at their GCD (tools/rotation), with a link to its rotation
+function optCard(e) {
+  const x = e.ceiling_key && (rotsOf(e.job) || {})[e.ceiling_key], j = JOB[e.job] || e.job;
+  const tops = e.clean_pulls.map(c => ({ c, top: e.ceiling + (c.given || 0) })), of = tops.map(q => q.c.rdps / q.top);
+  const gap = tops.length ? median(tops.map(q => q.c.rdps - q.top)) : null;
+  const stat = (label, value, sub) => el("div", {}, el("div", { class: "l" }, label), el("div", { class: "v" }, value), sub ? el("div", { class: "s" }, sub) : null);
+  return el("figure", { class: "card" },
+    el("div", { class: "card-head" }, el("h3", {}, `${j} vs optimized rotation`, help("The ceiling: the highest-damage rotation the optimizer (tools/rotation) finds for 0:00–2:00 (the scorecard's window) at their GCD, with the runs our strategy needs and without anyone's raid buffs, converted to their own DPS (their damage per potency and crit / direct-hit gain). Each pull's share adds what its raid buffs gave the other players, which rDPS credits to them. Median and best are over their clean pulls (no death or Damage Down before 2:00). The rotation page shows the best rotation at their GCD on until Palladion."))),
+    el("div", { class: "mini" },
+      stat("Median pull", tops.length ? pct(median(of)) : "–", gap != null ? `${gap >= 0 ? "+" : "−"}${num(Math.abs(gap))} DPS` : "no clean pull"),
+      stat("Best pull", tops.length ? pct(Math.max(...of)) : "–", tops.length ? `of ${tops.length} clean` : ""),
+      stat("Ceiling", num(e.ceiling), `DPS at ${e.ceiling_gcd ? e.ceiling_gcd.toFixed(2) + " s" : "their"} GCD`)),
+    el("a", { href: x ? rotHref(e.job, e.ceiling_key) : rotHref(rotsOf(e.job) ? e.job : null) }, x ? `Rotation at ${rotLabel(x)} →` : "Optimized rotations →"));
 }
 
 const echoNote = r => r.echo ? el("p", { class: "warn" }, `The Echo was on in ${r.echo.pulls === r.echo.of ? "all" : `${r.echo.pulls} of`} ${r.echo.of} pulls (+20% damage, HP and healing). Their damage figures are left out: rDPS against clearers, damage by phase, opener damage, party DPS and boss HP checkpoints. Mistakes, deaths and rotation checks still count.`) : "";   // "" appends nothing (null would print "null")
