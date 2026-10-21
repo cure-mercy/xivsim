@@ -2,7 +2,7 @@
 
 Searches for the highest-potency rotation of a job over P12S phase 1 (level 90), from the pull to the kill, with the
 fight's fixed timeline: when Athena can't be hit, and where the player has to run under our groups' strategy. So far:
-Black Mage, Reaper and Monk (Monk not yet checked against logs: see its section).
+Black Mage, Reaper, Monk and Bard (Monk and Bard not yet checked against logs: see their sections).
 
 ```
 python tools/rotation/solve.py                                # R1, 2.32 s GCD, no raid buffs, 0:00 to the median kill (449 s)
@@ -11,16 +11,18 @@ python tools/rotation/solve.py --still                        # no forced moveme
 python tools/rotation/solve.py --gcd 2.14 --party RPR,SCH,RDM --until 120 --compare
 python tools/rotation/solve.py --job rpr [--slot M2]          # Reaper, 2.49 s GCD, M1 by default
 python tools/rotation/solve.py --job mnk [--crit 0.25]        # Monk, a 1.94 s GCD (2.43 s before Greased Lightning)
+python tools/rotation/solve.py --job brd                      # Bard, 2.49 s GCD, R1 (R2 and standing still come out the same)
 python tools/rotation/p12s.py [--slot R2]                     # the move windows; --build refetches the timeline
 python tools/rotation/check.py                                # movement and downtime checks
 python tools/rotation/calibrate.py [--job rpr] [--ours]       # check the job model against the clears' (or our) logs
 python tools/rotation/patchnotes.py Reaper                    # the job's PvE changes in the official patch notes
 python tools/rotation/dps.py                                  # our players: ceiling in DPS next to their scorecard rDPS
+python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceilings and rotations for the scorecard site
 ```
 
 | Option | Meaning |
 |---|---|
-| `--job` | `blm` (default), `rpr` or `mnk` |
+| `--job` | `blm` (default), `rpr`, `mnk` or `brd` |
 | `--gcd` | the player's GCD without haste (spell or skill speed; default the clears' median); `--compare` prints each clear's. Monk's Greased Lightning takes 20% off it |
 | `--crit` | critical-hit rate, for a job whose resources come from crits (Monk's chakra; default 0.25) |
 | `--slot` | Paradeigma I: `R1` / `M1` line up for the first lasers, `R2` / `M2` for the second (our BLMs play both R slots; the melee slot varies with the lineup). Default `R1`, or `M1` for a melee |
@@ -84,6 +86,72 @@ Over 0:00-380 s standing still the best rotation deals 112,097 potency; the clea
 it (94.6% for the best two under their party's raid buffs, where the search's settings spread 3.4%). They hold Soul
 Slice and Enshroud for raid buffs, lose uptime in mechanics, and some die.
 
+## Monk
+
+`jobs/mnk.py`, from the job guide and the patch notes since 7.0 only: **not yet checked against any log** (FFLogs was
+down when it was written; `calibrate.py --job mnk [--ours]` fetches them: 19 benchmark clears have a Monk, our groups
+64 clean pulls). The guide's traits give most level-90 values: Melee Mastery (84) sets Bootshine 220, True Strike 300,
+Snap Punch 270, Twin Snakes 380, Demolish 320, Dragon Kick 280 and The Forbidden Chakra 400 (the reference action);
+Melee Mastery II (94) and the level-92 upgrades (Leaping Opo, Rising Raptor, Pouncing Coeurl, Elixir Burst) lie above
+P12S. No single-target potency has changed since 7.05, so every Dawntrail clear will do. Marked PENDING in the code,
+to be measured: Phantom Rush (1,150 assumed) and Six-sided Star (710) at level 90, auto-attacks (77 potency every
+2.05 s), the default GCD (1.94 s), the party's chakra under Meditative Brotherhood, and whether Perfect Balance and
+Formless Fist count as opo-opo form for Bootshine's sure crit and Dragon Kick's Fury.
+
+- **Forms and Fury**: Dragon Kick, Twin Snakes and Demolish bank +200 / +200 / 2 x +150 for the next Bootshine, True
+  Strike and Snap Punches; Perfect Balance's three GCDs make the beast chakra for Elixir Field, Rising Phoenix and then
+  Phantom Rush once both Nadi are open.
+- **Chakra** is random: a critical weaponskill opens one. The search counts the expected `--crit` (default 0.25) per
+  weaponskill, one for Bootshine in opo-opo form (always a crit), one more under Meditative Brotherhood, and a full
+  party's 20% chances; a log replay takes the log's own crits. Brotherhood lets ten be open.
+- **Damage to DPS**: Bootshine's sure crits are kept apart (`critp`), and `dps.py` converts them at the player's own
+  average sure crit, not their average hit; each player's ceiling is searched at their own crit rate.
+- **Movement**: as for the Reaper (the away windows are the clears' Reapers'), with Snap Punch (flank) and Demolish
+  (rear) as the positionals. Every weaponskill and The Forbidden Chakra need reach; out of reach a Monk can only
+  meditate, Form Shift, or spend chakra on Enlightenment (a 10 y line).
+
+Over the whole phase the best rotation deals 131,432 potency in `M1` and 131,825 in `M2` (equal within the search's
+noise: the settings spread up to 1.2% in `M2`); standing still 134,306, so our strategy costs a Monk ~2%: the
+pinned spots' positionals take 11 True Norths, and the away stretches can't be filled. Six-sided Star is only offered
+before Palladion and at the end of the window: elsewhere its assumed potency about ties the rotation per second, and
+the search drifted into chaining it.
+
+## Bard
+
+`jobs/brd.py`, from the job guide and the patch notes since 7.0 only: **not yet checked against any log** (FFLogs was
+down when it was written). No benchmark clear has a Bard, so `calibrate.py --job brd --ours` (our groups' 62 clean pulls,
+four players) is the only check, and `solve.py --compare` has nothing to replay. Since 7.0 the patch notes only touch AoE
+potencies and actions above level 90 (Resonant Arrow 96, Radiant Encore 100). But Ranged Mastery (level 94) raises
+Burst Shot, Refulgent Arrow, Empyreal Arrow, Sidewinder and Apex Arrow to the guide's values, and the guide doesn't
+say from what. Marked PENDING in the code, to be measured: those five (assumed 200, 260, 240, 360 and 6 per Soul Voice),
+the DoT ticks (the tooltips' 20 and 25), auto-attacks (80 potency per 3.04 s), the default GCD (2.49 s), the logs'
+spelling of the Minuet and the status ids `own_factor` reads. Bloodletter (130, the reference action), Pitch Perfect,
+the bites, Iron Jaws and Blast Arrow (700) are the guide's: no trait touches them.
+
+- **Songs and Repertoire**: each server tick (3 s) with a bite on Athena gives Repertoire with an 80% chance while a song
+  plays, and the search counts the expected 0.8 per tick. Under the Minuet that means Pitch Perfect stacks, under the
+  Ballad 7.5 s off Bloodletter, and under the Paeon 4% haste a stack, plus Army's Muse (up to 12% for 10 s) when the
+  next song comes in. Empyreal Arrow gives one surely, and each Repertoire is 5 Soul Voice. Singing over a song is
+  allowed in its last 15 s, in any order.
+- **Hawk's Eye** (35% from Burst Shot, the bites and Iron Jaws) also counts at its expected worth, as Monk's chakra does.
+  A proc turns the next Burst Shot into a Refulgent Arrow, which can't proc, so each of those GCDs gains
+  0.35 x 60 / 1.35 potency. The search only fires Refulgent Arrow under Barrage (three hits); a log replay fires it
+  wherever the log does.
+- **Own buffs**: Raging Strikes, Radiant Finale (2% a Coda) and the Ballad's 1% are damage. Battle Voice and the
+  Minuet's and Paeon's crit and direct-hit rates count at their expected worth for typical rates. `dps.py` measures a
+  player's crit/direct-hit gain on hits under none of those, so a ceiling counts them once. Its replay-vs-logged check
+  counts them twice (~2%).
+- **DoTs** snapshot buffs when they land, tick on the server tick, and are counted when applied. A refresh loses the old
+  one's remaining ticks, so the search refreshes with Iron Jaws late, or early under fresh buffs.
+- **Movement** costs a Bard nothing: every action is instant and reaches 25 y. R1, R2 and standing still give the same
+  rotation; only Palladion's downtime matters.
+
+Over the whole phase the best rotation deals 87,790 potency (at width 3,000: the settings spread 0.5%, and width 1,000
+finds 0.3% less). It keeps the 2-minute burst on the Minuet (Raging Strikes, Battle Voice, Barrage, Radiant Finale at
+three Coda), refreshes Iron Jaws under it, and fires Blast Arrow after every Apex Arrow at 80+. It sings Minuet ->
+Paeon -> Ballad, not the usual Minuet -> Ballad -> Paeon. That may come from the guessed values, so check it again once
+they are measured.
+
 ## The fight
 
 `p12s.py` holds P12S P1 as the optimizer plays it; `p12s_p1.json` is built from six benchmark clears (`--build`).
@@ -140,12 +208,16 @@ own Arcane Circle are put back (the job's `own_factor`) when the logged damage i
 
 Check: each pull's logged casts, replayed through the model and converted, land within ~1.5% of the damage the pull
 logged for Black Mages, and within -2% to +4% for Reapers (the replay takes every positional). The ceiling is the best
-rotation *without* raid buffs, at the player's GCD, over 0:00-2:00 standing still like the scorecard's window, and the
-same for every pull. FFLogs' rDPS credits a buff's gain to the job that gave it, so a job without raid buffs gets no
+rotation *without* raid buffs, at the player's GCD, over 0:00-2:00 like the scorecard's window, and the same for every
+pull. It plays our strategy's runs at their worst for the role (`p12s.worst_slot`): the Paradeigma I slot with the most
+running before 2:00 (R1 of R1 / R2 for ranged, M2 of M1 / M2 for melee) and each mechanic's variant with the most (the
+default), so it holds whichever the player is given. FFLogs' rDPS credits a buff's gain to the job that gave it, so a job without raid buffs gets no
 rDPS from alignment, and the unbuffed optimum is its rDPS ceiling. A job with one (Reaper's Arcane Circle) also gets
 credit for what its buff added to the others' damage; the scorecard site adds each pull's own credit (FFLogs'
 totalRDPSGiven) to the ceiling, pull by pull. `dps.py --job <job> --site` saves the ceilings for it
-(`.cache/ceilings.json`, git-ignored: it names players).
+(`.cache/ceilings.json`, git-ignored: it names players) and the rotations behind them, one per GCD (and crit rate, for
+Monk), in `.cache/rotations.json` for the site's Rotations pages; `--gcds 2.30,2.40` adds GCDs none of our players has.
+There a rotation's expected DPS is at the median of our players' conversions on the job, so GCDs compare.
 
 ## How the job model was checked
 
@@ -177,7 +249,9 @@ no MP (4 of 4 such casts), and the Polyglot timer starts when the first fire or 
 variant from their history: each window gets its running time outside cast bars, and nothing is cast at Athena while
 she is away. A standing-still rotation, as a control, breaks several windows. For the Reaper it also tests the reach
 rule and positionals on hand-made windows, and replays quick M1 and M2 searches: every away window must hold a stretch
-of its length without a melee action (the standing-still rotation breaks one).
+of its length without a melee action (the standing-still rotation breaks one). For the Bard it tests Repertoire under
+each song and Army's Muse on hand-made states, and that quick R1 and R2 searches cast nothing at Athena while she is
+away and score the same as standing still.
 
 ## Files
 
@@ -187,6 +261,7 @@ of its length without a melee action (the standing-still rotation breaks one).
 | `jobs/blm.py` | Black Mage: gauge, MP, procs, cooldowns, potencies, Ley Lines' circle |
 | `jobs/rpr.py` | Reaper: Soul and Shroud gauges, Enshroud, combos, positionals, Death's Design, auto-attacks |
 | `jobs/mnk.py` | Monk: forms, Fury, Perfect Balance, beast chakra and Nadi, chakra, positionals, auto-attacks |
+| `jobs/brd.py` | Bard: songs, Repertoire, Soul Voice, Coda and Radiant Finale, Army's Muse, DoTs, Hawk's Eye, auto-attacks |
 | `p12s.py`, `p12s_p1.json` | the fight: timeline, downtime, our strategy's runs, the clears' runs elsewhere |
 | `solve.py` | command line |
 | `logs.py` | detailed per-player logs from the benchmark clears, cached in `.cache/` |

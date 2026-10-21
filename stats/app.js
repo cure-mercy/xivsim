@@ -1,5 +1,6 @@
 /* P12S progress site: raid days -> groups -> players, drawn from data.json (written by build_site.py).
    Routes: #/  ·  #/day/<date>  ·  #/day/<date>/<group>  ·  #/day/<date>/<group>/<player>
+           #/rotations  ·  #/rotations/<job>  ·  #/rotations/<job>/<gcd>   (the optimizer's rotations, tools/rotation)
    Every name in the data is inserted with textContent, never as HTML. */
 "use strict";
 
@@ -1054,22 +1055,23 @@ function playerPage(day, group, name) {
               at(s.t_clears), el("span", { class: s.late != null ? "bad" : null }, at(s.t_theirs))]), [1, 2, 3, 4]));
       })));
   }
-  // the optimizer's best rotation at their GCD (tools/rotation), the one behind the ceiling on the clean-pulls chart
-  const optEntries = entries.filter(e => e.ceiling_rotation && e.ceiling_rotation.length);
+  // the optimizer's best rotation at their GCD (tools/rotation), the one behind the ceiling on the clean-pulls chart:
+  // a link to it on the rotations pages and how far their clean pulls are from it
+  const optEntries = entries.filter(e => e.ceiling);
   if (optEntries.length) {
-    const clock = t => t < 0 ? `−${Math.abs(t).toFixed(1)} s` : `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;   // pre-cast before the pull
-    app.append(heading("h2", "Optimized rotation", "The highest-damage rotation the optimizer (tools/rotation) finds for 0:00–2:00 at their GCD, played standing still and without anyone's raid buffs: the rotation behind the ceiling on the rDPS on clean pulls chart, the same for every pull. Each row is a GCD at the time it starts, with the oGCDs woven after it. It is the best for their own damage; a party's buff windows may favour holding a resource a little longer."),
+    app.append(heading("h2", "Optimized rotation", "The highest-damage rotation the optimizer (tools/rotation) finds for 0:00–2:00 at their GCD, played standing still and without anyone's raid buffs: the rotation behind the ceiling on the rDPS on clean pulls chart. The ceiling is that rotation converted to their own DPS (their damage per potency and crit / direct-hit gain), plus what each pull's raid buffs gave the other players, which rDPS credits to them. The rotation itself is on the Rotations pages."),
       el("div", { class: "grid wide" }, ...optEntries.map(e => {
-        const rows = [];
-        for (const [t, name, kind] of e.ceiling_rotation) {
-          if (kind === "g" || !rows.length) rows.push({ t, gcd: kind === "g" ? name : "", weaves: kind === "g" ? [] : [name] });
-          else rows[rows.length - 1].weaves.push(name);
-        }
-        const nG = rows.filter(r => r.gcd).length;
-        return card(`${JOB[e.job] || e.job} optimized rotation`,
-          `${nG} GCDs at their ${e.ceiling_gcd ? e.ceiling_gcd.toFixed(2) + " s " : ""}GCD; ceiling ${num(e.ceiling)} DPS before raid buffs given to others.`,
-          () => el("div", { class: "table-wrap" }, tableOf(["Time", "GCD", "Woven after it"], rows.map(r => [clock(r.t), r.gcd, r.weaves.join(" · ")]), [0])),
-          () => tableOf(["Time", "Action", ""], e.ceiling_rotation.map(([t, name, kind]) => [clock(t), name, kind === "g" ? "GCD" : "oGCD"]), [0]));
+        const x = e.ceiling_key && (rotsOf(e.job) || {})[e.ceiling_key];
+        const tops = e.clean_pulls.map(c => ({ c, top: e.ceiling + (c.given || 0) })), of = tops.map(q => q.c.rdps / q.top);
+        const gap = median(tops.map(q => q.c.rdps - q.top)), mid = median(of);
+        const text = tops.length
+          ? [`Their clean pulls reach a median ${pct(mid)} of the ceiling (`, el("b", {}, `${gap >= 0 ? "+" : "−"}${num(Math.abs(gap))} DPS`),
+             ` at a median ${num(median(tops.map(q => q.c.rdps)))} rDPS against ${num(median(tops.map(q => q.top)))}); their best pull ${pct(Math.max(...of))}.`]
+          : ["No clean pull to compare with yet."];
+        return el("figure", { class: "card" }, el("div", { class: "card-head" }, el("h3", {}, `${JOB[e.job] || e.job} optimized rotation`)),
+          el("p", { class: "summary" }, `Ceiling ${num(e.ceiling)} DPS at their ${e.ceiling_gcd ? e.ceiling_gcd.toFixed(2) + " s " : ""}GCD, before raid buffs given to others. `, ...text),
+          el("p", {}, x ? el("a", { href: rotHref(e.job, e.ceiling_key) }, `See the ${JOB[e.job] || e.job} rotation at ${rotLabel(x)} →`)
+            : el("a", { href: rotHref(rotsOf(e.job) ? e.job : null) }, "See the optimized rotations →")));
       })));
   }
   // rotation checks against the clears over the same stretch of fight
@@ -1229,11 +1231,80 @@ function pullPage(day, group, n) {
     : el("div", { class: "empty", style: "padding:14px" }, "No mistakes recorded.")));
 }
 
+// ---------- the optimizer's rotations (tools/rotation/dps.py --site): per job, one per GCD it was searched at ----------
+const rotsOf = job => (DATA.rotations || {})[job];
+const jobOf = code => Object.keys(JOB).find(j => JOB[j] === code) || code;
+const jobName = job => job.replace(/([a-z])([A-Z])/g, "$1 $2");
+const rotHref = (job, key) => `#/rotations${job ? `/${JOB[job] || job}` : ""}${key ? `/${key}` : ""}`;
+const rotLabel = x => `${x.gcd.toFixed(2)} s GCD${x.crit != null ? ` · ${Math.round(100 * x.crit)}% crit` : ""}`;
+const rotClock = t => t < 0 ? `−${Math.abs(t).toFixed(1)} s` : `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;   // pre-cast before the pull
+const ROT_ABOUT = "The highest-damage rotation the optimizer (tools/rotation) finds for 0:00–2:00 of P12S P1, played standing still and without anyone's raid buffs. Expected DPS converts its potency at the median damage per potency and crit / direct-hit gain of our players on the job, the same for every GCD so they compare; a player's own ceiling, at their own conversion, is on their page. It is the best for the player's own damage; a party's buff windows may favour holding a resource a little longer.";
+
+function rotationsPage() {
+  crumbs([["Raid days", "#/"], ["Rotations", null]]);
+  const app = document.getElementById("app"), all = DATA.rotations || {};
+  const jobs = Object.keys(all).filter(j => Object.keys(all[j]).length).sort((a, c) => jobName(a).localeCompare(jobName(c)));
+  app.append(heading("h1", "Optimized rotations", ROT_ABOUT),
+    el("p", { class: "lede" }, "The optimizer's best rotation for each job it covers, at every GCD it was searched at: our players' GCDs and a few more. Pick a job, then a GCD."));
+  if (!jobs.length) return app.append(el("p", { class: "empty" }, "No optimized rotations yet: run tools/rotation/dps.py --job <job> --site, then build_site.py."));
+  app.append(el("div", { class: "table-wrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, ["Job", "GCDs", "Fastest", "Slowest", "Best expected DPS", "Our players"].map((h, i) => el("th", { class: i ? "num" : null }, h)))),
+    el("tbody", {}, jobs.map(j => { const xs = Object.values(all[j]), g = xs.map(x => x.gcd);
+      return linkRow([jobName(j), String(xs.length), `${Math.min(...g).toFixed(2)} s`, `${Math.max(...g).toFixed(2)} s`,
+        num(Math.max(...xs.map(x => x.dps))), String(xs[0].conv_players)], rotHref(j)); })))));
+}
+
+function rotationJobPage(code) {
+  const job = jobOf(code), rs = rotsOf(job);
+  if (!rs) return notFound();
+  crumbs([["Raid days", "#/"], ["Rotations", "#/rotations"], [code, null]]);
+  const app = document.getElementById("app"), keys = Object.keys(rs).sort((a, c) => rs[a].gcd - rs[c].gcd || (rs[a].crit || 0) - (rs[c].crit || 0));
+  const best = Math.max(...keys.map(k => rs[k].dps)), crit = keys.some(k => rs[k].crit != null), n = rs[keys[0]].conv_players;
+  app.append(heading("h1", `${jobName(job)} rotations`, ROT_ABOUT),
+    el("p", { class: "lede" }, `Optimized at ${keys.length} GCD${keys.length > 1 ? "s" : ""}${crit ? " and crit rates (the job's resources come from crits)" : ""}. Expected DPS at the median conversion of our ${n} ${code} player${n > 1 ? "s" : ""}. Pick a GCD for its rotation.`));
+  app.append(el("div", { class: "table-wrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, ["GCD", ...(crit ? ["Crit"] : []), "Potency 0:00–2:00", "Potency/s", "Expected DPS", "vs best", "Our players at it"]
+      .map((h, i) => el("th", { class: i ? "num" : null }, h)))),
+    el("tbody", {}, keys.map(k => { const x = rs[k];
+      return linkRow([`${x.gcd.toFixed(2)} s`, ...(crit ? [x.crit != null ? pct(x.crit) : "–"] : []), num(x.potency), num(x.potency / x.window, 1),
+        num(x.dps), x.dps === best ? "best" : signed(x.dps / best - 1, 1), String(x.players)], rotHref(job, k)); })))));
+}
+
+function rotationPage(code, key) {
+  const job = jobOf(code), x = (rotsOf(job) || {})[key];
+  if (!x) return notFound();
+  crumbs([["Raid days", "#/"], ["Rotations", "#/rotations"], [code, rotHref(job)], [rotLabel(x).replace(" GCD", ""), null]]);
+  const app = document.getElementById("app"), rot = x.rotation, rows = [];
+  for (const [t, name, kind] of rot) {   // one row per GCD at the time it starts, with the oGCDs woven after it
+    if (kind === "g" || !rows.length) rows.push({ t, gcd: kind === "g" ? name : "", weaves: kind === "g" ? [] : [name] });
+    else rows[rows.length - 1].weaves.push(name);
+  }
+  const nG = rot.filter(r => r[2] === "g").length, casts = {};
+  for (const [t, name, kind] of rot) (casts[name] = casts[name] || { name, n: 0, kind, first: t }).n++;
+  const castRows = Object.values(casts).sort((a, c) => c.n - a.n || a.first - c.first);
+  const waste = Object.entries(x.waste || {});
+  app.append(heading("h1", `${jobName(job)} at ${rotLabel(x)}`, ROT_ABOUT),
+    el("p", { class: "lede" }, `0:00–${mmss(x.window)} standing still, no raid buffs${x.crit != null ? `, ${pct(x.crit)} critical-hit rate (the chakra it opens)` : ""}. ${x.players ? `${x.players} of our players play at this GCD; their pages link here.` : "Searched as an extra GCD: none of our players is at it."}`));
+  app.append(tiles([
+    ["Expected DPS", num(x.dps), `at our ${x.conv_players} ${code} player${x.conv_players > 1 ? "s'" : "'s"} median conversion · ${num(x.dps_lo)}–${num(x.dps_hi)} at each one's own`],
+    ["Potency", num(x.potency), `${num(x.potency / x.window, 1)} per second over 0:00–${mmss(x.window)}`],
+    ["GCDs", String(nG), `at ${x.gcd.toFixed(2)} s, with ${rot.length - nG} oGCDs`],
+    ["Resources wasted", waste.length ? String(waste.reduce((s2, [, v]) => s2 + v, 0)) : "none", waste.length ? waste.map(([w, v]) => `${w} ×${v}`).join(" · ") : "nothing overcapped or dropped"],
+  ]));
+  app.append(el("div", { class: "grid wide" },
+    card("Rotation", `${nG} GCDs; each row is a GCD at the time it starts, with the oGCDs woven after it. A negative time is a pre-cast before the pull.`,
+      () => el("div", { class: "table-wrap" }, tableOf(["Time", "GCD", "Woven after it"], rows.map(r => [rotClock(r.t), r.gcd, r.weaves.join(" · ")]), [0])),
+      () => tableOf(["Time", "Action", ""], rot.map(([t, name, kind]) => [rotClock(t), name, kind === "g" ? "GCD" : "oGCD"]), [0])),
+    card("Casts per skill", info("How often the rotation casts each skill over 0:00–2:00; the table adds whether it is a GCD and its first use."),
+      hbarChart(castRows.map(c => ({ label: c.name, value: c.n, sub: c.kind === "g" ? "casts (GCD)" : "casts (oGCD)" })), { fmt: v => String(v) }),
+      () => tableOf(["Skill", "Casts", "Kind", "First at"], castRows.map(c => [c.name, String(c.n), c.kind === "g" ? "GCD" : "oGCD", rotClock(c.first)]), [1, 3]))));
+}
+
 const echoNote = r => r.echo ? el("p", { class: "warn" }, `The Echo was on in ${r.echo.pulls === r.echo.of ? "all" : `${r.echo.pulls} of`} ${r.echo.of} pulls (+20% damage, HP and healing). Their damage figures are left out: rDPS against clearers, damage by phase, opener damage, party DPS and boss HP checkpoints. Mistakes, deaths and rotation checks still count.`) : "";   // "" appends nothing (null would print "null")
 
 function notFound() {
   crumbs([["Raid days", "#/"], ["Not found", null]]);
-  document.getElementById("app").append(el("h1", {}, "Not found"), el("p", { class: "lede" }, "That day, group or player is not in the data."), el("a", { href: "#/" }, "Back to the raid days"));
+  document.getElementById("app").append(el("h1", {}, "Not found"), el("p", { class: "lede" }, "That day, group, player or rotation is not in the data."), el("a", { href: "#/" }, "Back to the raid days"));
 }
 
 // ---------- routing, theme, boot ----------
@@ -1243,8 +1314,11 @@ function route(keepScroll = false) {   // keepScroll: redraw the same page in pl
   const y = scrollY;
   const app = document.getElementById("app"); app.replaceChildren();
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-  if (!DATA || !reports().length) { app.append(el("h1", {}, "No data yet"), el("p", { class: "lede" }, "Run build_site.py with some report links, then reload.")); return; }
-  if (parts[0] === "day" && parts.length === 2) dayPage(parts[1]);
+  if (!DATA || (!reports().length && parts[0] !== "rotations")) { app.append(el("h1", {}, "No data yet"), el("p", { class: "lede" }, "Run build_site.py with some report links, then reload.")); return; }
+  if (parts[0] === "rotations" && parts.length === 1) rotationsPage();
+  else if (parts[0] === "rotations" && parts.length === 2) rotationJobPage(parts[1]);
+  else if (parts[0] === "rotations" && parts.length === 3) rotationPage(parts[1], parts[2]);
+  else if (parts[0] === "day" && parts.length === 2) dayPage(parts[1]);
   else if (parts[0] === "day" && parts.length === 3) groupPage(parts[1], parts[2]);
   else if (parts[0] === "day" && parts.length === 4 && parts[3] === "pulls") pullsPage(parts[1], parts[2]);
   else if (parts[0] === "day" && parts.length === 5 && parts[3] === "pulls") pullPage(parts[1], parts[2], +parts[4]);

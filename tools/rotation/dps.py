@@ -1,6 +1,6 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
-    python tools/rotation/dps.py [--job blm|rpr|mnk] [--clears] [--site]
+    python tools/rotation/dps.py [--job blm|rpr|mnk|brd] [--clears] [--site [--gcds 2.30,2.40]]
 
 Per player, from their clean pulls (alive through 2:00):
   damage per potency   their plain hits (no crit, no direct hit), external buffs divided out, over the model potency
@@ -17,21 +17,27 @@ Ceiling: the best rotation without raid buffs at the player's GCD, converted. FF
 the job that gave it, so for a job without raid buffs rDPS is its damage with others' buffs divided out, and the best
 unbuffed rotation is the rDPS ceiling. A job with a raid buff (Reaper's Arcane Circle) also gets credit for what it
 added to the others' damage: the ceiling here leaves that out, and the scorecard site adds each pull's own credit to
-it. The rotation stays the one unbuffed optimum. 0:00-2:00 is taken standing still (no forced movement).
+it. The rotation stays the one unbuffed optimum. 0:00-2:00 is played with our strategy's runs (p12s.py), at their worst:
+the Paradeigma I slot of the job's role with the most running (R1 / R2, or M1 / M2) and each mechanic's variant with the
+most, so the rotation holds whichever the player is given.
 
---site writes each of our players' ceiling to .cache/ceilings.json, where the scorecard's build_site.py picks it up.
+--site writes each of our players' ceiling to .cache/ceilings.json, and the optimized rotations behind them, one per GCD
+(plus any --gcds), to .cache/rotations.json with the fight's timeline (mechanics, runs, out of reach), where the
+scorecard's build_site.py picks both up. A rotation's expected DPS
+is converted at the median of our players' damage per potency and gains on the job, so GCDs compare with each other.
 """
 import argparse, collections, json, statistics as st, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
-import calibrate, engine, logs                  # noqa: E402
+import calibrate, engine, logs, p12s            # noqa: E402
 from engine import Fight                         # noqa: E402
-from jobs import blm, mnk, rpr                   # noqa: E402
+from jobs import blm, brd, mnk, rpr              # noqa: E402
 
-JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk")}
+JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard")}
 SITE_FILE = HERE / ".cache" / "ceilings.json"
+ROT_FILE = HERE / ".cache" / "rotations.json"
 WINDOW = 120
 # raid buffs that raise crit or direct-hit rate (status ids as they appear on hits): Battle Voice, Battle Litany, Chain
 # Stratagem, Devilment, the Wanderer's Minuet, Army's Paeon
@@ -100,16 +106,44 @@ def convert(s, k, e, et, ec=None):
     return k * (e * (s.dmg - dot - sure) + et * dot + (ec or e) * sure) / WINDOW
 
 
-_ceiling = {}
+_ceiling, _fight = {}, {}
+
+
+def site_fight(job):
+    """(slot, Fight) the ceilings are searched in: 0:00-2:00 with our strategy's runs for the role's slot with the most
+    running, each mechanic's variant with the most (p12s's default)."""
+    if job.__name__ not in _fight:
+        slot = p12s.worst_slot(getattr(job, "MELEE", False), WINDOW)
+        _fight[job.__name__] = (slot, p12s.fight(slot, until=WINDOW))
+    return _fight[job.__name__]
+
+
+def timeline(job):
+    """The site's timeline of the ceilings' fight over 0:00-2:00: major mechanics' starts, the runs (lo, hi, seconds
+    needed, yalms, mechanic, what, source), a melee's stretches out of reach and spots fixed by the plan, boss away."""
+    slot, f = site_fight(job)
+    data, r = p12s.load(), lambda v: round(v, 1)
+    return dict(slot=slot, window=WINDOW,
+                mechanics=[[r(t), n] for t, n in p12s.mechanics(data) if t < WINDOW],
+                runs=[[r(lo), r(hi), r(min(y / p12s.RUN, hi - lo)), r(y), mech, what, src]
+                      for lo, hi, y, mech, what, src in p12s.windows(slot, None, data) if lo < WINDOW],
+                away=[[r(lo), r(hi), need, mech, src] for lo, hi, need, mech, src in p12s.away(slot, None, data) if lo < WINDOW],
+                pinned=[[r(lo), r(hi), mech] for lo, hi, mech in p12s.plan_spans(slot, None, data) if lo < WINDOW] if f.pinned else [],
+                untargetable=[[r(a), r(b)] for a, b in f.untargetable if a < WINDOW])
+
+
+def rot_key(gcd, crit=None):
+    """The site's name for an optimized rotation: its GCD, and its crit rate for a job whose resources come from crits."""
+    return f"{gcd:.2f}" + (f"-c{round(100 * crit)}" if crit is not None else "")
 
 
 def ceiling(job, gcd, width, crit=None):
-    """The best unbuffed rotation over 0:00-2:00 at this GCD (and crit rate, for a job whose resources come from crits;
-    cached per both), searched with the job's own settings."""
+    """The best unbuffed rotation over 0:00-2:00 with our strategy's runs (site_fight) at this GCD (and crit rate, for a
+    job whose resources come from crits; cached per both), searched with the job's own settings."""
     key = (job.__name__, round(gcd, 2), round(crit, 2) if crit is not None else None)
     if key not in _ceiling:
         job.SPEED = key[1] / engine.BASE_GCD
-        _ceiling[key] = engine.search(job.__name__.split(".")[-1], Fight(until=WINDOW), width=width, speed=job.SPEED,
+        _ceiling[key] = engine.search(job.__name__.split(".")[-1], site_fight(job)[1], width=width, speed=job.SPEED,
                                       params={"CRIT": key[2]} if key[2] is not None else None)[0]
     return _ceiling[key]
 
@@ -137,12 +171,31 @@ def player_rows(job, pulls, width):
             if p.get("rdps"): sc.append(p["rdps"])
         opt = ceiling(job, gcd, width, own)
         top = convert(opt, k, e0, et, ec0)
-        # the ceiling's rotation for the site: [time, action, "g" for a GCD / "o" for an oGCD], waits left out
-        rot = [[t, n, "g" if n in job.GCDS else "o"] for t, n, _ in opt.history() if t < WINDOW and not n.startswith("(")]
-        rows.append(dict(name=name, pulls=len(ps), gcd=gcd, k=k, crit=crit, dh=dh, e=e, e0=e0, model=st.median(model),
+        rows.append(dict(name=name, pulls=len(ps), gcd=gcd, k=k, crit=crit, dh=dh, e=e, e0=e0, et=et, ec0=ec0, model=st.median(model),
                          logged=st.median(logged), rdps=st.median(sc) if sc else None, best=max(sc) if sc else None, ceiling=top,
-                         rotation=rot))
+                         key=rot_key(round(gcd, 2), round(own, 2) if own is not None else None)))
     return rows
+
+
+def rotations(job, rows, width, extra=()):
+    """The site's optimized rotations for a job, {fight: timeline, rotations: {key: ...}}: every one searched for our
+    players, plus the extra GCDs (at the job's default crit rate), each with its expected DPS at the median of our
+    players' conversions and their range."""
+    for g in extra: ceiling(job, g, width, getattr(job, "CRIT", None))
+    conv = lambda s, r: convert(s, r["k"], r["e0"], r["et"], r["ec0"])
+    sure = [r["ec0"] for r in rows if r["ec0"]]
+    mid = dict(k=st.median(r["k"] for r in rows), e0=st.median(r["e0"] for r in rows), et=st.median(r["et"] for r in rows),
+               ec0=st.median(sure) if sure else None)
+    out = {}
+    for (jn, gcd, crit), s in sorted(_ceiling.items(), key=lambda x: (x[0][1], x[0][2] or 0)):
+        if jn != job.__name__: continue
+        key, each = rot_key(gcd, crit), [conv(s, r) for r in rows]
+        # [time, action, "g" for a GCD / "o" for an oGCD], waits left out
+        rot = [[t, n, "g" if n in job.GCDS else "o"] for t, n, _ in s.history() if t < WINDOW and not n.startswith("(")]
+        out[key] = dict(gcd=gcd, crit=crit, window=WINDOW, potency=round(s.dmg), dps=round(conv(s, mid)), dps_lo=round(min(each)),
+                        dps_hi=round(max(each)), players=sum(r["key"] == key for r in rows), conv_players=len(rows),
+                        waste={w: n for w, n in zip(job.WASTE, s.waste) if n}, rotation=rot)
+    return dict(fight=timeline(job), rotations=out)
 
 
 def show(rows, title):
@@ -161,7 +214,9 @@ def main():
     ap.add_argument("--job", default="blm", choices=sorted(JOBS))
     ap.add_argument("--clears", action="store_true", help="also the benchmark clears' players (tincture hits are kept)")
     ap.add_argument("--width", type=int, default=None, help="beam width (default: the job's)")
-    ap.add_argument("--site", action="store_true", help=f"save our players' ceilings for the scorecard site ({SITE_FILE.name})")
+    ap.add_argument("--site", action="store_true", help=f"save our players' ceilings and the optimized rotations for the scorecard site "
+                    f"({SITE_FILE.name}, {ROT_FILE.name})")
+    ap.add_argument("--gcds", help="with --site: also optimize at these GCDs (comma-separated), for the site's rotation pages")
     a = ap.parse_args()
     job, jobname = JOBS[a.job]
     calibrate.use(a.job)
@@ -173,11 +228,14 @@ def main():
           "  (a raid buff's credit for the others' damage, which rDPS includes, is not in it: the scorecard site adds it).")
     if a.site:
         saved = json.loads(SITE_FILE.read_text()) if SITE_FILE.exists() else {}
-        saved[jobname] = {r["name"]: dict(ceiling=round(r["ceiling"]), gcd=r["gcd"], pulls=r["pulls"], rotation=r["rotation"])
+        saved[jobname] = {r["name"]: dict(ceiling=round(r["ceiling"]), gcd=r["gcd"], pulls=r["pulls"], rotation_key=r["key"])
                           for r in rows}
         SITE_FILE.parent.mkdir(exist_ok=True)
         SITE_FILE.write_text(json.dumps(saved, indent=1, ensure_ascii=False))
-        print(f"\nsaved {len(rows)} ceilings to {SITE_FILE}")
+        rots = json.loads(ROT_FILE.read_text()) if ROT_FILE.exists() else {}
+        rots[jobname] = rotations(job, rows, a.width, [float(g) for g in a.gcds.split(",")] if a.gcds else ())
+        ROT_FILE.write_text(json.dumps(rots, indent=1, ensure_ascii=False))
+        print(f"\nsaved {len(rows)} ceilings to {SITE_FILE} and {len(rots[jobname]['rotations'])} rotations to {ROT_FILE}")
     if a.clears:
         days = {(k["code"], k["fight"]): k["day"] for k in json.loads(logs.BENCH.read_text())["kills"]}
         cl = [p for p in logs.clears(jobname) if days[(p["code"], p["fight"])] >= job.LOGS_SINCE]

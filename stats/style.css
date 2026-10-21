@@ -58,6 +58,7 @@ a:hover{ text-decoration: underline; }
 .crumbs{ display: flex; gap: 6px; flex-wrap: wrap; color: var(--muted); flex: 1; min-width: 0; }
 .crumbs a{ color: var(--ink-2); }
 .crumbs span[aria-current]{ color: var(--ink); }
+.navlink{ color: var(--ink-2); }
 .theme{ font: inherit; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
 
 .page{ max-width: 1240px; margin: 0 auto; padding: 20px 16px 64px; }

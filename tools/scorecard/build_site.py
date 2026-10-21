@@ -146,6 +146,7 @@ def main():
         print(f"{day} {group}: {code}", file=sys.stderr)
         site["reports"][code] = report_entry(code, group, data, bench)
     site["benchmark"] = benchmark_summary(bench, list(site["reports"]))
+    site["rotations"] = S.rotations()   # the optimizer's rotations, per job and GCD (tools/rotation/dps.py --site)
     site["generated"] = datetime.datetime.now().isoformat(timespec="minutes")
     DATA.parent.mkdir(exist_ok=True)
     DATA.write_text(json.dumps(site, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")

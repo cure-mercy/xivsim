@@ -10,6 +10,8 @@
 3. Reaper: the reach rule on hand-made away windows and positionals in pinned ones; then quick searches for M1 and M2,
    replayed the same way, plus every away window must hold a stretch of its length without a melee action. The same
    searches for Monk.
+4. Bard: Repertoire under each song and Army's Muse on hand-made states; then quick searches for R1 and R2 replayed:
+   nothing cast at Athena while she is away, and (every action being instant) the strategy's running costs nothing.
 Exits non-zero on any failure.
 """
 import itertools, re, sys
@@ -19,11 +21,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import engine, p12s                              # noqa: E402
 from engine import Fight, Move, SLIDE            # noqa: E402
-from jobs import blm, mnk, rpr                   # noqa: E402
+from jobs import blm, brd, mnk, rpr              # noqa: E402
 
 HARM = {"Fire III", "Fire IV", "Despair", "Paradox", "Blizzard III", "Blizzard IV", "Thunder III", "Xenoglossy"}
 HARM |= (set(rpr.GCDS) - {"Soulsow"}) | rpr.AVATAR | {"Gluttony", "Lemure's Slice"}
 HARM |= mnk.HARM_GCDS | {"The Forbidden Chakra", "Enlightenment"}
+HARM |= set(brd.POTENCY) | {"Apex Arrow", "Pitch Perfect"}
 fails = []
 
 
@@ -133,11 +136,49 @@ def searches(width=200):
     expect(bool(short), f"control: the standing-still rotation breaks {len(short)} of the R1 windows")
 
 
+def bard_cases():
+    print("\nBard: Repertoire and Army's Muse")
+    f = Fight(until=60)
+    s = brd.State.initial(f); s.first = False
+    s.caustic = (0.0, 1.0)
+    brd.sing(s, "The Wanderer's Minuet", 1.0)
+    brd.advance(s, f, 7.0)                      # ticks at 1.5 and 4.5 s
+    expect(abs(s.rep - 1.6) < 1e-9 and abs(s.sv - 8) < 1e-9, f"Minuet: two ticks, 1.6 stacks and 8 Soul Voice ({s.rep:.2f}, {s.sv:.1f})")
+    brd.advance(s, f, 20.0)
+    expect(s.rep == 3 and s.waste[0] > 0, f"Minuet: capped at three, the rest wasted ({s.rep}, {s.waste[0]:.1f})")
+    brd.use_cd(s, "Bloodletter", 20.0); brd.use_cd(s, "Bloodletter", 20.0)
+    brd.sing(s, "Mage's Ballad", 20.0)
+    expect(s.waste[2] == 3, "a song over the Minuet drops its stacks")
+    brd.advance(s, f, 23.0)                     # a tick at 22.5: 6 s off Bloodletter's 15 s
+    expect(abs(brd.charges(s, "Bloodletter", 23.0)[1] - 29.0) < 1e-9, "Ballad: a tick takes 0.8 x 7.5 s off Bloodletter")
+    brd.sing(s, "Army's Paeon", 30.0)
+    brd.advance(s, f, 48.0)                     # five ticks: four stacks, 16% haste
+    expect(s.rep == 4 and abs(brd.haste(s, 48.0) - 0.16) < 1e-9, f"Paeon: four stacks, 16% haste ({brd.haste(s, 48.0):.0%})")
+    brd.sing(s, "The Wanderer's Minuet", 48.0)
+    expect(abs(brd.haste(s, 50.0) - 0.12) < 1e-9 and brd.haste(s, 58.5) == 0, "Army's Muse: 12% for 10 s after four stacks")
+
+
+def bard_searches(width=200):
+    print(f"\nBard searches (width {width}) replayed")
+    brd.SPEED = 2.49 / engine.BASE_GCD
+    alt = {m: [v for v in vs if v != p12s.DEFAULT_VAR[m]] for m, vs in p12s.PLAN.items() if m in p12s.DEFAULT_VAR}
+    still = engine.beam(brd, p12s.fight("R1", still=True), width=width)
+    for slot, var in [("R1", {}), ("R2", {m: v[0] for m, v in alt.items()})]:
+        f = p12s.fight(slot, var)
+        s = engine.beam(brd, f, width=width)
+        _, away, _ = replay(s, f)
+        label = f"{slot}" + "".join(f", {v}" for v in var.values())
+        expect(not away and abs(s.dmg - still.dmg) < 1e-6, f"{label}: {s.dmg:,.0f} potency, standing still {still.dmg:,.0f}"
+                                                           + "".join(f"\n          {x}" for x in away))
+
+
 if __name__ == "__main__":
     stand_cases()
     searches()
     reach_cases()
     melee_searches()
     melee_searches(mnk, 2.43)
+    bard_cases()
+    bard_searches()
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED"))
     sys.exit(1 if fails else 0)

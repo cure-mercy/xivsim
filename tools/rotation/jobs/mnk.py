@@ -360,14 +360,16 @@ SEARCH_GCDS = ["Bootshine", "Dragon Kick", "True Strike", "Twin Snakes", "Snap P
 
 def candidates(c, fight, now):
     """The GCDs worth trying next: the form actions, the Blitz the beast chakra make, Six-sided Star before the boss
-    goes away (or the window ends), and the meditations and Form Shift only when nothing can hit or a stretch out of
-    reach is near."""
+    goes away (or the window ends: elsewhere it about ties the rotation per second and breaks its order, so players
+    keep it for there), and the meditations and Form Shift only when nothing can hit or a stretch out of reach is near
+    (Form Shift once Formless Fist is nearly out)."""
     out = list(SEARCH_GCDS)
     b = blitz(c)
     if b: out.append(b)
-    if min(fight.next_down(now), fight.until) - now < 8 or c.near: out.append("Six-sided Star")
+    if min(fight.next_down(now), fight.until) - now < 8: out.append("Six-sided Star")
     if not fight.targetable(now) or c.near or not reach(c, fight, now, commit=False):
-        out += ["Forbidden Meditation", "Form Shift"]
+        out.append("Forbidden Meditation")
+        if c.formless_until - now < 5: out.append("Form Shift")
     return out
 
 
@@ -406,8 +408,8 @@ def expand(s, fight):
 # bonus on the action it raises; a beast chakra a third of what a Blitz deals over a form action; a Nadi half of what
 # Phantom Rush deals over the Blitz that opens it; a Perfect Balance stack a beast chakra to come.
 VALUE = dict(chakra=70, opo=170, raptor=170, coeurl=130, beast=180, nadi=150, pb=150, formless=60)
-RATE = 270                                            # potency per second, to compare states at slightly different times
-HEURISTICS = [(r, 1.0, 0.0) for r in (240, 270, 300, 330)]
+RATE = 220                                            # potency per second, to compare states at slightly different times
+HEURISTICS = [(r, 1.0, 0.0) for r in (200, 220, 240, 270)]   # 180-240 agree within 0.01%; 270-300 0.4% lower
 WIDTH = 3000
 MOVE_WEIGHT = 0.0
 
