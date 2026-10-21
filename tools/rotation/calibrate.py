@@ -3,8 +3,11 @@ should match the logged MP, its cast times should match begin-cast -> cast, and 
 logged plain hits (no crit, no direct hit, buffs divided out).
 
     python tools/rotation/calibrate.py [--since 2025-04-01] [--until 125]
+
+By default each log is replayed over the whole pull, up to the player's first death (a death strips the gauge and
+procs, which the model doesn't follow).
 """
-import argparse, collections, datetime, json, statistics as st, sys
+import argparse, collections, datetime, json, math, statistics as st, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -13,7 +16,7 @@ import logs                                      # noqa: E402
 from engine import Fight                         # noqa: E402
 from jobs import blm as J                        # noqa: E402
 
-from engine import SLIDE                         # noqa: E402
+from engine import BASE_GCD, RESOLVE             # noqa: E402
 
 
 def replay(p, until, out, fight=None):
@@ -41,7 +44,7 @@ def replay(p, until, out, fight=None):
             pre = s.copy(); J.advance(pre, start)
             if mp is not None and not s.first: out["mp"].append((name, pre.el, pre.mp, mp, p["name"], t))
             c, _ = J.cast_time(pre, name, start)
-            if b is not None and c: out["cast"][(name, pre.el, pre.ll > start)].append((t - b + SLIDE, c))
+            if b is not None and c: out["cast"][(name, pre.el, pre.ll > start)].append((t - b + RESOLVE, c))
             ns = J.do_gcd(s, fight, name)
             if ns is None:
                 out["illegal"].append((p["name"], round(t, 2), name, dict(el=pre.el, mp=pre.mp, hearts=pre.hearts, poly=pre.poly,
@@ -52,6 +55,9 @@ def replay(p, until, out, fight=None):
         elif name in J.CDS:
             s.t = t
             ns = J.do_ogcd(s, fight, name, policy=False)
+            nxt = J.charges(s, name, t)[1] if name in J.CDS else None
+            if ns is None and nxt is not None and nxt - t <= 0.1:      # a charge back within the logs' timing noise
+                s.t = nxt; ns = J.do_ogcd(s, fight, name, policy=False)
             if ns is None:
                 out["illegal"].append((p["name"], round(t, 2), name, {"charges": J.charges(s, name, t)}))
                 ns = s
@@ -59,6 +65,18 @@ def replay(p, until, out, fight=None):
         else:
             s.t = max(s.t, t)       # role actions and movement tools: they only take time
     return s
+
+
+def first_death(p):
+    """When the player first died in the pull (inf if they didn't), from the scorecard's cache of the clear."""
+    f = HERE.parent / "scorecard" / ".cache" / "benchmark" / f"phases_{p['code']}_{p['fight']}.json"
+    if not f.exists(): return math.inf
+    return min((d["t"] for d in json.loads(f.read_text())["deaths"] if d["name"] == p["name"]), default=math.inf)
+
+
+def cut_of(p, until=None):
+    """The end of the replay: `until` (default the whole pull), or the player's first death if that comes first."""
+    return min(until if until is not None else p["end"], first_death(p))
 
 
 def gcd_of(p):
@@ -136,11 +154,11 @@ def plain_hits(p, until):
     return out
 
 
-def damage_check(L, until):
+def damage_check(L, until=None):
     """Model potency of each GCD against the logged plain hit, scaled so the player's Xenoglossy matches the model."""
     rows = collections.defaultdict(list)
     for p in L:
-        hits = plain_hits(p, until)
+        hits = plain_hits(p, cut_of(p, until))
         xeno = [v for name, _, v, _ in hits if name == "Xenoglossy"]
         if not xeno: continue
         k = st.median(xeno) / J.POTENCY["Xenoglossy"]
@@ -151,26 +169,31 @@ def damage_check(L, until):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--since", default="2025-04-01")
-    ap.add_argument("--until", type=float, default=125)
+    ap.add_argument("--until", type=float, default=None, help="end of the replay, s (default: the whole pull)")
     a = ap.parse_args()
     days = {(k["code"], k["fight"]): k["day"] for k in json.loads(logs.BENCH.read_text())["kills"]}
     L = [p for p in logs.clears("BlackMage") if days[(p["code"], p["fight"])] >= a.since]
-    print(f"{len(L)} Black Mage logs since {a.since}, replaying 0:00-{a.until:.0f}s")
+    print(f"{len(L)} Black Mage logs since {a.since}, replayed " + (f"0:00-{a.until:.0f}s" if a.until else "over the whole pull") +
+          ", up to the player's first death:")
     out = dict(illegal=[], early=[], mp=[], cast=collections.defaultdict(list))
-    phases = []
     for p in L:
-        ph = fit_phase(p, a.until); phases.append(ph)
+        cut = cut_of(p, a.until)
+        n0 = len(out["illegal"])
+        J.SPEED = gcd_of(p) / BASE_GCD                  # each player at their own spell speed
+        ph = fit_phase(p, cut)
         J.TICK_PHASE = ph
-        replay(p, a.until, out)
-    print("server tick phase fitted per log: " + ", ".join(f"{x:.1f}" for x in phases))
+        replay(p, cut, out)
+        died = first_death(p)
+        print(f"  {days[(p['code'], p['fight'])]} {p['name']:<18} 0:00-{cut:5.1f}s" + (f" (died at {died:.1f}s)" if died <= cut else "") +
+              f"  tick phase {ph:.1f}  illegal {len(out['illegal']) - n0}")
     print(f"\nillegal casts: {len(out['illegal'])}")
-    for x in out["illegal"][:25]: print("  ", x)
+    for x in out["illegal"][:40]: print("  ", x)
     print(f"\nGCDs started earlier than the model allows (>0.15 s): {len(out['early'])}")
     for x in out["early"][:15]: print("  ", x)
     bad = [m for m in out["mp"] if abs(m[2] - m[3]) > 250]
     print(f"\nMP mismatches (>250): {len(bad)} of {len(out['mp'])}")
     for x in bad[:25]: print(f"   {x[4][:14]:<14} {x[5]:7.2f} {x[0]:<13} el {x[1]:+d}  model {x[2]:>5}  log {x[3]:>5}")
-    print("\ncast times: logged (begin->cast + 0.5 s slide) vs model, by spell / element / Ley Lines")
+    print(f"\ncast times: logged (begin->cast + {RESOLVE} s to the bar end) vs model at the player's GCD, by spell / element / Ley Lines")
     for k, v in sorted(out["cast"].items(), key=str):
         print(f"   {k[0]:<13} el {k[1]:+d} LL {'y' if k[2] else 'n'}: logged {st.median(a for a, _ in v):.2f}  model {st.median(b for _, b in v):.2f}  ({len(v)})")
     print("\ndamage: logged plain hit (scaled to Xenoglossy) vs model potency, by spell and element at the cast")

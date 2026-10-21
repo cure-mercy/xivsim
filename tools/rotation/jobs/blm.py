@@ -1,13 +1,15 @@
 """Black Mage at level 90, Dawntrail patch 7.2 and later, single target.
 
-Potencies and rules follow the official job guide's level-90 values (na.finalfantasyxiv.com/jobguide/blackmage), checked
-against the clears: plain hits match the potencies within ~2%, cast times within 0.03 s, and every logged cast replays as
-legal (tools/rotation/calibrate.py).
+Potencies and rules follow the official job guide (na.finalfantasyxiv.com/jobguide/blackmage; it shows level-100 values,
+so level-90 ones come from the logs where they differ) and later patches, checked against the clears over whole pulls:
+plain hits match the potencies within ~2%, cast times within 0.02 s, and every logged cast replays as legal
+(tools/rotation/calibrate.py).
 """
-import itertools
-from engine import ANIM_LOCK, BASE_GCD, SLIDE, gcd_times
+import itertools, math
+from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, gcd_times, move_credit, open_move, settle, stand
 
-POTENCY = {"Fire III": 280, "Fire IV": 300, "Despair": 350, "Paradox": 540, "Blizzard III": 280, "Blizzard IV": 300,
+# Fire III and Blizzard III were raised from 280 to 290 in a recent patch (job guide; the clears since July 2026 agree)
+POTENCY = {"Fire III": 290, "Fire IV": 300, "Despair": 350, "Paradox": 540, "Blizzard III": 290, "Blizzard IV": 300,
            "Thunder III": 120, "Xenoglossy": 890, "Umbral Soul": 0}
 # Thunder III's DoT: 50 potency for 27 s by the tooltip; ticks land for 63 relative to Xenoglossy 890 in the logs (DoTs
 # scale with spell speed and are computed differently), first tick ~1.5 s after the hit on average
@@ -28,16 +30,18 @@ MP_BASE, UI_BONUS = 200, {-1: 2500, -2: 5000, -3: 10000}
 UMBRAL_SOUL_MP = {-1: 2500, -2: 5000, -3: 10000}
 TICK_PHASE = 1.5                                    # server ticks land at TICK_PHASE + 3k seconds
 POLY_S, POLY_MAX = 30, 2
-LL_S, LL_SPEED, TRIPLE_S, SWIFT_S, PROC_S = 20, 0.85, 15, 10, 30
+LL_S, LL_SPEED, TRIPLE_S, SWIFT_S = 20, 0.85, 15, 10
+PROC_S = math.inf                                   # Thunderhead and Firestarter no longer expire (a recent patch); they
+                                                    # are only lost by being granted again while held
 CDS = {"Triplecast": (60, 2), "Swiftcast": (60, 1), "Ley Lines": (120, 2), "Manafont": (100, 1), "Amplifier": (120, 1),
-       "Transpose": (5, 1), "Tincture": (270, 1)}
-OGCD_ORDER = ["Tincture", "Manafont", "Transpose", "Amplifier", "Ley Lines", "Triplecast", "Swiftcast"]
+       "Transpose": (5, 1), "Tincture": (270, 1), "Between the Lines": (3, 1)}
+OGCD_ORDER = ["Tincture", "Manafont", "Transpose", "Amplifier", "Ley Lines", "Between the Lines", "Triplecast", "Swiftcast"]
 SPEED = 0.928                                       # spell speed factor on casts and GCDs: 2.32 s GCD, the clears since 7.2
 
 
 class State:
     __slots__ = ("t", "gcd", "el", "hearts", "mp", "mp_t", "poly", "poly_next", "paradox", "fs", "th", "triple", "triple_until",
-                 "swift", "ll", "cds", "dot", "dmg", "dotp", "waste", "pot_at", "first", "hist")
+                 "swift", "ll", "ll_spot", "cds", "dot", "dmg", "dotp", "waste", "pot_at", "first", "hist", "mvi", "acc", "free", "spot")
 
     @classmethod
     def initial(cls, fight):
@@ -50,6 +54,7 @@ class State:
         s.cds = {k: (n, None) for k, (_, n) in CDS.items()}
         s.dot, s.dmg, s.dotp, s.pot_at, s.first, s.hist = None, 0.0, 0.0, None, True, None
         s.waste = (0, 0, 0, 0)
+        s.mvi, s.acc, s.free, s.spot, s.ll_spot = 0, 0.0, -30.0, 0, -1    # forced movement (engine.stand) and Ley Lines' spot
         return s
 
     def copy(self):
@@ -62,7 +67,8 @@ class State:
         r = lambda x: round(x, 1)
         return (r(self.t), r(self.gcd), self.el, self.hearts, self.mp // 400, self.poly, self.paradox, self.fs > self.t, self.th > self.t,
                 self.triple if self.triple_until > self.t else 0, self.swift > self.t, r(max(self.ll - self.t, 0)), self.pot_at is None,
-                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()), r(self.dot[0]) if self.dot else None)
+                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()), r(self.dot[0]) if self.dot else None,
+                self.mvi, r(self.acc), self.spot == self.ll_spot, r(min(self.t - self.free, 6)))
 
     def log(self, t, action, note=""):
         self.hist = (self.hist, (round(t, 2), action, note))
@@ -73,11 +79,11 @@ class State:
         return out[::-1]
 
 
-WASTE = ("Polyglot overcapped", "Firestarter unused", "Thunderhead unused", "Paradox unused")
+WASTE = ("Polyglot overcapped", "Firestarter overwritten", "Thunderhead overwritten", "Paradox overwritten")
 
 
 def wasted(s, i):
-    """Count a resource lost: a Polyglot gained at the cap, or a proc that expired or was overwritten unused."""
+    """Count a resource lost: a Polyglot gained at the cap, or a proc granted again while still held."""
     w = list(s.waste); w[i] += 1; s.waste = tuple(w)
 
 
@@ -94,8 +100,6 @@ def advance(s, to):
     while s.poly_next is not None and s.poly_next <= to:
         if s.poly == POLY_MAX: wasted(s, 0)
         s.poly = min(POLY_MAX, s.poly + 1); s.poly_next += POLY_S
-    if 0 < s.fs <= to: s.fs = -1.0; wasted(s, 1)
-    if 0 < s.th <= to: s.th = -1.0; wasted(s, 2)
 
 
 def charges(s, name, at):
@@ -122,13 +126,24 @@ def set_element(s, el, at):
     if (el > 0) != (s.el > 0) or s.el == 0:
         if s.th > at: wasted(s, 2)
         s.th = at + PROC_S
-    if s.el == 0 and el != 0: s.poly_next = at + POLY_S
+    # the Polyglot timer starts when that first spell lands, not when it resolves: only a 1.0-1.5 s lag (Fire III's
+    # 1.29 s flight) makes every Xenoglossy in the clears' full pulls legal
+    if s.el == 0 and el != 0: s.poly_next = at + DELAY.get("Fire III", 0) + POLY_S
     s.el = el
 
 
 def hit(s, fight, at, potency, name):
-    """Damage snapshots buffs when the spell resolves (`at`) and counts when it lands, inside the scored window."""
-    if 0 <= at + DELAY.get(name, 0.6) < fight.until: s.dmg += potency * fight.mult(at, s.pot_at)
+    """Damage snapshots buffs when the spell resolves (`at`) and counts when it lands, inside the scored window and
+    while the boss can be hit."""
+    land = at + DELAY.get(name, 0.6)
+    if 0 <= land < fight.until and fight.targetable(land): s.dmg += potency * fight.mult(at, s.pot_at)
+
+
+def ticks(fight, at, since=0.0):
+    """Ticks of a Thunder III applied at `at` that land from `since` on, inside the window and while the boss can be
+    hit (the clears log no ticks while Athena is away)."""
+    return sum(1 for k in range(DOT_TICKS) if max(since, 0) <= at + DOT_FIRST + 3 * k < fight.until
+               and fight.targetable(at + DOT_FIRST + 3 * k))
 
 
 def dot(s, fight, at):
@@ -136,28 +151,33 @@ def dot(s, fight, at):
     spell resolving: on average the first lands 1.5 s later, which matches the logged tick counts."""
     if s.dot:
         a, m = s.dot
-        lost = sum(1 for k in range(DOT_TICKS) if at <= a + DOT_FIRST + 3 * k < fight.until)
+        lost = ticks(fight, a, since=at)
         s.dmg -= lost * DOT_TICK * m; s.dotp -= lost * DOT_TICK * m
     m = fight.mult(at, s.pot_at)
-    gain = sum(1 for k in range(DOT_TICKS) if 0 <= at + DOT_FIRST + 3 * k < fight.until) * DOT_TICK * m
+    gain = ticks(fight, at) * DOT_TICK * m
     s.dmg += gain; s.dotp += gain
     s.dot = (at, m)
 
 
 # --- actions -------------------------------------------------------------------------------------------------------
 
-def speed(s, at):
-    return SPEED * (LL_SPEED if s.ll > at else 1.0)
+def in_ll(s, at):
+    """Ley Lines is up and the player still stands in its circle."""
+    return s.ll > at and s.spot == s.ll_spot
 
 
-def cast_time(s, name, at):
+def speed(s, at, ll=None):
+    return SPEED * (LL_SPEED if (in_ll(s, at) if ll is None else ll) else 1.0)
+
+
+def cast_time(s, name, at, ll=None):
     """Cast time after Firestarter, Swiftcast, Triplecast and the fast-cast of Fire III in UI3 / Blizzard III in AF3;
-    plus which buff it consumes."""
+    plus which buff it consumes. `ll`: whether Ley Lines speeds it (default: if the player stands in it)."""
     if name not in CAST: return 0.0, None
     if name == "Fire III" and s.fs > at: return 0.0, "fs"
     if s.swift > at: return 0.0, "swift"
     if s.triple > 0 and s.triple_until > at: return 0.0, "triple"
-    c = CAST[name] * speed(s, at)
+    c = CAST[name] * speed(s, at, ll)
     if (name == "Fire III" and s.el == -3) or (name == "Blizzard III" and s.el == 3): c *= 0.5
     return c, None
 
@@ -166,7 +186,9 @@ def mp_cost(s, name):
     """Fire spells cost double in Astral Fire unless an Umbral Heart covers it; ice spells are free in Umbral Ice and,
     as the logs show (Blizzard III cast at 0 MP right after Despair), from Astral Fire too; Paradox is free in ice."""
     if name == "Fire IV": return 800 if s.el <= 0 or s.hearts else 1600
-    if name == "Fire III": return 2000 if s.el <= 0 or s.hearts else 4000
+    if name == "Fire III":
+        if s.el == -3: return 0     # hard-cast from Umbral Ice III it costs nothing: 4 of 4 such casts in the clears
+        return 2000 if s.el <= 0 or s.hearts else 4000
     if name == "Paradox": return 1600 if s.el >= 0 else 0
     if name in ("Blizzard III", "Blizzard IV"): return 0 if s.el != 0 else 800
     return 0
@@ -189,11 +211,21 @@ def do_gcd(s, fight, name):
     s = s.copy()
     start = max(s.t, s.gcd)
     advance(s, start)
+    settle(s, fight, start)
     if not gcd_legal(s, name, start): return None
-    cast, used = cast_time(s, name, start)
-    if s.first: start = SLIDE - cast; s.first = False         # the opener is pre-cast to land at 0:00
-    if cast and fight.moving(start, start + cast - SLIDE): return None
-    snap, free, nxt = gcd_times(start, cast, BASE_GCD * speed(s, start))
+    harm = name != "Umbral Soul"                              # everything else needs the boss as a target
+    if harm and not fight.targetable(start): return None
+    # Ley Lines speeds the GCD if the player stands in it: not during an instant in a move window (that is when they
+    # run), nor during a hard cast that only fits the run if part of it came before
+    ll = in_ll(s, start) and not (name not in CAST and open_move(s, fight, start))
+    cast, used = cast_time(s, name, start, ll)
+    if s.first: start = RESOLVE - cast; s.first = False         # the opener is pre-cast to land at 0:00
+    if cast:
+        if stand(s, fight, start, start + cast - SLIDE, commit=False) and ll:
+            ll = False; cast, used = cast_time(s, name, start, ll)
+        if stand(s, fight, start, start + cast - SLIDE) is None: return None
+    if harm and fight.next_down(start) <= start + max(cast - RESOLVE, 0): return None   # the boss leaves mid-cast
+    snap, free, nxt = gcd_times(start, cast, BASE_GCD * speed(s, start, ll))
     if used == "swift": s.swift = -1.0
     elif used == "triple": s.triple -= 1
     elif used == "fs": s.fs = -1.0
@@ -239,7 +271,8 @@ def ogcd_legal(s, name, at, fight, policy=True):
     if name == "Manafont": return s.el > 0 and (s.mp < 1600 or not policy)
     if name == "Amplifier": return s.el != 0 and (s.poly < POLY_MAX or not policy)
     if name == "Transpose": return s.el != 0
-    if name == "Ley Lines": return s.ll <= at
+    if name == "Ley Lines": return s.ll <= at and not open_move(s, fight, at)       # put down where the player will stay
+    if name == "Between the Lines": return s.ll > at and s.spot != s.ll_spot and not open_move(s, fight, at)
     if name == "Triplecast": return not (s.triple > 0 and s.triple_until > at)
     if name == "Swiftcast": return s.swift <= at
     if name == "Tincture": return fight.pot and s.pot_at is None
@@ -250,6 +283,7 @@ def do_ogcd(s, fight, name, policy=True):
     s = s.copy()
     at = s.t
     advance(s, at)
+    settle(s, fight, at)
     if not ogcd_legal(s, name, at, fight, policy): return None
     use_cd(s, name, at)
     if name == "Manafont":
@@ -260,7 +294,8 @@ def do_ogcd(s, fight, name, policy=True):
         if s.poly == POLY_MAX: wasted(s, 0)
         s.poly = min(POLY_MAX, s.poly + 1)
     elif name == "Transpose": set_element(s, -1 if s.el > 0 else 1, at)
-    elif name == "Ley Lines": s.ll = at + LL_S
+    elif name == "Ley Lines": s.ll = at + LL_S; s.ll_spot = s.spot
+    elif name == "Between the Lines": s.spot = s.ll_spot                  # back into the circle once the mechanic is done
     elif name == "Triplecast": s.triple, s.triple_until = 3, at + TRIPLE_S
     elif name == "Swiftcast": s.swift = at + SWIFT_S
     elif name == "Tincture": s.pot_at = at
@@ -291,8 +326,11 @@ def expand(s, fight):
                 if combo and ("Swiftcast" in combo or "Triplecast" in combo) and g not in CAST: continue   # only spend instants on casts
                 any_gcd = True
                 out.append(n)
-            if not any_gcd and not combo:                          # nothing castable now (moving): wait a little
-                w = c.copy(); w.t = w.gcd = max(c.t, c.gcd) + 0.5; w.log(c.t, "(wait)"); out.append(w)
+            now = max(c.t, c.gcd)
+            down = not fight.targetable(now)
+            if not combo and (not any_gcd or down):                # nothing castable (running), or the boss is away
+                w = c.copy(); w.t = w.gcd = fight.back_up(now) if down else now + 0.5
+                w.log(c.t, "(boss away)" if down else "(wait)"); out.append(w)
     return out
 
 
@@ -306,8 +344,33 @@ def held(s):
     return v + VALUE["mp"] * s.mp * (1 if s.el > 0 else 0.5)
 
 
+# Runs coming up: a hard-cast rotation leaves ~40% of the time free anyway (the slide and the caster tax), each instant
+# GCD in hand frees ~1.4 s more, and whatever is left over has to be stood idle. Without this the search spends
+# Triplecast and Swiftcast as soon as they are up, since a held charge is worth nothing to it.
+MOVE_AHEAD = 25.0                                     # seconds of upcoming move windows the ranking looks at
+HARD_FREE, INSTANT_FREE = 0.4, 1.4
+MOVE_WEIGHT = 1.0                                     # potency per uncovered second of running, in units of RATE
+
+
+def instants(s, at):
+    """Instant GCDs in hand: Triplecast stacks and charges, Swiftcast, Polyglot, Paradox and the two procs."""
+    n = s.poly + s.paradox + (s.fs > at) + (s.th > at) + (s.triple if s.triple_until > at else 0)
+    return n + 3 * charges(s, "Triplecast", at)[0] + charges(s, "Swiftcast", at)[0] + (s.swift > at)
+
+
+def move_debt(s, fight):
+    """Seconds of running ahead (within MOVE_AHEAD) that neither the hard casts' free time nor the instants in hand cover."""
+    W, i, need = fight.moves, s.mvi, 0.0
+    while i < len(W) and W[i].lo < s.t + MOVE_AHEAD:
+        w = W[i]
+        left = max(0.0, w.hi - max(w.lo, s.t))
+        need += max(0.0, w.need - (s.acc if i == s.mvi else 0.0) - HARD_FREE * left)
+        i += 1
+    return max(0.0, need - INSTANT_FREE * instants(s, s.t)) if need else 0.0
+
+
 def rank(s, fight):
-    return s.dmg + held(s) - RATE * s.t
+    return s.dmg + held(s) - RATE * (s.t - move_credit(s, fight) + MOVE_WEIGHT * move_debt(s, fight))
 
 
 def final(s, fight):
