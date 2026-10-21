@@ -158,14 +158,14 @@ def plain_hits(p, until):
     return model_hits(p, until, lambda x: x.get("hitType") == 1 and not x.get("directHit"))
 
 
-def model_hits(p, until, keep):
-    """The same for the hits `keep` picks (outside tinctures)."""
+def model_hits(p, until, keep, hit=False):
+    """The same for the hits `keep` picks (outside tinctures); `hit`: each tuple ends with the logged hit itself."""
     n = p["names"]
     pot = [x["t"] for x in p["buffs"] if n[str(x["abilityGameID"])] == "Medicated" and x["type"] == "applybuff"]
     plain = {}
     for x in p["hits"]:
         if x["type"] == "damage" and keep(x) and not x.get("tick") and not any(a <= x["t"] < a + 30 for a in pot):
-            plain.setdefault(n[str(x["abilityGameID"])], []).append((x["t"], x["amount"] / x.get("multiplier", 1)))
+            plain.setdefault(n[str(x["abilityGameID"])], []).append((x["t"], x["amount"] / x.get("multiplier", 1), x))
     fight = Fight(until=until + 30)
     if hasattr(J, "prepare"): J.prepare(p)
     s = J.State.initial(fight)
@@ -175,8 +175,8 @@ def model_hits(p, until, keep):
         name = n[str(x["abilityGameID"])]
         if name in J.GCDS or name in J.OGCDS:
             lab = J.label(J.at(s, fight, x["t"]), fight, name, x["t"])
-            h = [v for ht, v in plain.get(name, []) if 0 <= ht - x["t"] < 1.5]
-            if h and lab: out.append((name, lab[0], h[0], lab[1]))
+            h = [(v, y) for ht, v, y in plain.get(name, []) if 0 <= ht - x["t"] < 1.5]
+            if h and lab: out.append((name, lab[0], h[0][0], lab[1]) + ((h[0][1],) if hit else ()))
         if name in J.GCDS:
             s.t = s.gcd = x["t"]
             s = J.do_gcd(s, fight, name) or J.force(s, fight, name, x["t"])

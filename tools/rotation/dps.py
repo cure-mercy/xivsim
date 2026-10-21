@@ -1,6 +1,6 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
-    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam] [--clears] [--site [--gcds 2.30,2.40]]
+    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam] [--clears] [--site [--gcds 2.30,2.40]] [--offline]
 
 Per player, from their clean pulls (alive through 2:00):
   damage per potency   their plain hits (no crit, no direct hit), external buffs divided out, over the model potency
@@ -55,6 +55,43 @@ DOT_PT = 130 / 1900 / 1000                          # DoT damage per speed point
 # raid buffs that raise crit or direct-hit rate (status ids as they appear on hits): Battle Voice, Battle Litany, Chain
 # Stratagem, Devilment, the Wanderer's Minuet, Army's Paeon
 CRIT_BUFFS = {"1000141", "1000786", "1001221", "1001825", "1002216", "1002218"}
+
+
+PLAIN, DH, CRIT = 1.12, 1.37, 1.73     # flag_hits: a hit over its plain level is plain below 1.12, then direct hit, crit, both
+
+
+def flag_hits(job, pulls):
+    """Sets the crit / direct-hit flags offline logs lack (logs.ours_offline), player by player: each hit against its
+    plain level. Hits of one action and bonusPercent at one model potency (own damage-ups divided out) form a group,
+    whose plain level is the median of its hits within 13% of its lowest tenth; a group of fewer than 8 uses the
+    player's level over all model hits, and an unlabelled one (no model potency) of fewer than 8 stays unflagged
+    (hitType 0: neither plain nor crit). Sure crits (AUTO_CRIT) are crits whatever their level."""
+    def level(v):
+        v = sorted(v); lo = v[len(v) // 10] * 1.13
+        return st.median(x for x in v if x <= lo)
+    sure = getattr(job, "AUTO_CRIT", ())
+    by = collections.defaultdict(list)
+    for p in pulls: by[p["name"]].append(p)
+    for ps in by.values():
+        gcds = [g for g in map(calibrate.gcd_of, ps) if g]
+        job.SPEED = (st.median(gcds) if gcds else engine.BASE_GCD) / engine.BASE_GCD
+        groups, model = collections.defaultdict(list), {}
+        for p in ps:
+            for _, _, v, m, h in calibrate.model_hits(p, p["end"], lambda x: True, hit=True):
+                if m: model[id(h)] = m
+        for p in ps:
+            for h in p["hits"]:
+                if h["type"] != "damage" or h.get("tick"): continue
+                m = model.get(id(h))
+                groups[p["names"][str(h["abilityGameID"])], h.get("bonusPercent", 0), m].append((h["amount"] / h.get("multiplier", 1), h))
+        whole = level([v / k[2] for k, g in groups.items() if k[2] for v, _ in g])
+        for (name, _, m), g in groups.items():
+            base = level([v for v, _ in g]) if len(g) >= 8 else whole * m if m else None
+            for v, h in g:
+                r = v / base if base else None
+                h["hitType"] = 0 if r is None else 2 if r >= DH or name in sure else 1
+                h["directHit"] = r is not None and (PLAIN <= r < DH or r >= CRIT)
+    return pulls
 
 
 def rates(pulls):
@@ -266,7 +303,7 @@ def rotations(job, rows, width, extra=()):
         out[key] = dict(gcd=gcd, crit=crit, window=ROT_UNTIL, potency=round(s.dmg), dps=round(st.median(each)), dps_lo=round(min(each)),
                         ceiling_2min=round(st.median(conv(s2, r, gcd, WINDOW) for r in rows)),
                         dps_hi=round(max(each)), players=sum(r["key"] == key for r in rows), conv_players=len(rows),
-                        waste={w: n for w, n in zip(job.WASTE, s.waste) if n}, rotation=rot)
+                        waste={w: round(n, 1) for w, n in zip(job.WASTE, s.waste) if n}, rotation=rot)
     return dict(fight=timeline(job), rotations=out, speed_cost=round(100 * STAT_PT * SPEED_PTS * 0.01, 2))
 
 
@@ -289,10 +326,13 @@ def main():
     ap.add_argument("--site", action="store_true", help=f"save our players' ceilings and the optimized rotations for the scorecard site "
                     f"({SITE_FILE.name}, {ROT_FILE.name})")
     ap.add_argument("--gcds", help="with --site: also optimize at these GCDs (comma-separated), for the site's rotation pages")
+    ap.add_argument("--offline", action="store_true", help="our players' logs from the scorecard's acts caches, not FFLogs "
+                    "(logs.ours_offline, flag_hits): for when FFLogs is down; 'logged' then misses the hits left out")
     a = ap.parse_args()
     job, jobname = JOBS[a.job]
     calibrate.use(a.job)
-    rows = player_rows(job, logs.ours(jobname), a.width)
+    pulls = flag_hits(job, logs.ours_offline(jobname, getattr(job, "own_factor", lambda p, h: 1.0))) if a.offline else logs.ours(jobname)
+    rows = player_rows(job, pulls, a.width)
     show(rows, f"Our players on {jobname}, clean pulls, 0:00-2:00 (DPS)")
     print("  gain / unbuf: average hit over plain hit, all hits / hits under no crit or direct-hit raid buff;\n"
           "  rDPS/best: scorecard median / best of the clean pulls; replay: their casts through the model, at gain;\n"
@@ -306,6 +346,7 @@ def main():
         SITE_FILE.write_text(json.dumps(saved, indent=1, ensure_ascii=False))
         rots = json.loads(ROT_FILE.read_text()) if ROT_FILE.exists() else {}
         rots[jobname] = rotations(job, rows, a.width, [float(g) for g in a.gcds.split(",")] if a.gcds else ())
+        if a.offline: rots[jobname]["offline"] = True     # the site says its DPS comes from the acts caches
         ROT_FILE.write_text(json.dumps(rots, indent=1, ensure_ascii=False))
         print(f"\nsaved {len(rows)} ceilings to {SITE_FILE} and {len(rots[jobname]['rotations'])} rotations to {ROT_FILE}")
     if a.clears:
