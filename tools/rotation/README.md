@@ -2,8 +2,8 @@
 
 Searches for the highest-potency rotation of a job over P12S phase 1 (level 90), from the pull to the kill, with the
 fight's fixed timeline: when Athena can't be hit, and where the player has to run under our groups' strategy. So far:
-Black Mage, Reaper, Monk, Bard, Dragoon, Red Mage and Viper (Monk and Bard not yet checked against logs, Dragoon, Red
-Mage and Viper only against the scorecard's cached events: see their sections).
+Black Mage, Reaper, Monk, Bard, Dragoon, Red Mage, Viper and Samurai (Monk and Bard not yet checked against logs,
+Dragoon, Red Mage, Viper and Samurai only against the scorecard's cached events: see their sections).
 
 ```
 python tools/rotation/solve.py                                # R1, 2.32 s GCD, no raid buffs, 0:00 to the median kill (449 s)
@@ -16,6 +16,7 @@ python tools/rotation/solve.py --job brd                      # Bard, 2.49 s GCD
 python tools/rotation/solve.py --job drg [--slot M2]          # Dragoon, 2.49 s GCD, M1 by default
 python tools/rotation/solve.py --job rdm [--slot R2]          # Red Mage, 2.50 s GCD, R1 by default
 python tools/rotation/solve.py --job vpr [--slot M2]          # Viper, 2.49 s GCD (2.12 s under Swiftscaled), M1 by default
+python tools/rotation/solve.py --job sam [--slot M2]          # Samurai, 2.40 s GCD (2.09 s under Fuka), M1 by default
 python tools/rotation/p12s.py [--slot R2]                     # the move windows; --build refetches the timeline
 python tools/rotation/check.py                                # movement and downtime checks
 python tools/rotation/calibrate.py [--job rpr] [--ours]       # check the job model against the clears' (or our) logs
@@ -26,7 +27,7 @@ python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceil
 
 | Option | Meaning |
 |---|---|
-| `--job` | `blm` (default), `rpr`, `mnk`, `brd`, `drg`, `rdm` or `vpr` |
+| `--job` | `blm` (default), `rpr`, `mnk`, `brd`, `drg`, `rdm`, `vpr` or `sam` |
 | `--gcd` | the player's GCD without haste (spell or skill speed; default the clears' median); `--compare` prints each clear's. Monk's Greased Lightning takes 20% off it |
 | `--crit` | critical-hit rate, for a job whose resources or buffs turn on crits (Monk's chakra, Dragoon's Life Surge and Battle Litany; default 0.25) |
 | `--slot` | Paradeigma I: `R1` / `M1` line up for the first lasers, `R2` / `M2` for the second (our BLMs play both R slots; the melee slot varies with the lineup). Default `R1`, or `M1` for a melee |
@@ -37,7 +38,7 @@ python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceil
 | `--pot` | allow one tincture (off by default: the scorecard strips tinctures) |
 | `--carry` | also value resources still held at the end, instead of dumping everything |
 | `--until` | end of the scored window, seconds (default: the clears' median kill, 449 s; enrage is 458 s) |
-| `--width` | beam width per heuristic setting (default: the job's, 1,000 for BLM and RDM, 3,000 for RPR, MNK, BRD, DRG and VPR) |
+| `--width` | beam width per heuristic setting (default: the job's, 1,000 for BLM and RDM, 3,000 for RPR, MNK, BRD, DRG, VPR and SAM) |
 | `--compare` | replay every benchmark clear's logged rotation under the same buffs, downtime and window |
 
 Damage is in potency (Xenoglossy 890) times the raid buffs active when each hit lands; crit and direct-hit buffs count
@@ -323,6 +324,75 @@ every stretch out of reach. It opens with Vicewinder, Serpent's Ire, both Coils 
 makes 12 Reawakens in the phase. The clears' own rotations, replayed standing still over 0:00-380 s, deal 90-96% of the
 search's best (our pulls over 0:00-2:00: 92-99%). A search takes ~55 s.
 
+## Samurai
+
+`jobs/sam.py`, from the job guide and the patch notes since 7.0, checked like the Viper **in the scorecard's cached
+damage events** (FFLogs was down): our groups' 199 pulls by four Samurais (Sep-Oct 2026) and the 12 benchmark clears
+with one. Way of the Samurai III (level 94) raises most potencies in the guide, and Enhanced Hissatsu (94) halves
+Senei's recast; Gyofu (92), Zanshin (96) and Tendo (100) lie above P12S. Each action's plain-hit cluster, Fugetsu divided
+out and others' raid buffs left out, scaled to Hissatsu: Shinten (250, untouched by traits and patches); bonusPercent
+confirms each split (Gekko 70% = (370 - 110) / 370 from the rear in combo). At level 90:
+
+- Hakaze 200; Jinpu and Shifu 120 / 280 in combo; Gekko and Kasha 110 / 320 in combo, +50 from the rear / flank;
+  Yukikaze 110 / 290; Higanbana 200 and ~50 a tick for 60 s; Shoha 560; Senei 800 on 120 s; auto-attacks 80;
+- the sure crits have no plain hits. Midare Setsugekka's lowest cluster over each player's crit multiplier (Shinten's
+  crit cluster over its plain one) is 620, and Kaeshi: Setsugekka matches it hit for hit. Ogi Namikiri and Kaeshi:
+  Namikiri are only used under raid buffs, so they were measured against Midare in the same pull under the same buffs
+  (a crit-rate buff raises every sure crit alike): 1.38 times, 860 (Endwalker's; the 7.2 notes' 900 -> 1,000 is level 94).
+
+Rules from the logs the guide doesn't give:
+
+- **Gekko and Kasha give 15 Kenki**, not the guide's 10: at 10, 246 Hissatsu casts in our pulls come up short, at 15
+  two, and no other source (Hakaze, Jinpu / Shifu, Yukikaze, Shoha, out-of-combo steps) fits. Whether 5 of it needs the
+  positional can't be told: 430 missed positionals never left a spender short. The model gives 15 flat;
+- Iaijutsu and Ogi Namikiri cast in 1.3 s flat (begin -> cast 0.76 s at every skill speed, with Fuka or without): Fuka
+  shortens the recast (2.40 s -> 2.09 s) and auto-attacks, not the cast;
+- Iaijutsu, the Kaeshis, Ogi Namikiri and Enpi don't break the combo; Iaijutsu and Ogi Namikiri give Meditation, the
+  Kaeshis don't (Shohas follow exactly three); Higanbana doesn't use up Tsubame-gaeshi Ready;
+- every opener starts with a pre-pull Meikyo Shisui (Gekko or Kasha at 0 s without a Hakaze), pressed ~13 s ahead: its
+  charge comes back at 42.2-42.7 s in the clears. A replay reads it from the log (its status ending before the first
+  Meikyo cast; none means both charges were there);
+- Tengentsu's 10 Kenki needs a hit within its 4 s. Our pulls' Foresights cluster on the raidwides and shared hits (On
+  the Soul, Searing Radiance, Trinity of Souls, Superchain Burst, Dialogos, Ultima Blade, Palladion's shockwaves, Theos's
+  Ultima): 18 times (`HITS`) where it paid off 70-100% of the times it was up. A replay takes the log's own Foresights;
+- the clears Meditate at the end of Palladion, standing until Athena returns: each 3 s tick gives a Meditation stack
+  (their Shohas right after need exactly the ticks their Meditate status lasted). Its Kenki (10 a tick) is the in-game
+  value: the logs can't confirm it.
+
+Every cast in our 199 pulls but one (15,101 casts, to each player's first death) replays as legal through
+`calibrate.replay`, and in the benchmark clears all but a Midare and a second tincture. A control with broken rules
+(Gekko / Kasha at 10 Kenki, Shinten at 30, Senei on 125 s, Meikyo on 60 s or lasting 15 s, Ikishoten on 125 s) shows
+each as illegal casts. `calibrate.py --job sam` and `dps.py --job sam` need FFLogs' full logs.
+
+- **Sen and Iaijutsu**: Gekko (Getsu), Kasha (Ka) and Yukikaze (Setsu) end the three combos; three Sen make Midare
+  Setsugekka (then Kaeshi: Setsugekka), one Higanbana. Meikyo Shisui's three stacks make any finisher count as a combo.
+  The search offers Midare at three Sen unless a Kaeshi is pending (it would be lost), Higanbana at one Sen when the DoT
+  is nearly out, and a combo's middle step only for a missing Sen or a buff running low.
+- **Sure crits**: Midare, the Kaeshis and Ogi Namikiri always crit, a large share of the job's damage. The search
+  weighs their potency by a sure crit's gain over an average hit (1.39 at 25% crit, x1.60), so trading them against
+  other hits is fair; the potency printed stays plain potency, and `dps.py` converts the sure crits at the player's own
+  average sure crit (`AUTO_CRIT`, as for Monk's Bootshine).
+- **Downtime**: while Athena is away the search takes one step: Tengentsu on the hits it can catch, then Meditate for
+  0-5 ticks ending as she returns, standing between the runs. The ranking charges time (potency a second), so separate
+  steps made a 3 s Meditate look better than a 15 s one.
+- **Ranking**: as for the Viper, each held resource is valued at what it converts into less the GCD time it takes
+  (Tsubame-gaeshi Ready its Kaeshi over a 2.09 s GCD, not the whole hit: valued whole, the beam held a Kaeshi for 16 s
+  and overwrote Sen meanwhile; fixing that and the Midare policy above gained 2.6% over two minutes).
+- **Movement**: as for the Reaper. Every weaponskill, Iaijutsu and Hissatsu needs reach, only Enpi (20 y) reaches from
+  anywhere; Hissatsu: Yaten buys an Enhanced Enpi. Iaijutsu, Kaeshi: Setsugekka, Ogi Namikiri and Shoha reach 6-10 y,
+  so a Samurai might use them a little farther out than the 3 y actions; the clears' Reapers' positions can't tell how
+  far out they stood (they cast nothing then), so the model takes the strict rule.
+
+Over the whole phase the best rotation deals 133,863 potency in both `M1` and `M2` (148,419 with the sure crits at their
+expected worth; the six settings within 0.5%); standing still 134,948 (149,505), so our strategy costs a Samurai ~0.7%.
+Searched one part at a time, the runs and the fixed spots cost nothing (the 1.3 s Iaijutsu fit around the runs; four
+True Norths take all seven positionals in the fixed spots) and the stretches out of reach ~0.5%: Enpi fills them. If
+the 6-10 y actions reached out there, the phase would come to 148,882 (+0.3%). It opens with Kasha, Ikishoten, Gekko,
+Senei, Yukikaze, Meikyo Shisui, Midare, Higanbana, Ogi Namikiri, Shoha and Kaeshi: Namikiri, lets Higanbana run out
+before Palladion rather than refresh it into the downtime, and spends Palladion on a Tengentsu and a 15 s Meditate.
+The clears' own rotations, replayed standing still over 0:00-380 s, deal 90-95% of the search's best (our pulls over
+0:00-2:00: 91-94%). A search takes ~2 minutes.
+
 ## The fight
 
 `p12s.py` holds P12S P1 as the optimizer plays it; `p12s_p1.json` is built from six benchmark clears (`--build`).
@@ -440,7 +510,8 @@ no MP (4 of 4 such casts), and the Polyglot timer starts when the first fire or 
 variant from their history: each window gets its running time outside cast bars, and nothing is cast at Athena while
 she is away. A standing-still rotation, as a control, breaks several windows. For the Reaper it also tests the reach
 rule and positionals on hand-made windows, and replays quick M1 and M2 searches: every away window must hold a stretch
-of its length without a melee action (the standing-still rotation breaks one); the same for Monk, Dragoon and Viper. For the
+of its length without a melee action (the standing-still rotation breaks one); the same for Monk, Dragoon, Viper and
+Samurai (whose Iaijutsu are hard casts the runs must leave room for, and whose Meditate counts as standing). For the
 Bard it tests Repertoire under each song and Army's Muse on hand-made states, and that quick R1 and R2 searches cast
 nothing at Athena while she is away and score the same as standing still. For the Red Mage it tests Dualcast,
 Acceleration's priority, the expected procs and reach at a far spot (with and without Manafication) on hand-made states,
@@ -461,6 +532,7 @@ a short stretch; in the searches no dash saves more than its stretch allows, and
 | `jobs/drg.py` | Dragoon: the two combos, Draconian Fire and Focus, Life of the Dragon, jumps, Life Surge, DoT, positionals, auto-attacks |
 | `jobs/rdm.py` | Red Mage: Dualcast, mana, the melee combo and finishers, Manafication, Acceleration, expected procs, reach at far spots |
 | `jobs/vpr.py` | Viper: the dual-wield combo, Honed and venoms, Vicewinder's Coils and bites, Rattling Coils, Serpent Offerings, Reawaken, Swiftscaled haste, positionals, auto-attacks |
+| `jobs/sam.py` | Samurai: the three combos, Sen and Iaijutsu, Tsubame-gaeshi, Meikyo Shisui, Kenki, Meditation and Shoha, Ogi Namikiri, Fugetsu and Fuka, Higanbana's DoT, Tengentsu on the fight's hits, Meditate in downtime, positionals, auto-attacks |
 | `p12s.py`, `p12s_p1.json` | the fight: timeline, downtime, our strategy's runs, the clears' runs elsewhere |
 | `solve.py` | command line |
 | `logs.py` | detailed per-player logs from the benchmark clears, cached in `.cache/` |

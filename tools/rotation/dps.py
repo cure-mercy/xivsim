@@ -1,6 +1,6 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
-    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr] [--clears] [--site [--gcds 2.30,2.40]]
+    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam] [--clears] [--site [--gcds 2.30,2.40]]
 
 Per player, from their clean pulls (alive through 2:00):
   damage per potency   their plain hits (no crit, no direct hit), external buffs divided out, over the model potency
@@ -37,10 +37,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
 import calibrate, engine, logs, p12s            # noqa: E402
 from engine import Fight                         # noqa: E402
-from jobs import blm, brd, drg, mnk, rdm, rpr, vpr    # noqa: E402
+from jobs import blm, brd, drg, mnk, rdm, rpr, sam, vpr    # noqa: E402
 
 JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard"),
-        "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage"), "vpr": (vpr, "Viper")}
+        "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage"), "vpr": (vpr, "Viper"), "sam": (sam, "Samurai")}
 SITE_FILE = HERE / ".cache" / "ceilings.json"
 ROT_FILE = HERE / ".cache" / "rotations.json"
 WINDOW = 120
