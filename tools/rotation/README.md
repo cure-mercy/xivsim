@@ -243,15 +243,25 @@ illegal or early casts. `calibrate.py --job rdm`, `dps.py --job rdm` and `solve.
   wall end, 18.3 y, and the Heavensflame corner of Superchain I, ~21.5 y), where they are out of reach around the
   snapshot (`away` windows: 1.4 s and 2.5 s).
 
-Over the whole phase the best rotation deals 92,363 potency in `R1` and 92,343 in `R2` (width 1,000; 3,000 finds
-92,580 and 92,351); standing still 93,613, so our strategy costs a Red Mage 1.3%. Nearly all of it is Paradeigma I:
-the swap through the middle needs 4.7 s of running in 5.3 s, when Manafication, Swiftcast and Acceleration are still
-cooling down from the opener, so the rotation fills it with Enchanted Reprise. Corps-a-corps would close part of that
-run (it dashes to Athena) but the engine has no dashes. A look-ahead at upcoming runs like the Black Mage's never found
-a better rotation, so the ranking has none. The opener spends Manafication's free combo under Embolden, both
-Acceleration charges and Swiftcast on Verthunder III, and the rotation makes 11 combos (four of them free) in the phase.
-The clears' own rotations, replayed standing still over 0:00-380 s, deal 93-97% of the search's best (our pulls over
-0:00-2:00: 91-95%). A search takes ~35 s.
+Over the whole phase the best rotation deals 93,149 potency in `R1` and 92,056 in `R2` (width 1,000); standing still
+93,613, so our strategy costs a Red Mage 0.5% in R1 and ~1.3% in R2. What is left is Paradeigma I's swap through the
+middle (4.7 s of running in 5.3 s for R1, 4.4 s in 5.0 s for R2), when Manafication, Swiftcast and Acceleration are
+still cooling down from the opener, so the rotation fills it with Enchanted Reprise.
+
+- **Dashes** recover most of R1's: right after the bait (37.6 s) Corps-a-corps rushes from the wall to Athena's hitbox
+  edge, saving 7.8 y (1.3 s) of the swap, room for a hard cast (+0.8% over the phase; the opener's charge is back by
+  then without being held). R2 crosses the middle first and only then heads out, so Displacement (2.5 s saved) comes
+  after the GCD it could have turned into a hard cast. With it and without, R2 scores within the search's noise
+  (92,195 and 92,242 at width 3,000).
+- **What didn't help**: a look-ahead at upcoming runs like the Black Mage's, and a value on dash charges kept for coming
+  runs, never found a better rotation, so the ranking has neither.
+- **A fix**: a combo that ran into a far spot (Superchain I's Heavensflame corner) used to break mid-way, and the stacks
+  it left blocked every later combo (whole combos only) until the end of the phase. Combos now start only if their
+  three hits stay clear of far spots, and left-over stacks get topped up.
+
+The opener spends Manafication's free combo under Embolden, both Acceleration charges and Swiftcast on Verthunder III,
+and the rotation makes 11 combos (four of them free) in the phase. The clears' own rotations, replayed standing still
+over 0:00-380 s, deal 93-97% of the search's best (our pulls over 0:00-2:00: 91-95%). A search takes ~35 s.
 
 What the logs couldn't settle, to be tested in game: [rdm-in-game-tests.md](rdm-in-game-tests.md).
 
@@ -334,6 +344,12 @@ search's best (our pulls over 0:00-2:00: 92-99%). A search takes ~55 s.
 - **Far spots**: a ranged player stands within a melee action's reach of Athena (14 y from her centre) everywhere but
   Paradeigma I's wall end and Superchain I's Heavensflame corner (`FAR`); a ranged job with melee actions (Red Mage)
   is out of reach around those snapshots (`far`).
+- **Dashes**: where a run of our plan goes straight to or from Athena (`DASH`: Paradeigma I and II), the run carries
+  that stretch (`engine.Move.dash`), and a dash along it saves its running (`engine.dash`): a gap closer down to her
+  hitbox edge (`ATHENA_EDGE`, 10.5 y: every Red Mage's Corps-a-corps from 11-19 y out lands there in our pulls), a
+  backstep from beside her its length (a shorter stretch it overshoots, and the walk back counts). Free time already in
+  the window counts as run along the path first. Superchain I's paths depend on the spheres' layout and Paradeigma
+  III's floor falls, so they have none; the clears' windows have no geometry.
 
 `python tools/rotation/p12s.py` lists every window with its source and compares our plan's distances with what the
 clears ran (within about ±30%: ours runs more in Paradeigma I-III, less in Superchain I).
@@ -429,12 +445,15 @@ Bard it tests Repertoire under each song and Army's Muse on hand-made states, an
 nothing at Athena while she is away and score the same as standing still. For the Red Mage it tests Dualcast,
 Acceleration's priority, the expected procs and reach at a far spot (with and without Manafication) on hand-made states,
 and replays quick R1 and R2 searches like the Black Mage's, plus no melee action at a far spot without Manafication.
+Dashes: Corps-a-corps waits for its run to open and saves the stretch, saves nothing once the free time has covered it,
+and waits at a far spot for the snapshot; Displacement only once the path before its stretch is behind, and overshooting
+a short stretch; in the searches no dash saves more than its stretch allows, and the replay counts what they saved.
 
 ## Files
 
 | File | Role |
 |---|---|
-| `engine.py` | timing (GCD, casts, slidecast, weaving), raid buffs, move windows, downtime, beam search |
+| `engine.py` | timing (GCD, casts, slidecast, weaving), raid buffs, move windows and the dashes along them, downtime, beam search |
 | `jobs/blm.py` | Black Mage: gauge, MP, procs, cooldowns, potencies, Ley Lines' circle |
 | `jobs/rpr.py` | Reaper: Soul and Shroud gauges, Enshroud, combos, positionals, Death's Design, auto-attacks |
 | `jobs/mnk.py` | Monk: forms, Fury, Perfect Balance, beast chakra and Nadi, chakra, positionals, auto-attacks |

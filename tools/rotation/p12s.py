@@ -119,6 +119,18 @@ DEFAULT_VAR = {"Paradeigma II": "tether", "Superchain I": "spread", "Paradeigma 
 # behind the last cluster (mechanics/superchain-1.js: 110 px beyond the cluster, 12 y out, and 44 px aside: ~21.5 y).
 # Every other spot of the plan is within reach.
 FAR = {("Paradeigma I", "R1", 0): 18.3, ("Paradeigma I", "R2", 1): 18.3, ("Superchain I", "spread", 4): 21.5}
+# Stretches of our plan's ranged runs a dash can cover (engine.Move.dash), (mechanic, variant, run index) -> [(kind,
+# yalms of the run before it, yalms from Athena's centre where it starts or ends)]. "in": straight toward Athena from
+# that far out; a gap closer lands at her hitbox edge (ATHENA_EDGE: Red Mages' Corps-a-corps from 11-19 y out all land
+# at 10.5 y in our pulls). "out": straight away from her, from beside her, to that far out (a backstep). Only runs that
+# go straight to or from her: Superchain I's paths depend on the spheres' layout, and Paradeigma III's floor falls.
+ATHENA_EDGE = 10.5
+DASH = {("Paradeigma I", "R1", 0): [("out", 0.0, 18.3)],        # Athena -> the wall end of the bait line
+        ("Paradeigma I", "R1", 1): [("in", 0.0, 18.3)],         # the wall end -> through the middle -> far half
+        ("Paradeigma I", "R2", 0): [("out", 0.0, 8.3)],         # Athena -> the stack on the far half
+        ("Paradeigma I", "R2", 1): [("out", 7.9, 18.3)],        # far half -> the middle -> the wall end
+        ("Paradeigma II", "tether", 0): [("out", 0.0, 13.3)],   # stretch the tether straight across
+        ("Paradeigma II", "debuff", 0): [("out", 0.0, 14.3)]}   # the Soul out to your quadrant spot
 # the major mechanics as the site's timeline marks them: when their boss cast's bar starts
 MECHANICS = [("Paradeigma#0.begin", "Paradeigma I"), ("Paradeigma#1.begin", "Paradeigma II"), ("Glaukopis#0.begin", "Glaukopis"),
              ("Superchain Theory I#0.begin", "Superchain I"), ("Peridialogos#0.begin", "Dialogos"),
@@ -387,12 +399,21 @@ def out_of_reach(slot="R1", var=None, data=None, far_spots=False):
     return away(slot, var, data) if melee(slot) else far(slot, var, data) if far_spots else []
 
 
+def dashes(mech, src, what):
+    """A plan run's dash segments for engine.Move.dash (DASH): (kind, yalms before it, its length)."""
+    if not src.startswith("plan, "): return ()
+    v = src[len("plan, "):]
+    i = next((k for k, run in enumerate(PLAN[mech].get(v, ())) if run[3] == what), None)
+    return tuple((kind, before, r - ATHENA_EDGE if kind == "in" else r) for kind, before, r in DASH.get((mech, v, i), ()))
+
+
 def moves(slot="R1", var=None, data=None):
     """The windows as engine Moves; a run that can't fit its window is clipped to standing still through it."""
     out = []
     for lo, hi, y, mech, what, src in windows(slot, var, data):
         need = min(y / RUN, hi - lo)
-        out.append(Move(lo, hi, need, relocate=y > REACH, why=f"{mech}: {what} ({y:.0f} y; {src})"))
+        out.append(Move(lo, hi, need, relocate=y > REACH, why=f"{mech}: {what} ({y:.0f} y; {src})",
+                        dash=dashes(mech, src, what)))
     return out
 
 
