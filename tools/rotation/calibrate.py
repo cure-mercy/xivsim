@@ -103,22 +103,34 @@ def cut_of(p, until=None):
 
 def gcd_of(p):
     """The player's unhasted GCD: the most common spacing of consecutive GCD starts outside Ley Lines and the job's other
-    hasting statuses (over the job's permanent haste, if it has one)."""
+    hasting statuses (over the job's permanent haste, if it has one). A job whose haste status is up nearly all the time
+    (Viper's Swiftscaled) lists it in HASTED instead, {status: factor}: gaps starting under it are divided by it; and
+    GCD_BASE, {action: recast}, scales the gap after a GCD with a recast other than 2.5 s."""
     n = p["names"]
     h = getattr(J, "HASTE", 1.0)
-    spans = []
-    for status in ("Ley Lines",) + getattr(J, "HASTE_STATUSES", ()):
+    base = getattr(J, "GCD_BASE", {})
+
+    def spans_of(status):
         ev = [x["t"] for x in p["buffs"] if n[str(x["abilityGameID"])] == status and x["type"] in ("applybuff", "removebuff")]
-        spans += zip(ev[0::2], ev[1::2])
+        return list(zip(ev[0::2], ev[1::2] + [math.inf]))     # a status still on at the end of the pull
+    spans = [w for status in ("Ley Lines",) + getattr(J, "HASTE_STATUSES", ()) for w in spans_of(status)]
+    hasted = [(spans_of(status), f) for status, f in getattr(J, "HASTED", {}).items()]
     inll = lambda t: any(a <= t < b for a, b in spans)
+
+    def unhasted(a, b, name):
+        g = (b - a) / h * 2.5 / base.get(name, 2.5)
+        for w, f in hasted:
+            if any(x <= a < y for x, y in w): g /= f
+        return g
     starts, lb = [], {}
     for x in p["casts"]:
         name = n[str(x["abilityGameID"])]
         if x["type"] == "begincast": lb[name] = x["t"]; continue
         if x["type"] == "cast" and name in J.GCDS:
             b = lb.pop(name, None)
-            starts.append(b if b is not None and x["t"] - b < 4 else x["t"])
-    gaps = sorted(round((b - a) / h, 2) for a, b in zip(starts, starts[1:]) if 2.0 <= (b - a) / h <= 2.6 and not inll(a))
+            starts.append((b if b is not None and x["t"] - b < 4 else x["t"], name))
+    gaps = sorted(round(g, 2) for (a, na), (b, _) in zip(starts, starts[1:])
+                  for g in [unhasted(a, b, na)] if 2.0 <= g <= 2.6 and not inll(a))
     return gaps[len(gaps) // 4] if gaps else None     # lower quartile: clean back-to-back GCDs, not delayed ones
 
 
@@ -193,7 +205,7 @@ def damage_check(L, until=None):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--job", default="blm", help="job model in jobs/ (blm, rpr, mnk, brd, drg)")
+    ap.add_argument("--job", default="blm", help="job model in jobs/ (blm, rpr, mnk, brd, drg, rdm, vpr)")
     ap.add_argument("--since", default=None, help="first day of logs used (default: the job model's)")
     ap.add_argument("--until", type=float, default=None, help="end of the replay, s (default: the whole pull)")
     ap.add_argument("--ours", action="store_true", help="our groups' clean pulls instead of the benchmark clears")

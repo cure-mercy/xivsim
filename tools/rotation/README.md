@@ -2,8 +2,8 @@
 
 Searches for the highest-potency rotation of a job over P12S phase 1 (level 90), from the pull to the kill, with the
 fight's fixed timeline: when Athena can't be hit, and where the player has to run under our groups' strategy. So far:
-Black Mage, Reaper, Monk, Bard, Dragoon and Red Mage (Monk and Bard not yet checked against logs, Dragoon and Red Mage
-only against the scorecard's cached events: see their sections).
+Black Mage, Reaper, Monk, Bard, Dragoon, Red Mage and Viper (Monk and Bard not yet checked against logs, Dragoon, Red
+Mage and Viper only against the scorecard's cached events: see their sections).
 
 ```
 python tools/rotation/solve.py                                # R1, 2.32 s GCD, no raid buffs, 0:00 to the median kill (449 s)
@@ -15,6 +15,7 @@ python tools/rotation/solve.py --job mnk [--crit 0.25]        # Monk, a 1.94 s G
 python tools/rotation/solve.py --job brd                      # Bard, 2.49 s GCD, R1 (R2 and standing still come out the same)
 python tools/rotation/solve.py --job drg [--slot M2]          # Dragoon, 2.49 s GCD, M1 by default
 python tools/rotation/solve.py --job rdm [--slot R2]          # Red Mage, 2.50 s GCD, R1 by default
+python tools/rotation/solve.py --job vpr [--slot M2]          # Viper, 2.49 s GCD (2.12 s under Swiftscaled), M1 by default
 python tools/rotation/p12s.py [--slot R2]                     # the move windows; --build refetches the timeline
 python tools/rotation/check.py                                # movement and downtime checks
 python tools/rotation/calibrate.py [--job rpr] [--ours]       # check the job model against the clears' (or our) logs
@@ -25,7 +26,7 @@ python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceil
 
 | Option | Meaning |
 |---|---|
-| `--job` | `blm` (default), `rpr`, `mnk`, `brd`, `drg` or `rdm` |
+| `--job` | `blm` (default), `rpr`, `mnk`, `brd`, `drg`, `rdm` or `vpr` |
 | `--gcd` | the player's GCD without haste (spell or skill speed; default the clears' median); `--compare` prints each clear's. Monk's Greased Lightning takes 20% off it |
 | `--crit` | critical-hit rate, for a job whose resources or buffs turn on crits (Monk's chakra, Dragoon's Life Surge and Battle Litany; default 0.25) |
 | `--slot` | Paradeigma I: `R1` / `M1` line up for the first lasers, `R2` / `M2` for the second (our BLMs play both R slots; the melee slot varies with the lineup). Default `R1`, or `M1` for a melee |
@@ -36,7 +37,7 @@ python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceil
 | `--pot` | allow one tincture (off by default: the scorecard strips tinctures) |
 | `--carry` | also value resources still held at the end, instead of dumping everything |
 | `--until` | end of the scored window, seconds (default: the clears' median kill, 449 s; enrage is 458 s) |
-| `--width` | beam width per heuristic setting (default: the job's, 1,000 for BLM and RDM, 3,000 for RPR, MNK, BRD and DRG) |
+| `--width` | beam width per heuristic setting (default: the job's, 1,000 for BLM and RDM, 3,000 for RPR, MNK, BRD, DRG and VPR) |
 | `--compare` | replay every benchmark clear's logged rotation under the same buffs, downtime and window |
 
 Damage is in potency (Xenoglossy 890) times the raid buffs active when each hit lands; crit and direct-hit buffs count
@@ -254,6 +255,64 @@ The clears' own rotations, replayed standing still over 0:00-380 s, deal 93-97% 
 
 What the logs couldn't settle, to be tested in game: [rdm-in-game-tests.md](rdm-in-game-tests.md).
 
+## Viper
+
+`jobs/vpr.py`, from the job guide and the patch notes since 7.0, checked like the Dragoon and Red Mage **in the
+scorecard's cached damage events** (FFLogs was down): our groups' 249 pulls by six Vipers (Sep-Oct 2026) and the 24
+benchmark clears with one. Unlike the other jobs, no Viper trait above level 90 raises a potency (Melee Mastery is level
+74, Melee Mastery II 84), so the guide's numbers hold at level 90 as they stand; what level 90 lacks is Uncoiled
+Twinfang and Twinblood (92), the fifth Anguine Tribute and Ouroboros (96) and the Legacies (100). Each action's plain-hit
+cluster, Hunter's Instinct divided out and others' raid buffs left out, scaled to Death Rattle (280), matches the guide
+within ~1%: Vicewinder 543 (540 since 7.5), the Coils 686 / 626 (680 / 630), Reawaken 758 (750), the Generations 680,
+the bites 170, Uncoiled Fury 684 (680). Auto-attacks are 80 potency. FFLogs' bonusPercent tells the positionals apart:
+a Coil's +50 shows as 7%, a finisher with its venom as 48% from the right side and 40% from the wrong one.
+
+Rules from the logs the guide doesn't give:
+
+- GCD recasts: the twinblade GCDs (Vicewinder, the Coils) 3.0 s, Uncoiled Fury 3.5 s, Reawaken 2.2 s, the Generations
+  2.0 s, the rest 2.5 s, all scaled by skill speed and by Swiftscaled's 15%. The GCD that grants Swiftscaled isn't
+  hasted by it. Vicewinder's 40 s and Serpent's Ire's 120 s are not scaled;
+- statuses come on with the cast, after its hit: a Hunter's Sting doesn't get the Hunter's Instinct it grants. Hunter's
+  Instinct and Swiftscaled are refreshed to 40 s (not extended), so both lapse over Palladion's 44 s;
+- the Coils, Uncoiled Fury and the Generations don't break the dual-wield combo, and other GCDs don't end Vicewinder's
+  Coils; Death Rattle and the bites are lost with the next weaponskill (no log uses one later);
+- Reawaken grants four Anguine Tribute at level 90 (717 windows of four Generations, none of five); other GCDs may come
+  inside Reawakened (two logs fit Uncoiled Fury in before the First Generation);
+- Rattling Coils start at none: every first Uncoiled Fury follows a Vicewinder and Serpent's Ire.
+
+Every cast in our 248 pulls (19,899 casts, to each player's first death) replays as legal through `calibrate.replay`,
+and in the benchmark clears all but a second tincture; 6 GCDs start more than 0.15 s early in all. A control with
+broken rules (Reawaken at 60 Offerings, Vicewinder on 45 s, Serpent's Ire on 125 s, three Tribute, Swiftscaled 10%,
+Generations on 2.2 s) shows each as illegal or early casts; the first confirms the gauge (+10 a finisher, +5 a Coil).
+`calibrate.py --job vpr` itself and `dps.py --job vpr` need FFLogs' full logs. Swiftscaled is up nearly all fight, so
+`calibrate.gcd_of` takes the job's `HASTED` statuses' gaps divided by their haste and scales the gaps after the longer
+GCDs (`GCD_BASE`) instead of leaving them out; our Vipers' unhasted GCDs come out at 2.43-2.49 s.
+
+- **Dual-wield combo**: Steel or Reaving Fangs (the Honed one 300) -> Hunter's Sting (Hunter's Instinct, +10%) or
+  Swiftskin's Sting (Swiftscaled) -> a flank or rear finisher, whose venom makes the next in the cycle Flanksting ->
+  Hindsting -> Flanksbane -> Hindsbane 500 from its side. Each finisher gives Death Rattle and 10 Serpent Offerings.
+- **Twinblade**: Vicewinder -> both Coils in either order (680 from the side), each followed by its two bites (170 in
+  the right order); Uncoiled Fury (20 y) spends the Rattling Coils Vicewinder and Serpent's Ire grant. Reawaken spends 50
+  Offerings or Serpent's Ire's Ready to Reawaken for four Generations at 680.
+- **Search policy**: Death Rattle and the bites are always woven when they fit; under Reawakened only the next
+  Generation is offered. Uncoiled Fury (~250 potency a second) about ties the filler (~275), and offering it at every
+  step filled the beam with orderings of one rotation; it's offered at three Rattling Coils, out of reach or close to it,
+  before downtime, near the window's end and under raid buffs. That alone took the best rotation at width 3,000 to width
+  8,000's.
+- **Ranking**: each held resource is valued at what it converts into, less the time its GCDs take, so spending it leaves
+  the rank where it was; values 1.5 times those lose ~5% (the beam holds Coils and Offerings). Held values fade over
+  the window's last 15 s: a state that never spent its last 50 Offerings otherwise ranked well to the end. Rates below
+  the filler's own (~275 a second) make time look cheap and lose ~1.5%.
+- **Movement**: as for the Reaper. Melee actions (3 y), and Death Rattle, the bites and Reawaken (5 y), need reach;
+  Uncoiled Fury and Writhing Snap reach from anywhere.
+
+Over the whole phase the best rotation deals 145,130 potency in both `M1` and `M2` (the six settings within 0.5%);
+standing still 145,714, so our strategy costs a Viper 0.4%, within the search's noise and the least of the melee jobs.
+Six True Norths cover all ten positionals in the fixed spots, and Uncoiled Fury and the twinblade GCDs' 3 s gaps cover
+every stretch out of reach. It opens with Vicewinder, Serpent's Ire, both Coils and Reawaken on Ready to Reawaken, and
+makes 12 Reawakens in the phase. The clears' own rotations, replayed standing still over 0:00-380 s, deal 90-96% of the
+search's best (our pulls over 0:00-2:00: 92-99%). A search takes ~55 s.
+
 ## The fight
 
 `p12s.py` holds P12S P1 as the optimizer plays it; `p12s_p1.json` is built from six benchmark clears (`--build`).
@@ -365,7 +424,7 @@ no MP (4 of 4 such casts), and the Polyglot timer starts when the first fire or 
 variant from their history: each window gets its running time outside cast bars, and nothing is cast at Athena while
 she is away. A standing-still rotation, as a control, breaks several windows. For the Reaper it also tests the reach
 rule and positionals on hand-made windows, and replays quick M1 and M2 searches: every away window must hold a stretch
-of its length without a melee action (the standing-still rotation breaks one); the same for Monk and Dragoon. For the
+of its length without a melee action (the standing-still rotation breaks one); the same for Monk, Dragoon and Viper. For the
 Bard it tests Repertoire under each song and Army's Muse on hand-made states, and that quick R1 and R2 searches cast
 nothing at Athena while she is away and score the same as standing still. For the Red Mage it tests Dualcast,
 Acceleration's priority, the expected procs and reach at a far spot (with and without Manafication) on hand-made states,
@@ -382,6 +441,7 @@ and replays quick R1 and R2 searches like the Black Mage's, plus no melee action
 | `jobs/brd.py` | Bard: songs, Repertoire, Soul Voice, Coda and Radiant Finale, Army's Muse, DoTs, Hawk's Eye, auto-attacks |
 | `jobs/drg.py` | Dragoon: the two combos, Draconian Fire and Focus, Life of the Dragon, jumps, Life Surge, DoT, positionals, auto-attacks |
 | `jobs/rdm.py` | Red Mage: Dualcast, mana, the melee combo and finishers, Manafication, Acceleration, expected procs, reach at far spots |
+| `jobs/vpr.py` | Viper: the dual-wield combo, Honed and venoms, Vicewinder's Coils and bites, Rattling Coils, Serpent Offerings, Reawaken, Swiftscaled haste, positionals, auto-attacks |
 | `p12s.py`, `p12s_p1.json` | the fight: timeline, downtime, our strategy's runs, the clears' runs elsewhere |
 | `solve.py` | command line |
 | `logs.py` | detailed per-player logs from the benchmark clears, cached in `.cache/` |

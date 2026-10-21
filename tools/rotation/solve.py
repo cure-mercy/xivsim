@@ -1,6 +1,6 @@
 """Searches for the highest-damage rotation of a job over P12S phase 1 and prints it.
 
-    python tools/rotation/solve.py [--job blm|rpr|mnk|brd|drg|rdm] [--gcd 2.32] [--until 449] [--slot R1] [--var para2=debuff]
+    python tools/rotation/solve.py [--job blm|rpr|mnk|brd|drg|rdm|vpr] [--gcd 2.32] [--until 449] [--slot R1] [--var para2=debuff]
                                    [--party AST,SCH,DRG,DNC] [--still] [--move 30-36] [--pot] [--carry] [--width 1000]
                                    [--compare]
 
@@ -16,10 +16,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
 import engine, p12s                              # noqa: E402
 from engine import Move                          # noqa: E402
-from jobs import blm, brd, drg, mnk, rdm, rpr    # noqa: E402
+from jobs import blm, brd, drg, mnk, rdm, rpr, vpr    # noqa: E402
 
 JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard"),
-        "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage")}
+        "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage"), "vpr": (vpr, "Viper")}
 CRIT, CRIT_DMG, DH = 0.25, 1.60, 0.36            # typical rates at this gear level, for the value of crit and direct hit buffs
 BUFFS = {   # name: (job, multiplier)
     "Divination": ("AST", 1.06), "Technical Finish": ("DNC", 1.05), "Brotherhood": ("MNK", 1.05), "Embolden": ("RDM", 1.05),
@@ -83,7 +83,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--job", default="blm", choices=sorted(JOBS))
     ap.add_argument("--gcd", type=float, default=None, help="GCD length without haste, from the player's spell or skill speed "
-                    "(default: the benchmark clears' median, 2.32 s for BLM, 2.49 s for RPR, BRD and DRG, 2.50 s for RDM; Monk's 20%% "
+                    "(default: the benchmark clears' median, 2.32 s for BLM, 2.49 s for RPR, BRD, DRG and VPR (2.12 s under Swiftscaled), 2.50 s for RDM; Monk's 20%% "
                     "Greased Lightning comes off it: 2.43 s is a 1.94 s GCD)")
     ap.add_argument("--crit", type=float, default=None, help="critical-hit rate, for jobs whose resources or buffs "
                     "turn on critical hits (Monk's chakra, Dragoon's Life Surge and Battle Litany; default 0.25)")
@@ -97,7 +97,7 @@ def main():
     ap.add_argument("--pot", action="store_true", help="allow one tincture")
     ap.add_argument("--carry", action="store_true", help="also value resources still held at the end")
     ap.add_argument("--width", type=int, default=None, help="beam width: states kept per step, per heuristic setting "
-                    "(default: the job's, 1,000 for BLM and RDM, 3,000 for RPR, MNK, BRD and DRG)")
+                    "(default: the job's, 1,000 for BLM and RDM, 3,000 for RPR, MNK, BRD, DRG and VPR)")
     ap.add_argument("--compare", action="store_true", help="replay the clears' logged rotations under the same buffs")
     a = ap.parse_args()
     job, jobname = JOBS[a.job]
