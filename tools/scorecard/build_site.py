@@ -119,7 +119,10 @@ def main():
     ap.add_argument("--reanalyse", action="store_true", help="analyse every report already on the site again (after a classifier or label change)")
     ap.add_argument("--publish", nargs="?", const=str(PUBLISH_DIR), metavar="DIR",
                     help=f"also write the passphrase-protected copy for public hosting (default {PUBLISH_DIR})")
+    ap.add_argument("--cached", action="store_true", help="use the cache only: skip parts a cached report is missing "
+                    "(e.g. the rDPS raid buffs gave others) instead of fetching them, for when FFLogs is down")
     a = ap.parse_args()
+    S.CACHED_ONLY = a.cached
     bench = json.loads((HERE / "benchmark.json").read_text())
     site = json.loads(DATA.read_text(encoding="utf-8")) if DATA.exists() else {"reports": {}}
     for code in a.remove or []:

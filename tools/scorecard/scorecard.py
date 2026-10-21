@@ -14,6 +14,7 @@ from classifier import Pull, classify, infer_light_parties
 HERE = Path(__file__).resolve().parent
 P1, SAVAGE, DD = 91, 101, 1002911
 WINDOW = 120                     # seconds of damage measured from the pull, on pulls clean that long
+CACHED_ONLY = False              # build_site --cached: don't fetch parts a cached report lacks
 ROLES = ["Tank", "Healer", "Melee", "Ranged", "Caster"]
 ROLE = {"Paladin": "Tank", "Warrior": "Tank", "DarkKnight": "Tank", "Gunbreaker": "Tank", "WhiteMage": "Healer", "Scholar": "Healer",
         "Astrologian": "Healer", "Sage": "Healer", "Monk": "Melee", "Dragoon": "Melee", "Ninja": "Melee", "Samurai": "Melee", "Reaper": "Melee",
@@ -141,6 +142,7 @@ def fetch(code, refresh, bench):
                                 ("tables_given", lambda: fetch_tables(data, [f for f in data["fights"] if str(f["id"]) in data["tables"]]),
                                  "the rDPS raid buffs gave others")):
             if key not in data:   # reports cached before this part existed
+                if CACHED_ONLY: print(f"  {code}: no {what} in the cache, left out (--cached)", file=sys.stderr); continue
                 print(f"  {code}: fetching {what}", file=sys.stderr); fill(); cf.write_text(json.dumps(data))
         return data
     meta = fflogs.gql('''query($c:String!){reportData{report(code:$c){title startTime
@@ -399,6 +401,8 @@ def analyse(group, data, bench):
                                                   given=round(y.get("given", 0)))
                                              for fid, rows in data["tables"].items() for y in rows if y["name"] == name and y["job"] == job],
                                 ceiling=ceil.get(job, {}).get(name, {}).get("ceiling"),
+                                ceiling_gcd=ceil.get(job, {}).get(name, {}).get("gcd"),
+                                ceiling_rotation=ceil.get(job, {}).get(name, {}).get("rotation"),
                                 dead_s=dead_s[name], lost_suffered=suffered[name], lost_caused=caused[name],
                                 lost_caused_by=dict(caused_by[name]), phases=phases, rotation=rotation.get((name, job)),
                                 pull_detail=pull_detail(name, job)))

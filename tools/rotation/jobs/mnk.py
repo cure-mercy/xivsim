@@ -394,8 +394,9 @@ def expand(s, fight):
                 out.append(n)
             down = not fight.targetable(now)
             if not combo and (not any_gcd or down):
-                back = fight.back_up(now) if down else now
-                for to in {now + 0.5 if not down else back, back - 2.5 if back - 2.5 > now + 0.5 else back}:
+                # boss away: straight to when it is back, or to just before (a Form Shift to come back formless)
+                back = fight.back_up(now)
+                for to in ({back} | ({back - 2.5} if back - 2.5 > now + 0.5 else set())) if down else {now + 0.5}:
                     w = c.copy(); w.t = w.gcd = to
                     w.log(c.t, "(boss away)" if down else "(wait)"); out.append(w)
     return out

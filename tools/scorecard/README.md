@@ -23,6 +23,7 @@ in the order given. A report already on the site is analysed again and keeps its
 | `--reanalyse` | Analyses every report already on the site again from the cache. Needed after the classifier or the cause labels change, since the site stores what it was built with. |
 | `--remove CODE` | Removes a report from the site. |
 | `--publish [DIR]` | Also writes the passphrase-protected copy for public hosting (see below). |
+| `--cached` | Uses the cache only: parts a cached report is missing (such as the rDPS raid buffs gave others) are left out instead of fetched. For when FFLogs is down; a normal run later fills them in. |
 
 A report takes a few seconds the first time and is cached in `.cache/` afterwards. The page needs a web server
 because it loads `data.json`; opening `index.html` straight from disk will not work. `site/data.json` holds
@@ -172,7 +173,8 @@ For jobs the rotation optimizer covers (`tools/rotation`: Black Mage and Reaper 
 marks each pull with a ceiling: the best rotation without raid buffs at the player's GCD over 0:00-2:00, converted to
 their DPS (their damage per potency and crit / direct-hit gain from their own hits), the same for every pull, plus what
 that pull's raid buffs added to the other players' damage (FFLogs' rDPS given: a Reaper's Arcane Circle), which rDPS
-credits to them. The table view splits the two. To refresh the ceilings, run
+credits to them. The table view splits the two. The player page's Optimized rotation section shows the rotation behind
+the ceiling: every GCD at its start time with the oGCDs woven after it. To refresh the ceilings, run
 `python tools/rotation/dps.py --job blm --site` (and `--job rpr`), then `build_site.py --reanalyse`.
 
 ### Damage by phase

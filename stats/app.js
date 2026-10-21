@@ -1054,6 +1054,24 @@ function playerPage(day, group, name) {
               at(s.t_clears), el("span", { class: s.late != null ? "bad" : null }, at(s.t_theirs))]), [1, 2, 3, 4]));
       })));
   }
+  // the optimizer's best rotation at their GCD (tools/rotation), the one behind the ceiling on the clean-pulls chart
+  const optEntries = entries.filter(e => e.ceiling_rotation && e.ceiling_rotation.length);
+  if (optEntries.length) {
+    const clock = t => t < 0 ? `−${Math.abs(t).toFixed(1)} s` : `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;   // pre-cast before the pull
+    app.append(heading("h2", "Optimized rotation", "The highest-damage rotation the optimizer (tools/rotation) finds for 0:00–2:00 at their GCD, played standing still and without anyone's raid buffs: the rotation behind the ceiling on the rDPS on clean pulls chart, the same for every pull. Each row is a GCD at the time it starts, with the oGCDs woven after it. It is the best for their own damage; a party's buff windows may favour holding a resource a little longer."),
+      el("div", { class: "grid wide" }, ...optEntries.map(e => {
+        const rows = [];
+        for (const [t, name, kind] of e.ceiling_rotation) {
+          if (kind === "g" || !rows.length) rows.push({ t, gcd: kind === "g" ? name : "", weaves: kind === "g" ? [] : [name] });
+          else rows[rows.length - 1].weaves.push(name);
+        }
+        const nG = rows.filter(r => r.gcd).length;
+        return card(`${JOB[e.job] || e.job} optimized rotation`,
+          `${nG} GCDs at their ${e.ceiling_gcd ? e.ceiling_gcd.toFixed(2) + " s " : ""}GCD; ceiling ${num(e.ceiling)} DPS before raid buffs given to others.`,
+          () => el("div", { class: "table-wrap" }, tableOf(["Time", "GCD", "Woven after it"], rows.map(r => [clock(r.t), r.gcd, r.weaves.join(" · ")]), [0])),
+          () => tableOf(["Time", "Action", ""], e.ceiling_rotation.map(([t, name, kind]) => [clock(t), name, kind === "g" ? "GCD" : "oGCD"]), [0]));
+      })));
+  }
   // rotation checks against the clears over the same stretch of fight
   const rotEntries = entries.filter(e => e.rotation && !e.rotation.opener_only);
   if (rotEntries.length) {
