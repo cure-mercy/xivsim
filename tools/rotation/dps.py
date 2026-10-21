@@ -1,6 +1,6 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
-    python tools/rotation/dps.py [--job blm|rpr|mnk|brd] [--clears] [--site [--gcds 2.30,2.40]]
+    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg] [--clears] [--site [--gcds 2.30,2.40]]
 
 Per player, from their clean pulls (alive through 2:00):
   damage per potency   their plain hits (no crit, no direct hit), external buffs divided out, over the model potency
@@ -9,7 +9,8 @@ Per player, from their clean pulls (alive through 2:00):
                        crit or direct-hit raid buff for the ceiling (rDPS credits those buffs to their givers)
   DoT ticks            FFLogs reports ticks without crit or direct-hit flags; they count at the player's average tick
   sure crits           hits that always crit (Monk's Bootshine in opo-opo form) count at their own average over the
-                       model potency
+                       model potency; those a buff makes sure (Dragoon's Life Surge) the model counts at their
+                       expected worth, and they are left out of the crit / direct-hit gain
   GCD                  their unhasted GCD, from back-to-back casts
 Check: each pull's logged casts, replayed through the model without buffs and converted, against the pull's logged
 damage (buffs divided out) and against the scorecard's rDPS.
@@ -18,24 +19,27 @@ the job that gave it, so for a job without raid buffs rDPS is its damage with ot
 unbuffed rotation is the rDPS ceiling. A job with a raid buff (Reaper's Arcane Circle) also gets credit for what it
 added to the others' damage: the ceiling here leaves that out, and the scorecard site adds each pull's own credit to
 it. The rotation stays the one unbuffed optimum. 0:00-2:00 is played with our strategy's runs (p12s.py), at their worst:
-the Paradeigma I slot of the job's role with the most running (R1 / R2, or M1 / M2) and each mechanic's variant with the
-most, so the rotation holds whichever the player is given.
+the Paradeigma I slot of the job's role with the most running before Palladion (R1 / R2, or M1 / M2) and each mechanic's
+variant with the most, so the rotation holds whichever the player is given.
 
 --site writes each of our players' ceiling to .cache/ceilings.json, and the optimized rotations behind them, one per GCD
 (plus any --gcds), to .cache/rotations.json with the fight's timeline (mechanics, runs, out of reach), where the
-scorecard's build_site.py picks both up. A rotation's expected DPS
+scorecard's build_site.py picks both up. The site's rotations run on from the pull until Palladion takes Athena away
+(ROT_UNTIL, ~4:41): a second search per GCD, since the engine scores a whole window and a rotation that goes on holds
+resources a 0:00-2:00 one spends. Each also carries its 0:00-2:00 ceiling. A rotation's expected DPS
 is converted at the median of our players' damage per potency and gains on the job, so GCDs compare with each other.
 """
-import argparse, collections, json, statistics as st, sys
+import argparse, collections, json, re, statistics as st, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
 import calibrate, engine, logs, p12s            # noqa: E402
 from engine import Fight                         # noqa: E402
-from jobs import blm, brd, mnk, rpr              # noqa: E402
+from jobs import blm, brd, drg, mnk, rpr         # noqa: E402
 
-JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard")}
+JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard"),
+        "drg": (drg, "Dragoon")}
 SITE_FILE = HERE / ".cache" / "ceilings.json"
 ROT_FILE = HERE / ".cache" / "rotations.json"
 WINDOW = 120
@@ -50,25 +54,32 @@ def rates(pulls):
     return sum(x.get("hitType") == 2 for x in hits) / len(hits), sum(bool(x.get("directHit")) for x in hits) / len(hits)
 
 
-def natural_crit(pulls, skip=()):
+def no_sure(job):
+    """p -> {(time, ability id)} of the hits in pull p that a buff made sure crits (the job's sure_crits: Dragoon's Life Surge),
+    left out with the AUTO_CRIT actions when measuring a player's own crit rate and gain."""
+    return getattr(job, "sure_crits", lambda p: ())
+
+
+def natural_crit(pulls, skip=(), sure=lambda p: ()):
     """The player's own critical-hit rate: hits under no crit raid buff, without the actions that always crit."""
-    hits = [x for p in pulls for x in p["hits"] if x["type"] == "damage" and not x.get("tick") and x.get("amount", 0) > 0
-            and p["names"][str(x["abilityGameID"])] not in skip and not CRIT_BUFFS & set((x.get("buffs") or "").strip(".").split("."))]
+    hits = [x for p in pulls for gone in [set(sure(p))] for x in p["hits"] if x["type"] == "damage" and not x.get("tick")
+            and x.get("amount", 0) > 0 and p["names"][str(x["abilityGameID"])] not in skip
+            and not CRIT_BUFFS & set((x.get("buffs") or "").strip(".").split(".")) and (x["t"], x["abilityGameID"]) not in gone]
     return sum(x.get("hitType") == 2 for x in hits) / len(hits)
 
 
-def crit_gain(pulls, unbuffed=False, skip=()):
+def crit_gain(pulls, unbuffed=False, skip=(), sure=lambda p: ()):
     """The player's average direct hit over their average plain hit (no crit, no direct hit), per action and weighted
     by hits, in 0:00-2:00. `unbuffed`: only hits under no crit or direct-hit raid buff. (A formula from the crit rate
     overshoots by up to 3% when others' crit buffs raise the rate but not the crit damage.)"""
     allh, plain = collections.defaultdict(list), collections.defaultdict(list)
     for p in pulls:
-        n = p["names"]
+        n, gone = p["names"], set(sure(p))
         for x in p["hits"]:
             if x["type"] != "damage" or x.get("tick") or not 0 <= x["t"] < WINDOW or x.get("amount", 0) <= 0: continue
             if unbuffed and CRIT_BUFFS & set((x.get("buffs") or "").strip(".").split(".")): continue
             a, v = n[str(x["abilityGameID"])], x["amount"] / x.get("multiplier", 1)
-            if a in skip: continue
+            if a in skip or (x["t"], x["abilityGameID"]) in gone: continue
             allh[a].append(v)
             if x.get("hitType") == 1 and not x.get("directHit"): plain[a].append(v)
     use = [a for a in allh if len(plain[a]) >= 5]
@@ -99,37 +110,40 @@ def sure_gain(job, pulls, k, unbuffed=False):
     return st.mean(v) / k if v else None
 
 
-def convert(s, k, e, et, ec=None):
+def convert(s, k, e, et, ec=None, window=WINDOW):
     """DPS over the window from a simulated state: direct hits at the expected crit/direct-hit gain, ticks and sure
     crits at theirs."""
     dot, sure = getattr(s, "dotp", 0.0), getattr(s, "critp", 0.0)
-    return k * (e * (s.dmg - dot - sure) + et * dot + (ec or e) * sure) / WINDOW
+    return k * (e * (s.dmg - dot - sure) + et * dot + (ec or e) * sure) / window
 
 
 _ceiling, _fight = {}, {}
+ROT_UNTIL = p12s.load()["untargetable"][0][0]   # the site's rotations: until Palladion takes Athena away (281.65 s)
 
 
-def site_fight(job):
-    """(slot, Fight) the ceilings are searched in: 0:00-2:00 with our strategy's runs for the role's slot with the most
-    running, each mechanic's variant with the most (p12s's default)."""
-    if job.__name__ not in _fight:
-        slot = p12s.worst_slot(getattr(job, "MELEE", False), WINDOW)
-        _fight[job.__name__] = (slot, p12s.fight(slot, until=WINDOW))
-    return _fight[job.__name__]
+def site_fight(job, until=WINDOW):
+    """(slot, Fight) the ceilings (and the site's rotations, until ROT_UNTIL) are searched in, with our strategy's runs
+    for the role's slot with the most running before Palladion, each mechanic's variant with the most (p12s's
+    default)."""
+    if (job.__name__, until) not in _fight:
+        slot = p12s.worst_slot(getattr(job, "MELEE", False), ROT_UNTIL)
+        _fight[job.__name__, until] = (slot, p12s.fight(slot, until=until))
+    return _fight[job.__name__, until]
 
 
-def timeline(job):
-    """The site's timeline of the ceilings' fight over 0:00-2:00: major mechanics' starts, the runs (lo, hi, seconds
-    needed, yalms, mechanic, what, source), a melee's stretches out of reach and spots fixed by the plan, boss away."""
-    slot, f = site_fight(job)
+def timeline(job, until=ROT_UNTIL):
+    """The site's timeline of the fight its rotations are searched in: major mechanics' starts, the runs (lo, hi,
+    seconds needed, yalms, mechanic, what, source), a melee's stretches out of reach and spots fixed by the plan, boss
+    away."""
+    slot, f = site_fight(job, until)
     data, r = p12s.load(), lambda v: round(v, 1)
-    return dict(slot=slot, window=WINDOW,
-                mechanics=[[r(t), n] for t, n in p12s.mechanics(data) if t < WINDOW],
+    return dict(slot=slot, window=until,
+                mechanics=[[r(t), n] for t, n in p12s.mechanics(data) if t < until],
                 runs=[[r(lo), r(hi), r(min(y / p12s.RUN, hi - lo)), r(y), mech, what, src]
-                      for lo, hi, y, mech, what, src in p12s.windows(slot, None, data) if lo < WINDOW],
-                away=[[r(lo), r(hi), need, mech, src] for lo, hi, need, mech, src in p12s.away(slot, None, data) if lo < WINDOW],
-                pinned=[[r(lo), r(hi), mech] for lo, hi, mech in p12s.plan_spans(slot, None, data) if lo < WINDOW] if f.pinned else [],
-                untargetable=[[r(a), r(b)] for a, b in f.untargetable if a < WINDOW])
+                      for lo, hi, y, mech, what, src in p12s.windows(slot, None, data) if lo < until],
+                away=[[r(lo), r(hi), need, mech, src] for lo, hi, need, mech, src in p12s.away(slot, None, data) if lo < until],
+                pinned=[[r(lo), r(hi), mech] for lo, hi, mech in p12s.plan_spans(slot, None, data) if lo < until] if f.pinned else [],
+                untargetable=[[r(a), r(b)] for a, b in f.untargetable if a < until])
 
 
 def rot_key(gcd, crit=None):
@@ -137,13 +151,14 @@ def rot_key(gcd, crit=None):
     return f"{gcd:.2f}" + (f"-c{round(100 * crit)}" if crit is not None else "")
 
 
-def ceiling(job, gcd, width, crit=None):
-    """The best unbuffed rotation over 0:00-2:00 with our strategy's runs (site_fight) at this GCD (and crit rate, for a
-    job whose resources come from crits; cached per both), searched with the job's own settings."""
-    key = (job.__name__, round(gcd, 2), round(crit, 2) if crit is not None else None)
+def ceiling(job, gcd, width, crit=None, until=WINDOW):
+    """The best unbuffed rotation over 0:00-until (2:00 for the ceilings) with our strategy's runs (site_fight) at this
+    GCD (and crit rate, for a job whose resources come from crits; cached per all three), searched with the job's own
+    settings."""
+    key = (job.__name__, round(gcd, 2), round(crit, 2) if crit is not None else None, until)
     if key not in _ceiling:
         job.SPEED = key[1] / engine.BASE_GCD
-        _ceiling[key] = engine.search(job.__name__.split(".")[-1], site_fight(job)[1], width=width, speed=job.SPEED,
+        _ceiling[key] = engine.search(job.__name__.split(".")[-1], site_fight(job, until)[1], width=width, speed=job.SPEED,
                                       params={"CRIT": key[2]} if key[2] is not None else None)[0]
     return _ceiling[key]
 
@@ -157,10 +172,10 @@ def player_rows(job, pulls, width):
         if len(hits) < 10: continue
         k = st.median(v / m for _, _, v, m in hits)
         crit, dh = rates(ps)
-        skip = getattr(job, "AUTO_CRIT", ())
-        e, e0, et = crit_gain(ps, skip=skip), crit_gain(ps, unbuffed=True, skip=skip), tick_gain(ps)
+        skip, sure = getattr(job, "AUTO_CRIT", ()), no_sure(job)
+        e, e0, et = crit_gain(ps, skip=skip, sure=sure), crit_gain(ps, unbuffed=True, skip=skip, sure=sure), tick_gain(ps)
         ec, ec0 = sure_gain(job, ps, k), sure_gain(job, ps, k, unbuffed=True)
-        own = natural_crit(ps, skip) if hasattr(job, "CRIT") else None
+        own = natural_crit(ps, skip, sure) if hasattr(job, "CRIT") else None
         gcd = st.median(g for g in (calibrate.gcd_of(p) for p in ps) if g)
         job.SPEED = gcd / engine.BASE_GCD
         model, logged, sc = [], [], []
@@ -177,22 +192,64 @@ def player_rows(job, pulls, width):
     return rows
 
 
+CAST_NOTE = re.compile(r"(\d+(?:\.\d+)?)s cast")     # a hard cast in the history's note: "2.00s cast"
+
+
+def placed_runs(hist, fight):
+    """[(start, end)]: where a rotation does its runs. The search only checks that each move window has the seconds it
+    needs outside cast bars (a cast's last SLIDE counts), so this places them: in the window's longest stretches outside
+    cast bars first (instant GCDs, not slidecast slivers), as late as each stretch allows."""
+    busy = sorted((t, t + float(m.group(1)) - engine.SLIDE) for t, _, note in hist if (m := CAST_NOTE.search(note or "")))
+    out = []
+    for w in fight.moves:
+        free, a = [], w.lo
+        for b0, b1 in busy:
+            if b1 <= w.lo or b0 >= w.hi: continue
+            if b0 > a: free.append((a, b0))
+            a = max(a, b1)
+        if a < w.hi: free.append((a, w.hi))
+        left = w.need
+        for a, b in sorted(free, key=lambda x: (x[1] - x[0], x[1]), reverse=True):
+            if left <= 1e-9: break
+            take = min(left, b - a)
+            out.append((b - take, b)); left -= take
+    return sorted(out)
+
+
+def site_rotation(job, s, until=ROT_UNTIL):
+    """The site's rotation: [time, action, "g" for a GCD / "o" for an oGCD, cast time, seconds run], waits left out. A
+    GCD's running is what placed_runs puts between its start and the next GCD's."""
+    hist = s.history()
+    acts = [(t, n, note) for t, n, note in hist if t < until and not n.startswith("(")]
+    runs, gs = placed_runs(hist, site_fight(job, until)[1]), [t for t, n, _ in acts if n in job.GCDS]
+    out = []
+    for t, n, note in acts:
+        m, run = CAST_NOTE.search(note or ""), 0.0
+        if n in job.GCDS:
+            nxt = next((g for g in gs if g > t), until)
+            run = sum(engine._overlap(a, b, t, nxt) for a, b in runs)
+        out.append([t, n, "g" if n in job.GCDS else "o", float(m.group(1)) if m else 0.0, round(run, 1)])
+    return out
+
+
 def rotations(job, rows, width, extra=()):
-    """The site's optimized rotations for a job, {fight: timeline, rotations: {key: ...}}: every one searched for our
-    players, plus the extra GCDs (at the job's default crit rate), each with its expected DPS at the median of our
-    players' conversions and their range."""
+    """The site's optimized rotations for a job, {fight: timeline, rotations: {key: ...}}: at every GCD (and crit rate)
+    searched for our players' ceilings, plus the extra GCDs (at the job's default crit rate), the best rotation until
+    ROT_UNTIL, with its expected DPS at the median of our players' conversions and their range, and the 0:00-2:00
+    ceiling's at the median."""
     for g in extra: ceiling(job, g, width, getattr(job, "CRIT", None))
-    conv = lambda s, r: convert(s, r["k"], r["e0"], r["et"], r["ec0"])
+    conv = lambda s, r, w=ROT_UNTIL: convert(s, r["k"], r["e0"], r["et"], r["ec0"], w)
     sure = [r["ec0"] for r in rows if r["ec0"]]
     mid = dict(k=st.median(r["k"] for r in rows), e0=st.median(r["e0"] for r in rows), et=st.median(r["et"] for r in rows),
                ec0=st.median(sure) if sure else None)
     out = {}
-    for (jn, gcd, crit), s in sorted(_ceiling.items(), key=lambda x: (x[0][1], x[0][2] or 0)):
-        if jn != job.__name__: continue
+    for (jn, gcd, crit, until), s2 in sorted(_ceiling.items(), key=lambda x: (x[0][1], x[0][2] or 0)):
+        if jn != job.__name__ or until != WINDOW: continue
+        s = ceiling(job, gcd, width, crit, ROT_UNTIL)
         key, each = rot_key(gcd, crit), [conv(s, r) for r in rows]
-        # [time, action, "g" for a GCD / "o" for an oGCD], waits left out
-        rot = [[t, n, "g" if n in job.GCDS else "o"] for t, n, _ in s.history() if t < WINDOW and not n.startswith("(")]
-        out[key] = dict(gcd=gcd, crit=crit, window=WINDOW, potency=round(s.dmg), dps=round(conv(s, mid)), dps_lo=round(min(each)),
+        rot = site_rotation(job, s)
+        out[key] = dict(gcd=gcd, crit=crit, window=ROT_UNTIL, potency=round(s.dmg), dps=round(conv(s, mid)), dps_lo=round(min(each)),
+                        ceiling_2min=round(conv(s2, mid, WINDOW)),
                         dps_hi=round(max(each)), players=sum(r["key"] == key for r in rows), conv_players=len(rows),
                         waste={w: n for w, n in zip(job.WASTE, s.waste) if n}, rotation=rot)
     return dict(fight=timeline(job), rotations=out)

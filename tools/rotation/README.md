@@ -2,7 +2,8 @@
 
 Searches for the highest-potency rotation of a job over P12S phase 1 (level 90), from the pull to the kill, with the
 fight's fixed timeline: when Athena can't be hit, and where the player has to run under our groups' strategy. So far:
-Black Mage, Reaper, Monk and Bard (Monk and Bard not yet checked against logs: see their sections).
+Black Mage, Reaper, Monk, Bard and Dragoon (Monk and Bard not yet checked against logs, Dragoon only against the
+scorecard's cached events: see their sections).
 
 ```
 python tools/rotation/solve.py                                # R1, 2.32 s GCD, no raid buffs, 0:00 to the median kill (449 s)
@@ -12,6 +13,7 @@ python tools/rotation/solve.py --gcd 2.14 --party RPR,SCH,RDM --until 120 --comp
 python tools/rotation/solve.py --job rpr [--slot M2]          # Reaper, 2.49 s GCD, M1 by default
 python tools/rotation/solve.py --job mnk [--crit 0.25]        # Monk, a 1.94 s GCD (2.43 s before Greased Lightning)
 python tools/rotation/solve.py --job brd                      # Bard, 2.49 s GCD, R1 (R2 and standing still come out the same)
+python tools/rotation/solve.py --job drg [--slot M2]          # Dragoon, 2.49 s GCD, M1 by default
 python tools/rotation/p12s.py [--slot R2]                     # the move windows; --build refetches the timeline
 python tools/rotation/check.py                                # movement and downtime checks
 python tools/rotation/calibrate.py [--job rpr] [--ours]       # check the job model against the clears' (or our) logs
@@ -22,9 +24,9 @@ python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceil
 
 | Option | Meaning |
 |---|---|
-| `--job` | `blm` (default), `rpr`, `mnk` or `brd` |
+| `--job` | `blm` (default), `rpr`, `mnk`, `brd` or `drg` |
 | `--gcd` | the player's GCD without haste (spell or skill speed; default the clears' median); `--compare` prints each clear's. Monk's Greased Lightning takes 20% off it |
-| `--crit` | critical-hit rate, for a job whose resources come from crits (Monk's chakra; default 0.25) |
+| `--crit` | critical-hit rate, for a job whose resources or buffs turn on crits (Monk's chakra, Dragoon's Life Surge and Battle Litany; default 0.25) |
 | `--slot` | Paradeigma I: `R1` / `M1` line up for the first lasers, `R2` / `M2` for the second (our BLMs play both R slots; the melee slot varies with the lineup). Default `R1`, or `M1` for a melee |
 | `--var` | a mechanic's variant: `para2=tether/debuff`, `sc1=spread/laser`, `para3=straight/cross`; default: the one with the most running |
 | `--still` | no forced movement |
@@ -33,7 +35,7 @@ python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceil
 | `--pot` | allow one tincture (off by default: the scorecard strips tinctures) |
 | `--carry` | also value resources still held at the end, instead of dumping everything |
 | `--until` | end of the scored window, seconds (default: the clears' median kill, 449 s; enrage is 458 s) |
-| `--width` | beam width per heuristic setting (default: the job's, 1,000 for BLM, 3,000 for RPR and MNK) |
+| `--width` | beam width per heuristic setting (default: the job's, 1,000 for BLM, 3,000 for RPR, MNK, BRD and DRG) |
 | `--compare` | replay every benchmark clear's logged rotation under the same buffs, downtime and window |
 
 Damage is in potency (Xenoglossy 890) times the raid buffs active when each hit lands; crit and direct-hit buffs count
@@ -152,6 +154,47 @@ three Coda), refreshes Iron Jaws under it, and fires Blast Arrow after every Ape
 Paeon -> Ballad, not the usual Minuet -> Ballad -> Paeon. That may come from the guessed values, so check it again once
 they are measured.
 
+## Dragoon
+
+`jobs/drg.py`, from the job guide and the patch notes since 7.0. FFLogs was down when it was written, so instead of
+guesses its level-90 values were **measured in the scorecard's cached damage events** (`tools/scorecard/.cache/acts_*`:
+our groups' 311 pulls by six Dragoons, Sep-Oct 2026, and the 11 benchmark clears with one). Per player, each action's
+plain-hit cluster with Power Surge, Lance Charge and Life of the Dragon divided out and others' raid buffs left out,
+scaled to High Jump (400, untouched by traits and patches); FFLogs' `bonusPercent` (the share of a hit's potency from its
+combo or positional) confirms each split. Both data sets agree within ~2%. Melee Mastery (level 94) raises most
+weaponskills in the guide; at level 90:
+
+- Raiden Thrust 280, Vorpal Thrust 130 / 280 in combo, Heavens' Thrust 100 / 400, Disembowel 140 / 250, Chaotic
+  Spring, Fang and Claw and Wheeling Thrust 100 / 260 in combo, +40 from the rear / flank, Drakesbane 400, Wyrmwind
+  Thrust 420; Stardiver 720, Nastrond 720 and Mirage Dive 380 (set by 7.1), Geirskogul 280;
+- Chaotic Spring's DoT ticks for ~50 (tooltip 45: DoTs log above their tooltip, like the Black Mage's Thunder);
+  auto-attacks 86 potency every 2.81 s;
+- statuses come on with the cast, so Geirskogul's own hit doesn't get the Life of the Dragon it grants; Lance Charge
+  and Battle Litany land 0.63 s after theirs;
+- High Jump and Dragonfire Dive lock the player 0.87 s, Stardiver 1.58 s (so it is single-woven), Elusive Jump 0.96 s;
+- Piercing Talon doesn't break a combo.
+
+Every cast in our 309 pulls (24,001 casts, to each player's first death) replays as legal through the model, and in the
+benchmark clears all but a second tincture. That replay went through `calibrate.replay` on records built from the same
+caches; `calibrate.py --job drg` itself, the damage check by crit flag and `dps.py --job drg` need FFLogs' full logs.
+
+- **Combos**: True Thrust -> Vorpal Thrust -> Heavens' Thrust -> Fang and Claw -> Drakesbane, and True Thrust ->
+  Disembowel (Power Surge) -> Chaotic Spring (DoT) -> Wheeling Thrust -> Drakesbane. Drakesbane's Draconian Fire turns
+  the next True Thrust into Raiden Thrust (one Firstminds' Focus; Wyrmwind Thrust spends two).
+- **Crits**: Life Surge (a sure crit on the next weaponskill) and Battle Litany (+10% crit rate, which a sure crit gains
+  as crit damage) count at their expected worth for `--crit`. The search spends Life Surge on Heavens' Thrust and
+  Drakesbane (both 400). `dps.py` leaves the Life Surge hits out when it measures a player's crit gain (`sure_crits`).
+- **DoT refresh**: the DoT is counted when applied, so an early Chaotic Spring refresh looks good for a while, and a
+  narrow beam dropped the Vorpal chain before it caught up (1.3% lower over 2 minutes). The search offers Disembowel only
+  when the DoT would be nearly out by the time its Chaotic Spring lands, or Power Surge is low.
+- **Movement**: as for the Reaper. The melee weaponskills need reach; Piercing Talon, the jumps and the 15 y lines
+  reach from anywhere. Out of reach, Elusive Jump buys an Enhanced Piercing Talon (350).
+
+Over the whole phase the best rotation deals 126,632 potency in both `M1` and `M2` (all four settings agree); standing
+still 127,736, so our strategy costs a Dragoon 0.9%: six True Norths for the pinned spots' positionals, and four
+Piercing Talons (three enhanced) for the stretches out of reach. It alternates the two combos and puts Life Surge on
+eight Drakesbanes and four Heavens' Thrusts. A search takes ~70 s.
+
 ## The fight
 
 `p12s.py` holds P12S P1 as the optimizer plays it; `p12s_p1.json` is built from six benchmark clears (`--build`).
@@ -215,8 +258,13 @@ default), so it holds whichever the player is given. FFLogs' rDPS credits a buff
 rDPS from alignment, and the unbuffed optimum is its rDPS ceiling. A job with one (Reaper's Arcane Circle) also gets
 credit for what its buff added to the others' damage; the scorecard site adds each pull's own credit (FFLogs'
 totalRDPSGiven) to the ceiling, pull by pull. `dps.py --job <job> --site` saves the ceilings for it
-(`.cache/ceilings.json`, git-ignored: it names players) and the rotations behind them, one per GCD (and crit rate, for
-Monk), in `.cache/rotations.json` for the site's Rotations pages; `--gcds 2.30,2.40` adds GCDs none of our players has.
+(`.cache/ceilings.json`, git-ignored: it names players) and, for the site's Rotations pages, one rotation per GCD (and
+crit rate, for Monk) in `.cache/rotations.json`; `--gcds 2.30,2.40` adds GCDs none of our players has. Those run on from
+the pull until Palladion takes Athena away (`ROT_UNTIL`, 4:41): a second search per GCD, since the engine scores a
+whole window and the 0:00-2:00 optimum spends what a longer rotation would hold. Each keeps its 0:00-2:00 ceiling too.
+Each rotation's runs are placed for the site (`placed_runs`): the search only checks that a window has the running time
+it needs outside cast bars, so they go in its longest stretches outside cast bars first, as late as they allow, and
+each GCD carries the running that falls before the next one.
 There a rotation's expected DPS is at the median of our players' conversions on the job, so GCDs compare.
 
 ## How the job model was checked
@@ -249,9 +297,9 @@ no MP (4 of 4 such casts), and the Polyglot timer starts when the first fire or 
 variant from their history: each window gets its running time outside cast bars, and nothing is cast at Athena while
 she is away. A standing-still rotation, as a control, breaks several windows. For the Reaper it also tests the reach
 rule and positionals on hand-made windows, and replays quick M1 and M2 searches: every away window must hold a stretch
-of its length without a melee action (the standing-still rotation breaks one). For the Bard it tests Repertoire under
-each song and Army's Muse on hand-made states, and that quick R1 and R2 searches cast nothing at Athena while she is
-away and score the same as standing still.
+of its length without a melee action (the standing-still rotation breaks one); the same for Monk and Dragoon. For the
+Bard it tests Repertoire under each song and Army's Muse on hand-made states, and that quick R1 and R2 searches cast
+nothing at Athena while she is away and score the same as standing still.
 
 ## Files
 
@@ -262,6 +310,7 @@ away and score the same as standing still.
 | `jobs/rpr.py` | Reaper: Soul and Shroud gauges, Enshroud, combos, positionals, Death's Design, auto-attacks |
 | `jobs/mnk.py` | Monk: forms, Fury, Perfect Balance, beast chakra and Nadi, chakra, positionals, auto-attacks |
 | `jobs/brd.py` | Bard: songs, Repertoire, Soul Voice, Coda and Radiant Finale, Army's Muse, DoTs, Hawk's Eye, auto-attacks |
+| `jobs/drg.py` | Dragoon: the two combos, Draconian Fire and Focus, Life of the Dragon, jumps, Life Surge, DoT, positionals, auto-attacks |
 | `p12s.py`, `p12s_p1.json` | the fight: timeline, downtime, our strategy's runs, the clears' runs elsewhere |
 | `solve.py` | command line |
 | `logs.py` | detailed per-player logs from the benchmark clears, cached in `.cache/` |

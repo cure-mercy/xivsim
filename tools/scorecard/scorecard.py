@@ -126,10 +126,15 @@ def ceilings():
 
 
 def rotations():
-    """The optimized rotations behind the ceilings, {job: {key: {gcd, crit, potency, dps, ..., rotation}}}, one per GCD,
-    as tools/rotation/dps.py --site saved them; empty when it hasn't been run."""
+    """The optimized rotations behind the ceilings, {job: {fight, rotations: {key: {gcd, crit, potency, dps, ...,
+    rotation}}, icons: {action: data URI}}}, one per GCD, as tools/rotation/dps.py --site saved them; empty when it
+    hasn't been run."""
     f = HERE.parent / "rotation" / ".cache" / "rotations.json"
-    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+    out = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+    import gamedata
+    for job, v in out.items():   # each job's action icons, for the compact rotation
+        v["icons"] = gamedata.icons(job, {r[1] for x in v["rotations"].values() for r in x["rotation"]})
+    return out
 
 
 def fetch_echo(data):

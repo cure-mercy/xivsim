@@ -180,8 +180,17 @@ credits to them. The table view splits the two. The player page's Optimized rota
 their clean pulls are from it (median share and DPS, best pull) and links to the rotation behind it.
 
 The rotations live on their own pages, `#/rotations` (the Rotations link in the header): the jobs the optimizer covers,
-then a job's GCDs (every GCD it was searched at: our players' and any extra), then one GCD's rotation, every GCD at its
-start time with the oGCDs woven after it, with its potency, casts per skill and any resources wasted. On top, the
+then a job's GCDs (every GCD it was searched at: our players' and any extra), then one GCD's rotation, with its potency,
+casts per skill and any resources wasted. These rotations run from the pull until Palladion takes Athena away (4:41),
+with expected DPS over that stretch; each also gives the 0:00-2:00 ceiling at the same GCD, a search of its own over the
+scorecard's window, which is what players' ceilings use. The rotation is drawn compactly in the game's action icons, a line for each
+stretch between major mechanics: every GCD on the line with the oGCDs woven after it smaller and raised beside it (its
+table view has every GCD's start time, cast and running). The icons come from XIVAPI by action name (`gamedata.icons`,
+cached in `.cache/icons/`) and go into the site data as data URIs, so the published copy carries them encrypted like the
+rest. GCDs cast while running are marked (a green bar under an instant GCD the player runs through, a blue one under a
+hard cast whose run fits only in its slidecast and the gap after), with how much running falls before the next GCD: the optimizer only makes sure each run fits
+outside cast bars, so `dps.py` places them (longest stretches outside cast bars first, as late as they allow, which puts
+them on instant GCDs where it can). On top, the
 fight timeline it plays around: each major mechanic's start (its boss cast), the windows in which our strategy needs a run
 (the seconds needed; darker for the raidplan's runs, lighter where the plan has none and the clears' median path is used),
 a melee's stretches out of reach and spots the plan fixes (positionals need True North), and the rotation's GCDs and
@@ -404,7 +413,7 @@ resumed. Run `build_site.py --reanalyse` afterwards so the site picks up the new
 | `classifier.py` | Mistake attribution |
 | `checks.py` | Rotation checks against the clears |
 | `acts.py` | Casts, begun casts and outgoing damage per pull, cached |
-| `gamedata.py` | Action data (GCD or not, base recast, charges) from XIVAPI, cached |
+| `gamedata.py` | Action data (GCD or not, base recast, charges) and action icons from XIVAPI, cached |
 | `fflogs.py` | FFLogs v2 client: token, rate-limit waits, paged events, batched tables; `--login` for archived reports |
 | `benchmark.json` | Benchmark snapshot used for the damage, uptime and HP checkpoint comparisons |
 | `build_benchmark.py` | Rebuilds `benchmark.json` |

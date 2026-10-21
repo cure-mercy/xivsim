@@ -9,7 +9,7 @@
    (up to the slide point), and nothing may be cast at Athena while she is away.
 3. Reaper: the reach rule on hand-made away windows and positionals in pinned ones; then quick searches for M1 and M2,
    replayed the same way, plus every away window must hold a stretch of its length without a melee action. The same
-   searches for Monk.
+   searches for Monk and Dragoon.
 4. Bard: Repertoire under each song and Army's Muse on hand-made states; then quick searches for R1 and R2 replayed:
    nothing cast at Athena while she is away, and (every action being instant) the strategy's running costs nothing.
 Exits non-zero on any failure.
@@ -21,12 +21,13 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import engine, p12s                              # noqa: E402
 from engine import Fight, Move, SLIDE            # noqa: E402
-from jobs import blm, brd, mnk, rpr              # noqa: E402
+from jobs import blm, brd, drg, mnk, rpr         # noqa: E402
 
 HARM = {"Fire III", "Fire IV", "Despair", "Paradox", "Blizzard III", "Blizzard IV", "Thunder III", "Xenoglossy"}
 HARM |= (set(rpr.GCDS) - {"Soulsow"}) | rpr.AVATAR | {"Gluttony", "Lemure's Slice"}
 HARM |= mnk.HARM_GCDS | {"The Forbidden Chakra", "Enlightenment"}
 HARM |= set(brd.POTENCY) | {"Apex Arrow", "Pitch Perfect"}
+HARM |= set(drg.POTENCY)
 fails = []
 
 
@@ -178,6 +179,7 @@ if __name__ == "__main__":
     reach_cases()
     melee_searches()
     melee_searches(mnk, 2.43)
+    melee_searches(drg, 2.49)
     bard_cases()
     bard_searches()
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED"))
