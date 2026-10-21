@@ -265,7 +265,13 @@ whole window and the 0:00-2:00 optimum spends what a longer rotation would hold.
 Each rotation's runs are placed for the site (`placed_runs`): the search only checks that a window has the running time
 it needs outside cast bars, so they go in its longest stretches outside cast bars first, as late as they allow, and
 each GCD carries the running that falls before the next one.
-There a rotation's expected DPS is at the median of our players' conversions on the job, so GCDs compare.
+There a rotation's expected DPS is the median of our players' conversions on the job, each player moved to its GCD
+first (`SPEED_PTS`, `STAT_PT`): the speed points a faster GCD takes come out of critical hit, direct hit or
+determination, 58.5 points and about 0.40% damage per potency per 0.01 s at the level-90 formulas (our Black Mages'
+conversions fall 0.38% per 0.01 s of GCD), and DoT ticks gain as much per point as the GCD shortens. Without it a
+2.18 s GCD read 10% ahead of 2.45 s for a Black Mage; with it every GCD from 2.18 s to 2.45 s comes out within 0.7%
+(the search's noise), and for a Reaper 2.49 s leads 2.41 s by 1.2%. Not modelled: whether Skill Speed also raises a
+melee's auto-attacks.
 
 ## How the job model was checked
 

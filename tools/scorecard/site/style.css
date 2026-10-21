@@ -61,6 +61,14 @@ a:hover{ text-decoration: underline; }
 .navlink{ color: var(--ink-2); }
 tr.moving td{ background: var(--series-wash); }
 .page > figure.card + .grid{ margin-top: 12px; }
+/* two columns of sections (player page: opener | rotation and abilities), one when narrow */
+.cols{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); column-gap: 12px; align-items: start; }
+.col{ min-width: 0; }
+.col .grid.wide{ grid-template-columns: 1fr; }
+.mini{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 8px 0 12px; }
+.mini .l{ color: var(--ink-2); font-size: 12px; }
+.mini .v{ font-size: 22px; font-weight: 620; font-variant-numeric: tabular-nums; }
+.mini .s{ color: var(--muted); font-size: 12px; }
 /* the compact rotation: GCD icons on the line, the oGCDs woven after each smaller and raised */
 .rot-strip{ display: flex; flex-direction: column; gap: 12px; }
 .rot-seg{ display: flex; gap: 10px; align-items: flex-start; }
@@ -83,7 +91,7 @@ tr.moving td{ background: var(--series-wash); }
 
 .page{ max-width: 1240px; margin: 0 auto; padding: 20px 16px 64px; }
 h1{ font-size: 24px; font-weight: 650; margin: 4px 0 2px; }
-h2{ font-size: 17px; font-weight: 650; margin: 32px 0 10px; }
+h2{ font-size: 17px; font-weight: 650; margin: 32px 0 10px; scroll-margin-top: 64px; }   /* jumps land below the sticky header */
 .lede{ color: var(--ink-2); margin: 0 0 18px; max-width: 72ch; }
 
 /* stat tiles */
