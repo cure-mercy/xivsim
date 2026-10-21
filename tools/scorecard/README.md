@@ -95,7 +95,7 @@ appears (the page only asks when `data.json` is missing and `data.enc.json` is t
 | Raid days | Tiles: pulls, best pull, furthest seen (the longest pull, the mechanic it reached, its day, group and pull), latest day, mistakes per pull; the burndown; trends across days (how far pulls got, pulls clean through each mechanic, mistakes per pull and per minute, damage lost to mistakes, party DPS against the clears) and a table of days |
 | Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group (rows named by mechanic, see below) |
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
-| Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull; every mistake with its pull and time; the player across raid days (mistakes per pull and per minute in pulls) |
+| Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull, with the rotation ceiling for jobs the optimizer covers (see below); every mistake with its pull and time; the player across raid days (mistakes per pull and per minute in pulls) |
 
 The player page's "What their mistakes cost" card (boss HP lost to deaths they caused, by cause) is hidden for now: set `SHOW_MISTAKE_COST` in `site/app.js` to `true` to bring it back.
 
@@ -165,6 +165,15 @@ Downs. Those are priced at full length, since in a kill they are not cut short b
 dead until raised (10 s in our reports) plus the raise's Weakness, a Damage Down its median length (6.6 s) at -38%, both
 at the group's average player DPS (party DPS / 8). The scorecard also splits each player's mistakes into Deaths/pull
 (mistakes that killed someone) and DD/pull (those that only gave Damage Down).
+
+### Rotation ceiling
+
+For jobs the rotation optimizer covers (`tools/rotation`: Black Mage and Reaper so far), the rDPS on clean pulls chart
+marks each pull with a ceiling: the best rotation without raid buffs at the player's GCD over 0:00-2:00, converted to
+their DPS (their damage per potency and crit / direct-hit gain from their own hits), the same for every pull, plus what
+that pull's raid buffs added to the other players' damage (FFLogs' rDPS given: a Reaper's Arcane Circle), which rDPS
+credits to them. The table view splits the two. To refresh the ceilings, run
+`python tools/rotation/dps.py --job blm --site` (and `--job rpr`), then `build_site.py --reanalyse`.
 
 ### Damage by phase
 

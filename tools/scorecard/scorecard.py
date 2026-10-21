@@ -106,6 +106,24 @@ def fetch_opener(data):
                        for f, t in zip(fights, tabs)}
 
 
+def fetch_tables(data, fights):
+    """Each player's 0:00-2:00 damage in the pulls clean that long: rDPS, nDPS, active time, and the rDPS their raid
+    buffs gave the others (FFLogs' totalRDPSGiven: a Reaper's Arcane Circle on the party)."""
+    tabs = fflogs.tables(data["code"], [(f["startTime"], f["startTime"] + WINDOW * 1000) for f in fights])
+    data["tables"] = {str(f["id"]): [dict(name=y["name"], job=y["type"], total=y["total"], rdps=y["totalRDPS"] / WINDOW,
+                                         ndps=y["totalNDPS"] / WINDOW, active=y["activeTime"] / (10 * WINDOW),
+                                         given=y.get("totalRDPSGiven", 0) / WINDOW)
+                                    for y in t["entries"] if y["type"] in ROLE] for f, t in zip(fights, tabs)}
+    data["tables_given"] = True
+
+
+def ceilings():
+    """Our players' rotation ceilings (unbuffed DPS over 0:00-2:00), {job: {name: {ceiling, gcd, pulls}}}, as
+    tools/rotation/dps.py --site saved them; empty when it hasn't been run."""
+    f = HERE.parent / "rotation" / ".cache" / "ceilings.json"
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+
+
 def fetch_echo(data):
     """Ids of the pulls played with The Echo (+20% damage, HP and healing): their damage is not comparable."""
     fs = data["fights"]
@@ -119,7 +137,9 @@ def fetch(code, refresh, bench):
     if cf.exists() and not refresh:
         data = json.loads(cf.read_text())
         for key, fill, what in (("hp", lambda: fetch_hp(data, bench), "boss HP at the checkpoints"), ("wtables", lambda: fetch_windows(data), "damage per phase"),
-                                ("otables", lambda: fetch_opener(data), "opener damage"), ("echo_pulls", lambda: fetch_echo(data), "the Echo check")):
+                                ("otables", lambda: fetch_opener(data), "opener damage"), ("echo_pulls", lambda: fetch_echo(data), "the Echo check"),
+                                ("tables_given", lambda: fetch_tables(data, [f for f in data["fights"] if str(f["id"]) in data["tables"]]),
+                                 "the rDPS raid buffs gave others")):
             if key not in data:   # reports cached before this part existed
                 print(f"  {code}: fetching {what}", file=sys.stderr); fill(); cf.write_text(json.dumps(data))
         return data
@@ -137,10 +157,7 @@ def fetch(code, refresh, bench):
                 dmg=fflogs.events(code, fights, "DamageTaken", resources=True))
     clean = [f for f in fights if first_mistake(data, f)[0] >= WINDOW]
     print(f"  {code}: {len(clean)} pulls clean through 2:00, fetching damage tables", file=sys.stderr)
-    tabs = fflogs.tables(code, [(f["startTime"], f["startTime"] + WINDOW * 1000) for f in clean])
-    data["tables"] = {str(f["id"]): [dict(name=y["name"], job=y["type"], total=y["total"], rdps=y["totalRDPS"] / WINDOW,
-                                         ndps=y["totalNDPS"] / WINDOW, active=y["activeTime"] / (10 * WINDOW))
-                                    for y in t["entries"] if y["type"] in ROLE] for f, t in zip(clean, tabs)}
+    fetch_tables(data, clean)
     print(f"  {code}: fetching boss HP at the checkpoints, damage per phase and opener damage", file=sys.stderr)
     fetch_hp(data, bench)
     fetch_windows(data)
@@ -301,6 +318,7 @@ def analyse(group, data, bench):
         row["lost_by"] = [dict(who=c, hp=round(v, 2)) for c, v in by.most_common()]
     import acts, checks                         # rotation checks against the clears (imported here: it imports this module)
     rotation = checks.report(data, lives)
+    ceil = ceilings()
     # opener damage (first OPENER_S seconds, alive throughout) against the clears' median on the job, or our other
     # players' when a kit change leaves too few clears (checks.KIT_CHANGES)
     odps, oref = collections.defaultdict(list), checks.clear_opener_dps()
@@ -377,8 +395,10 @@ def analyse(group, data, bench):
                                 best_quarter=top, avg=st.mean(xs) if xs else None, vs=vs, uptime=up,
                                 uptime_diff=up - bench["pools"]["clears"]["role_uptime"][ROLE.get(job, "Melee")] if up else None,
                                 mcauses_all=dict(mcauses[name]), wcauses_all=dict(wcauses[name]),
-                                clean_pulls=[dict(n=next(r["n"] for r in pull_rows if str(r["id"]) == fid), rdps=round(y["rdps"]), uptime=round(y["active"], 1))
+                                clean_pulls=[dict(n=next(r["n"] for r in pull_rows if str(r["id"]) == fid), rdps=round(y["rdps"]), uptime=round(y["active"], 1),
+                                                  given=round(y.get("given", 0)))
                                              for fid, rows in data["tables"].items() for y in rows if y["name"] == name and y["job"] == job],
+                                ceiling=ceil.get(job, {}).get(name, {}).get("ceiling"),
                                 dead_s=dead_s[name], lost_suffered=suffered[name], lost_caused=caused[name],
                                 lost_caused_by=dict(caused_by[name]), phases=phases, rotation=rotation.get((name, job)),
                                 pull_detail=pull_detail(name, job)))

@@ -1,14 +1,14 @@
 """Black Mage at level 90, Dawntrail patch 7.2 and later, single target.
 
 Potencies and rules follow the official job guide (na.finalfantasyxiv.com/jobguide/blackmage; it shows level-100 values,
-so level-90 ones come from the logs where they differ) and later patches, checked against the clears over whole pulls:
-plain hits match the potencies within ~2%, cast times within 0.02 s, and every logged cast replays as legal
-(tools/rotation/calibrate.py).
+so level-90 ones come from the logs where they differ) and the patch notes since (patchnotes.py), checked against the
+clears over whole pulls: plain hits match the potencies within ~2%, cast times within 0.02 s, and every logged cast
+replays as legal (calibrate.py).
 """
 import itertools, math
 from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, gcd_times, move_credit, open_move, settle, stand
 
-# Fire III and Blizzard III were raised from 280 to 290 in a recent patch (job guide; the clears since July 2026 agree)
+# Fire III and Blizzard III were raised from 280 to 290 in patch 7.2 (its notes; the job guide and the clears agree)
 POTENCY = {"Fire III": 290, "Fire IV": 300, "Despair": 350, "Paradox": 540, "Blizzard III": 290, "Blizzard IV": 300,
            "Thunder III": 120, "Xenoglossy": 890, "Umbral Soul": 0}
 # Thunder III's DoT: 50 potency for 27 s by the tooltip; ticks land for 63 relative to Xenoglossy 890 in the logs (DoTs
@@ -17,7 +17,7 @@ DOT_TICK, DOT_TICKS, DOT_FIRST = 63, 9, 1.5
 # seconds from a spell resolving to its damage landing (animation), measured in our logs; buffs snapshot on resolution
 DELAY = {"Fire III": 1.29, "Fire IV": 1.16, "Despair": 0.49, "Paradox": 0.62, "Blizzard III": 0.89, "Blizzard IV": 1.16,
          "Thunder III": 1.02, "Xenoglossy": 0.62}
-CAST = {"Fire III": 3.5, "Fire IV": 2.0, "Despair": 2.0, "Blizzard III": 3.5, "Blizzard IV": 2.0}   # 7.2: Fire IV 2.8 -> 2.0, Despair 3.0 -> 2.0
+CAST = {"Fire III": 3.5, "Fire IV": 2.0, "Despair": 2.0, "Blizzard III": 3.5, "Blizzard IV": 2.0}   # 7.2: Fire IV 2.8 -> 2.0, Despair 3.0 -> 2.0, Blizzard IV 2.5 -> 2.0
 FIRE = {"Fire III", "Fire IV", "Despair"}
 ICE = {"Blizzard III", "Blizzard IV"}
 AF_FIRE = {0: 1.0, 1: 1.4, 2: 1.6, 3: 1.8}          # fire damage by Astral Fire stacks
@@ -30,9 +30,9 @@ MP_BASE, UI_BONUS = 200, {-1: 2500, -2: 5000, -3: 10000}
 UMBRAL_SOUL_MP = {-1: 2500, -2: 5000, -3: 10000}
 TICK_PHASE = 1.5                                    # server ticks land at TICK_PHASE + 3k seconds
 POLY_S, POLY_MAX = 30, 2
-LL_S, LL_SPEED, TRIPLE_S, SWIFT_S = 20, 0.85, 15, 10
-PROC_S = math.inf                                   # Thunderhead and Firestarter no longer expire (a recent patch); they
-                                                    # are only lost by being granted again while held
+LL_S, LL_SPEED, TRIPLE_S, SWIFT_S = 20, 0.85, 15, 10     # 7.2: Ley Lines 30 -> 20 s
+PROC_S = math.inf                                   # Thunderhead and Firestarter no longer expire (patch 7.2's notes);
+                                                    # they are only lost by being granted again while held
 CDS = {"Triplecast": (60, 2), "Swiftcast": (60, 1), "Ley Lines": (120, 2), "Manafont": (100, 1), "Amplifier": (120, 1),
        "Transpose": (5, 1), "Tincture": (270, 1), "Between the Lines": (3, 1)}
 OGCD_ORDER = ["Tincture", "Manafont", "Transpose", "Amplifier", "Ley Lines", "Between the Lines", "Triplecast", "Swiftcast"]
@@ -375,3 +375,47 @@ def rank(s, fight):
 
 def final(s, fight):
     return s.dmg + (held(s) if fight.carry else 0)
+
+
+# --- calibration hooks (calibrate.py) -------------------------------------------------------------------------------
+LOG_NAME, LOGS_SINCE = "BlackMage", "2025-04-01"    # FFLogs' name for the job; clears on the 7.2 kit
+OGCDS = set(CDS)
+REFERENCE = ("Xenoglossy", 890)                     # the spell whose plain hits scale a log's damage to potency
+
+
+def at(s, fight, t):
+    """A copy of the state advanced to t, to read it at a logged cast."""
+    c = s.copy(); advance(c, t)
+    return c
+
+
+def status(s, t):
+    """What a report of an illegal cast shows."""
+    return dict(el=s.el, mp=s.mp, hearts=s.hearts, poly=s.poly, paradox=s.paradox, fs=s.fs > t, th=s.th > t)
+
+
+def force(s, fight, name, start):
+    """Cast it anyway, with the resources it needs granted (the replay carries on after an illegal cast)."""
+    s = s.copy()
+    if name == "Paradox": s.paradox = True
+    if name == "Thunder III": s.th = start + 1
+    if name == "Xenoglossy": s.poly = max(s.poly, 1)
+    if name in ("Fire IV", "Despair"): s.el = max(s.el, 1); s.mp = max(s.mp, 1600)
+    s.mp = max(s.mp, mp_cost(s, name))
+    return do_gcd(s, fight, name) or s
+
+
+def model_potency(name, el):
+    """The model's potency for a GCD cast in element state `el` (element bonuses and Enochian included)."""
+    pot = POTENCY[name] * ((AF_FIRE[el] if el >= 0 else UI_FIRE[-el]) if name in FIRE else 1)
+    return pot * (AF_ICE[el] if name in ICE and el > 0 else 1) / (ENOCHIAN if el == 0 else 1)
+
+
+def label(s, fight, name, t):
+    """(group, model potency) for a logged hit of `name` cast at t from state s, or None if it isn't checked."""
+    if name not in GCDS or not POTENCY.get(name): return None
+    return f"el {s.el:+d}", model_potency(name, s.el)
+
+
+def cast_label(s, name, t):
+    return f"el {s.el:+d} LL {'y' if s.ll > t else 'n'}"

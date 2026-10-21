@@ -1054,5 +1054,299 @@
    17.4,
    11
   ]
+ },
+ "melee": {
+  "path": {
+   "[\"Astral Advance#0\", \"Ray of Light#0\"]": [
+    2.3,
+    13
+   ],
+   "[\"Astral Advance#2\", \"Glaukopis#2\"]": [
+    15.2,
+    13
+   ],
+   "[\"Astral Impact#0\", [\"Polarized Glow#1\", -2.25]]": [
+    10.2,
+    13
+   ],
+   "[\"Dialogos#0\", [\"Searing Radiance#1.begin\", 1.0]]": [
+    24.0,
+    13
+   ],
+   "[\"Dialogos#1\", \"Superchain Theory IIB#0\"]": [
+    4.6,
+    5
+   ],
+   "[\"Glaukopis#2\", \"Ultima Blade#1\"]": [
+    15.8,
+    13
+   ],
+   "[\"Palladion#9\", \"Theos's Ultima#0\"]": [
+    2.6,
+    13
+   ],
+   "[\"Paradeigma#0\", [\"Paradeigma#0\", 5.2]]": [
+    0.1,
+    13
+   ],
+   "[\"Paradeigma#1\", [\"Searing Radiance#0.begin\", 1.0]]": [
+    0.9,
+    13
+   ],
+   "[\"Polarized Glow#0\", \"Astral Advance#0\"]": [
+    7.2,
+    13
+   ],
+   "[\"Ray of Light#0\", \"Superchain Theory I#0\"]": [
+    25.8,
+    13
+   ],
+   "[\"Searing Radiance#0\", \"Astral Advance#0\"]": [
+    7.0,
+    13
+   ],
+   "[\"Searing Radiance#1\", \"Theos's Cross#0\"]": [
+    7.6,
+    13
+   ],
+   "[\"Superchain Theory IIA#0\", \"Trinity of Souls#6\"]": [
+    6.6,
+    13
+   ],
+   "[\"Theos's Cross#0\", \"Astral Advance#2\"]": [
+    2.2,
+    13
+   ],
+   "[\"Theos's Holy#0\", \"Trinity of Souls#3\"]": [
+    19.5,
+    13
+   ],
+   "[\"Theos's Ultima#0\", \"Superchain Theory IIA#0\"]": [
+    6.3,
+    13
+   ],
+   "[\"Trinity of Souls#2\", \"Paradeigma#1\"]": [
+    21.2,
+    13
+   ],
+   "[\"Trinity of Souls#3\", \"Trinity of Souls#4\"]": [
+    2.6,
+    13
+   ],
+   "[\"Trinity of Souls#4\", \"Trinity of Souls#5\"]": [
+    2.3,
+    13
+   ],
+   "[\"Trinity of Souls#5\", \"Dialogos#0\"]": [
+    5.1,
+    13
+   ],
+   "[\"Trinity of Souls#6\", \"Trinity of Souls#7\"]": [
+    5.1,
+    13
+   ],
+   "[\"Trinity of Souls#7\", \"Trinity of Souls#8\"]": [
+    6.1,
+    13
+   ],
+   "[\"Trinity of Souls#8\", \"Dialogos#1\"]": [
+    11.3,
+    13
+   ],
+   "[\"Ultima Blade#1\", \"Palladion#0.begin\"]": [
+    6.7,
+    13
+   ],
+   "[\"White Flame#0\", \"Trinity of Souls#2\"]": [
+    1.7,
+    13
+   ],
+   "[\"White Flame#0\", \"White Flame#1\"]": [
+    1.5,
+    13
+   ],
+   "[[\"Paradeigma#0\", 5.2], \"White Flame#0\"]": [
+    3.1,
+    13
+   ],
+   "[[\"Polarized Glow#1\", -0.3], \"Astral Advance#1\"]": [
+    9.8,
+    13
+   ],
+   "[[\"Polarized Glow#1\", -0.3], \"Theos's Holy#0\"]": [
+    7.1,
+    13
+   ],
+   "[[\"Polarized Glow#1\", -2.25], [\"Polarized Glow#1\", -0.3]]": [
+    6.8,
+    13
+   ],
+   "[[\"Polarized Ray#0\", -6.1], \"Astral Impact#0\"]": [
+    15.8,
+    13
+   ],
+   "[[\"Searing Radiance#0.begin\", 1.0], \"Polarized Glow#0\"]": [
+    16.2,
+    13
+   ],
+   "[[\"Searing Radiance#0.begin\", 1.0], \"Searing Radiance#0\"]": [
+    16.2,
+    13
+   ],
+   "[[\"Searing Radiance#1.begin\", 1.0], \"Unnatural Enchainment#0\"]": [
+    17.6,
+    13
+   ],
+   "[[\"Superchain Theory I#0\", 1.0], [\"Polarized Ray#0\", -6.1]]": [
+    16.0,
+    13
+   ]
+  },
+  "away": {
+   "[\"Astral Advance#0\", \"Ray of Light#0\"]": [
+    2.2,
+    13
+   ],
+   "[\"Astral Advance#2\", \"Glaukopis#2\"]": [
+    2.8,
+    13
+   ],
+   "[\"Astral Impact#0\", [\"Polarized Glow#1\", -2.25]]": [
+    2.4,
+    13
+   ],
+   "[\"Dialogos#0\", [\"Searing Radiance#1.begin\", 1.0]]": [
+    5.0,
+    13
+   ],
+   "[\"Dialogos#1\", \"Superchain Theory IIB#0\"]": [
+    5.8,
+    5
+   ],
+   "[\"Glaukopis#2\", \"Ultima Blade#1\"]": [
+    3.3,
+    13
+   ],
+   "[\"Palladion#9\", \"Theos's Ultima#0\"]": [
+    4.4,
+    13
+   ],
+   "[\"Paradeigma#0\", [\"Paradeigma#0\", 5.2]]": [
+    2.2,
+    13
+   ],
+   "[\"Paradeigma#1\", [\"Searing Radiance#0.begin\", 1.0]]": [
+    2.5,
+    13
+   ],
+   "[\"Polarized Glow#0\", \"Astral Advance#0\"]": [
+    2.5,
+    13
+   ],
+   "[\"Ray of Light#0\", \"Superchain Theory I#0\"]": [
+    3.0,
+    13
+   ],
+   "[\"Searing Radiance#0\", \"Astral Advance#0\"]": [
+    2.5,
+    13
+   ],
+   "[\"Searing Radiance#1\", \"Theos's Cross#0\"]": [
+    2.8,
+    13
+   ],
+   "[\"Superchain Theory IIA#0\", \"Trinity of Souls#6\"]": [
+    3.3,
+    13
+   ],
+   "[\"Theos's Cross#0\", \"Astral Advance#2\"]": [
+    2.5,
+    13
+   ],
+   "[\"Theos's Holy#0\", \"Trinity of Souls#3\"]": [
+    2.5,
+    13
+   ],
+   "[\"Theos's Ultima#0\", \"Superchain Theory IIA#0\"]": [
+    2.6,
+    13
+   ],
+   "[\"Trinity of Souls#2\", \"Paradeigma#1\"]": [
+    2.5,
+    13
+   ],
+   "[\"Trinity of Souls#3\", \"Trinity of Souls#4\"]": [
+    1.8,
+    13
+   ],
+   "[\"Trinity of Souls#4\", \"Trinity of Souls#5\"]": [
+    2.1,
+    13
+   ],
+   "[\"Trinity of Souls#5\", \"Dialogos#0\"]": [
+    2.5,
+    13
+   ],
+   "[\"Trinity of Souls#6\", \"Trinity of Souls#7\"]": [
+    2.2,
+    13
+   ],
+   "[\"Trinity of Souls#7\", \"Trinity of Souls#8\"]": [
+    2.2,
+    13
+   ],
+   "[\"Trinity of Souls#8\", \"Dialogos#1\"]": [
+    6.2,
+    13
+   ],
+   "[\"Ultima Blade#1\", \"Palladion#0.begin\"]": [
+    3.7,
+    13
+   ],
+   "[\"White Flame#0\", \"Trinity of Souls#2\"]": [
+    2.5,
+    13
+   ],
+   "[\"White Flame#0\", \"White Flame#1\"]": [
+    2.5,
+    13
+   ],
+   "[[\"Paradeigma#0\", 5.2], \"White Flame#0\"]": [
+    2.5,
+    13
+   ],
+   "[[\"Polarized Glow#1\", -0.3], \"Astral Advance#1\"]": [
+    2.9,
+    13
+   ],
+   "[[\"Polarized Glow#1\", -0.3], \"Theos's Holy#0\"]": [
+    2.9,
+    13
+   ],
+   "[[\"Polarized Glow#1\", -2.25], [\"Polarized Glow#1\", -0.3]]": [
+    1.4,
+    13
+   ],
+   "[[\"Polarized Ray#0\", -6.1], \"Astral Impact#0\"]": [
+    3.1,
+    13
+   ],
+   "[[\"Searing Radiance#0.begin\", 1.0], \"Polarized Glow#0\"]": [
+    2.6,
+    13
+   ],
+   "[[\"Searing Radiance#0.begin\", 1.0], \"Searing Radiance#0\"]": [
+    2.6,
+    13
+   ],
+   "[[\"Searing Radiance#1.begin\", 1.0], \"Unnatural Enchainment#0\"]": [
+    2.5,
+    13
+   ],
+   "[[\"Superchain Theory I#0\", 1.0], [\"Polarized Ray#0\", -6.1]]": [
+    2.5,
+    13
+   ]
+  }
  }
 }

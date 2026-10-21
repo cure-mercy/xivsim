@@ -16,6 +16,13 @@ variants; the default is the one with the most running, since the rotation is pl
 Stretches our plan does not cover take their running from the benchmark clears' Black Mages instead: the median path
 they ran in that window (from their position at every cast). From Palladion to the end that is the only source for now
 and is marked provisional; our groups' strategy there may still change.
+
+A melee (slots M1 / M2) runs the DPS assignments too, measured the same way (they wait at the hitbox edge, as often
+nearer to the next spot as farther), except Paradeigma I, where the melee's spot on the bait line is next to the tank.
+Every spot of our plan is within a melee's reach of Athena (REACH_MELEE from her centre), so the plan costs a melee
+only the hard casts its runs block, and positionals: while the plan fixes their spot (`pinned`) only True North gets
+one. Elsewhere the runs are the clears' Reapers' paths, and where those Reapers went longer than a GCD without a melee
+action, the melee is away (out of reach) for that long somewhere in the window.
 """
 import argparse, collections, datetime, json, math, statistics as st, sys
 from pathlib import Path
@@ -28,6 +35,11 @@ DATA = HERE / "p12s_p1.json"
 CACHE = HERE / ".cache"
 REACT = 1.0                 # seconds from a cue to the first step
 CLEARS_SINCE = "2025-04-01" # Black Mage clears on the 7.2 kit, as in calibrate.py
+# melee: the clears' Reapers use melee actions up to 14 y from Athena's centre (99th percentile 13.5 y; 2 of 2,427
+# beyond 14 y), so her hitbox is ~11 y and reach 3 y more
+REACH_MELEE = 14.0
+AWAY_GCD = 2.5              # a gap between melee actions longer than a GCD is time out of reach
+MIN_AWAY = 1.0              # seconds: less than this is noise
 
 # --- our strategy ---------------------------------------------------------------------------------------------------
 # (from, to, yalms, what): `from` / `to` are timeline events, "Ability#n" for its n-th cast landing, "Ability#n.begin"
@@ -45,6 +57,13 @@ PLAN = {
                 "(26.2 y straight, one side switch on the way)")],
         "R2": [(PARA1_CUE, "White Flame#0", 8.3, "to the stack on the hitbox edge, far half"),
                ("White Flame#0", "White Flame#1", 26.5, "swap through the middle to the wall end of the bait line")],
+        # melee: second on the bait line, after the tank (slide 3: 6.6 y out); M1 is in LP1, M2 in LP2
+        "M1": [(PARA1_CUE, "White Flame#0", 6.6, "to the melee spot of the bait line on the adds' half, next to the tank"),
+               ("White Flame#0", "Trinity of Souls#2", 16.3,
+                "swap through the middle to the hitbox edge on the far half, on the safe side of cleaves 2 and 3 "
+                "(14.5 y straight, one side switch on the way)")],
+        "M2": [(PARA1_CUE, "White Flame#0", 8.3, "to the stack on the hitbox edge, far half"),
+               ("White Flame#0", "White Flame#1", 14.8, "swap through the middle to the melee spot of the bait line")],
     },
     # Paradeigma II (slides 6-11): DPS either catch a tether and stretch it straight across through Athena's hitbox
     # (13 y out), then step into the tower an opposite-colour Soul drops (~7 y, slide 10); or carry a Soul to their
@@ -205,8 +224,38 @@ def build(n=6):
         v = [_path(pts, lo, hi) for pts, end in traces if end >= hi]
         if len(v) >= 3: path[w] = [round(st.median(v), 1), len(v)]
     data["clears_path"] = path
+    data["melee"] = _melee(events, windows)
     DATA.write_text(json.dumps(data, indent=1) + "\n")
     return data
+
+
+MELEE_ACTIONS = {"Slice", "Waxing Slice", "Infernal Slice", "Shadow of Death", "Soul Slice", "Gibbet", "Gallows",
+                 "Void Reaping", "Cross Reaping", "Blood Stalk", "Unveiled Gibbet", "Unveiled Gallows", "Lemure's Slice"}
+
+
+def _melee(events, windows):
+    """The clears' Reapers in every window: the median path they ran, and the median of their longest gap between
+    melee actions (each pull once: some clears are in two reports)."""
+    import logs
+    seen, L = set(), []
+    for p in logs.clears("Reaper"):
+        if (p["name"], round(p["end"])) not in seen: seen.add((p["name"], round(p["end"]))); L.append(p)
+    ev = lambda ref: _at(events, tuple(ref) if isinstance(ref, list) else ref)
+    path, gap = {}, {}
+    for w in sorted(windows):
+        a, b = json.loads(w)
+        lo, hi = ev(a), ev(b)
+        ps = [p for p in L if p["end"] >= hi]
+        if len(ps) < 3: continue
+        path[w] = [round(st.median(_path(_trace(p), lo, hi) for p in ps), 1), len(ps)]
+        g = []
+        for p in ps:
+            n = p["names"]
+            ts = [lo] + sorted(x["t"] for x in p["casts"] if x["type"] == "cast" and lo < x["t"] < hi
+                               and n[str(x["abilityGameID"])] in MELEE_ACTIONS) + [hi]
+            g.append(max(y - x for x, y in zip(ts, ts[1:])))
+        gap[w] = [round(st.median(g), 1), len(ps)]
+    return dict(path=path, away=gap)
 
 
 # --- using it --------------------------------------------------------------------------------------------------------
@@ -225,10 +274,16 @@ def load():
     return json.loads(DATA.read_text())
 
 
+def melee(slot):
+    return slot.startswith("M")
+
+
 def windows(slot="R1", var=None, data=None):
     """[(lo, hi, yalms, mechanic, what, source)] for the slot and variants, sorted, the clears' gaps clipped between
-    the plan's windows."""
+    the plan's windows (a melee slot takes the clears' Reapers' paths)."""
     data = data or load()
+    paths = data["melee"]["path"] if melee(slot) else data["clears_path"]
+    who = "Reapers" if melee(slot) else "Black Mages"
     ev = lambda ref: _at(data["events"], tuple(ref) if isinstance(ref, list) else ref)
     pick = dict(DEFAULT_VAR, **{"Paradeigma I": slot}, **(var or {}))
     out = []
@@ -241,10 +296,41 @@ def windows(slot="R1", var=None, data=None):
         lo, hi = ev(a), ev(b)
         lo = max([lo] + [w[1] for w in plan if w[1] <= hi and w[0] < lo + 1e-9])
         hi = min([hi] + [w[0] for w in plan if w[0] >= lo])
-        got = data["clears_path"].get(_wkey(a, b))
+        got = paths.get(_wkey(a, b))
         if hi - lo < 0.5 or not got or got[0] < MIN_RUN: continue
-        out.append((lo, hi, got[0], mech, f"as the clears' Black Mages ran (median of {got[1]})",
+        out.append((lo, hi, got[0], mech, f"as the clears' {who} ran (median of {got[1]})",
                     "clears, provisional" if prov else "clears"))
+    return sorted(out)
+
+
+def plan_spans(slot="R1", var=None, data=None):
+    """[(lo, hi, mechanic)]: from the first cue to the last snapshot of each mechanic of our plan."""
+    out = collections.defaultdict(list)
+    for lo, hi, _, mech, _, src in windows(slot, var, data):
+        if src.startswith("plan"): out[mech] += [lo, hi]
+    return sorted((min(v), max(v), m) for m, v in out.items())
+
+
+def away(slot="R1", var=None, data=None):
+    """A melee's stretches out of reach: [(lo, hi, seconds, mechanic, source)]. Our plan has none (every spot is in
+    reach); elsewhere, the clears' Reapers' longest gap between melee actions beyond a GCD, inside the stretch between
+    the plan's mechanics and outside Palladion."""
+    if not melee(slot): return []
+    data = data or load()
+    ev = lambda ref: _at(data["events"], tuple(ref) if isinstance(ref, list) else ref)
+    spans = plan_spans(slot, var, data)
+    out = []
+    for a, b, mech, prov in CLEARS:
+        got = data["melee"]["away"].get(_wkey(a, b))
+        if not got or got[0] - AWAY_GCD < MIN_AWAY: continue
+        lo, hi = ev(a), ev(b)
+        lo = max([lo] + [x[1] for x in spans if x[1] <= hi and x[0] < lo + 1e-9])
+        hi = min([hi] + [x[0] for x in spans if x[0] >= lo])
+        for d0, d1 in data["untargetable"]:
+            if d0 <= lo < d1: lo = d1
+            if d0 < hi <= d1: hi = d0
+        need = min(got[0] - AWAY_GCD, hi - lo)
+        if need >= MIN_AWAY: out.append((lo, hi, round(need, 1), mech, "clears, provisional" if prov else "clears"))
     return sorted(out)
 
 
@@ -259,8 +345,11 @@ def moves(slot="R1", var=None, data=None):
 
 def fight(slot="R1", var=None, until=None, still=False, **kw):
     data = load()
+    gone = [] if still else [Move(lo, hi, need, why=f"{mech}: out of reach as the clears' Reapers were ({src})")
+                             for lo, hi, need, mech, src in away(slot, var, data)]
+    pinned = [] if still or not melee(slot) else [(lo, hi) for lo, hi, _ in plan_spans(slot, var, data)]
     return Fight(until=until or data["kill_median"], moves=[] if still else moves(slot, var, data),
-                 untargetable=[tuple(w) for w in data["untargetable"]], **kw)
+                 untargetable=[tuple(w) for w in data["untargetable"]], away=gone, pinned=pinned, **kw)
 
 
 def parse_var(items):
@@ -274,7 +363,7 @@ def parse_var(items):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--build", action="store_true", help="fetch the clears' timeline and movement, write " + DATA.name)
-    ap.add_argument("--slot", default="R1", choices=["R1", "R2"])
+    ap.add_argument("--slot", default="R1", choices=["R1", "R2", "M1", "M2"])
     ap.add_argument("--var", action="append", help="mechanic=variant, e.g. para2=debuff (para1/para2/sc1/para3)")
     a = ap.parse_args()
     data = build() if a.build else load()
@@ -287,6 +376,12 @@ def main():
         total += y
         print(f"{lo:6.1f}-{hi:6.1f}s {y:5.1f}y {y / RUN:5.1f}s  {mech}: {what} [{src}]")
     print(f"\n{total:.0f} yalms in all, {total / RUN:.0f} s of running")
+    if melee(a.slot):
+        print("\nout of reach (melee):")
+        for lo, hi, need, mech, src in away(a.slot, parse_var(a.var), data):
+            print(f"{lo:6.1f}-{hi:6.1f}s {need:5.1f}s  {mech} [{src}]")
+        print("spot fixed by our plan (positionals need True North): " +
+              ", ".join(f"{lo:.1f}-{hi:.1f}s {m}" for lo, hi, m in plan_spans(a.slot, parse_var(a.var), data)))
     print("\nour plan against the clears' Black Mages (median yalms run in the same window):")
     for mech, variants in PLAN.items():
         for v, runs in variants.items():
