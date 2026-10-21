@@ -2,8 +2,8 @@
 
 Searches for the highest-potency rotation of a job over P12S phase 1 (level 90), from the pull to the kill, with the
 fight's fixed timeline: when Athena can't be hit, and where the player has to run under our groups' strategy. So far:
-Black Mage, Reaper, Monk, Bard and Dragoon (Monk and Bard not yet checked against logs, Dragoon only against the
-scorecard's cached events: see their sections).
+Black Mage, Reaper, Monk, Bard, Dragoon and Red Mage (Monk and Bard not yet checked against logs, Dragoon and Red Mage
+only against the scorecard's cached events: see their sections).
 
 ```
 python tools/rotation/solve.py                                # R1, 2.32 s GCD, no raid buffs, 0:00 to the median kill (449 s)
@@ -14,6 +14,7 @@ python tools/rotation/solve.py --job rpr [--slot M2]          # Reaper, 2.49 s G
 python tools/rotation/solve.py --job mnk [--crit 0.25]        # Monk, a 1.94 s GCD (2.43 s before Greased Lightning)
 python tools/rotation/solve.py --job brd                      # Bard, 2.49 s GCD, R1 (R2 and standing still come out the same)
 python tools/rotation/solve.py --job drg [--slot M2]          # Dragoon, 2.49 s GCD, M1 by default
+python tools/rotation/solve.py --job rdm [--slot R2]          # Red Mage, 2.50 s GCD, R1 by default
 python tools/rotation/p12s.py [--slot R2]                     # the move windows; --build refetches the timeline
 python tools/rotation/check.py                                # movement and downtime checks
 python tools/rotation/calibrate.py [--job rpr] [--ours]       # check the job model against the clears' (or our) logs
@@ -24,7 +25,7 @@ python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceil
 
 | Option | Meaning |
 |---|---|
-| `--job` | `blm` (default), `rpr`, `mnk`, `brd` or `drg` |
+| `--job` | `blm` (default), `rpr`, `mnk`, `brd`, `drg` or `rdm` |
 | `--gcd` | the player's GCD without haste (spell or skill speed; default the clears' median); `--compare` prints each clear's. Monk's Greased Lightning takes 20% off it |
 | `--crit` | critical-hit rate, for a job whose resources or buffs turn on crits (Monk's chakra, Dragoon's Life Surge and Battle Litany; default 0.25) |
 | `--slot` | Paradeigma I: `R1` / `M1` line up for the first lasers, `R2` / `M2` for the second (our BLMs play both R slots; the melee slot varies with the lineup). Default `R1`, or `M1` for a melee |
@@ -35,7 +36,7 @@ python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceil
 | `--pot` | allow one tincture (off by default: the scorecard strips tinctures) |
 | `--carry` | also value resources still held at the end, instead of dumping everything |
 | `--until` | end of the scored window, seconds (default: the clears' median kill, 449 s; enrage is 458 s) |
-| `--width` | beam width per heuristic setting (default: the job's, 1,000 for BLM, 3,000 for RPR, MNK, BRD and DRG) |
+| `--width` | beam width per heuristic setting (default: the job's, 1,000 for BLM and RDM, 3,000 for RPR, MNK, BRD and DRG) |
 | `--compare` | replay every benchmark clear's logged rotation under the same buffs, downtime and window |
 
 Damage is in potency (Xenoglossy 890) times the raid buffs active when each hit lands; crit and direct-hit buffs count
@@ -195,6 +196,64 @@ still 127,736, so our strategy costs a Dragoon 0.9%: six True Norths for the pin
 Piercing Talons (three enhanced) for the stretches out of reach. It alternates the two combos and puts Life Surge on
 eight Drakesbanes and four Heavens' Thrusts. A search takes ~70 s.
 
+## Red Mage
+
+`jobs/rdm.py`, from the job guide and the patch notes since 7.0, with its level-90 values **measured in the scorecard's
+cached damage events** as for the Dragoon (FFLogs was down): our groups' 267 pulls by five Red Mages (Sep-Oct 2026) and
+the 18 benchmark clears with one. Enchanted Blade Mastery (level 94) raises nearly every potency in the guide; the patch
+notes since 7.0 only change those level-94+ values and Manafication's durations (30 s since 7.05). Per player, each
+action's plain-hit cluster with others' damage buffs and their own Embolden divided out, scaled to Jolt III (360, set at
+level 84 and untouched since). At level 90 they are Endwalker's values:
+
+- Jolt III 360, Verthunder / Veraero III 380, Verfire / Verstone 340, Verflare / Verholy 600, Scorch 680, Resolution
+  750; Enchanted Riposte 280, Zwerchhau 150 / 340 in combo, Redoublement 130 / 500 (bonusPercent 74% = 370 / 500),
+  Enchanted Reprise 340; Fleche 460, Contre Sixte 380, Engagement 180, Corps-a-corps 130; auto-attacks are negligible;
+- Embolden adds 10% to the Red Mage's own magic damage (the enchanted combo included); Fleche, Contre Sixte,
+  Corps-a-corps and Engagement are physical and get nothing. Its status lands 0.67 s after the cast;
+- the enchanted combo's recasts are fixed at 1.5 / 1.5 / 2.2 s, even at a 2.23 s GCD; the 2 s spells resolve 1.47 s
+  into the bar (0.52 s before its end, as for the Black Mage);
+- an instant Verthunder / Veraero III spends Acceleration before Dualcast and Swiftcast, and Dualcast survives it (18 of
+  18 casts); Dualcast goes before Swiftcast; a spell made instant never grants Dualcast; Sprint cancels Dualcast;
+- Verthunder / Veraero III proc their colour 49.4% of the time (4,158 casts), 100% under Acceleration.
+
+Every cast in our 267 pulls and the 18 clears (24,041 casts, to each player's first death) replays as legal through
+`calibrate.replay`, on records built from the same caches; the hard casts' times match within 0.01 s. Nine GCDs start
+"early" in the replay, all after a cancelled hard cast whose stale begin-cast the harness takes as the start. A control
+with broken rules (Riposte costing 25, Jolt III giving 1 / 1 mana, Fleche on 27 s, Dualcast lasting 1 s) shows each as
+illegal or early casts. `calibrate.py --job rdm`, `dps.py --job rdm` and `solve.py --compare` need FFLogs' full logs.
+
+- **Dualcast loop**: a hard-cast 2 s spell grants Dualcast, so the 5 s Verthunder / Veraero III comes out instant.
+  The search only offers the 5 s spells under Dualcast, Acceleration or Swiftcast.
+- **Procs** are random: the search counts them at their expected worth (as the Bard's Repertoire). A Verthunder III
+  raises the chance Verfire Ready is up by half of what is left (the part already up counts as overwritten), and
+  "Verfire" means Verfire if it is up, else Verstone if that is, else Jolt III (all 2 s casts), at the mixture's
+  potency and mana. A log replay knows the spell, so there a proc is only "possibly up" once granted. At level 90 the
+  search never spends procs: Jolt III's 360 and 2 / 2 mana beat Verfire's 340 and 5. Forcing procs whenever one is
+  likely up costs 0.4% standing still and 1.1% with our runs, though our Red Mages spend them on most hard casts.
+- **Mana**: 0-100 of each colour; the melee combo costs 20 / 15 / 15 of each (nothing under Manafication's three
+  Magicked Swordplay stacks) and gives the three Mana Stacks for Verflare / Verholy -> Scorch -> Resolution. Whether
+  mana gains still halve past a 30-point imbalance can't be told from the logs (players pass 30 in 22 of ~10,000
+  gains); the model leaves it out, and the searched rotations never pass 30 (27 at most).
+- **Whole combos only**: whether Mana Stacks outlive a broken combo can't be told either (the replays are legal both
+  ways), and 939 of 943 logged finishers follow one unbroken combo. The search starts a combo only with mana or
+  Swordplay for all of it and no stacks left over; replays allow anything.
+- **Reach**: the melee combo and Engagement need the player within 14 y of Athena's centre, the combo not under
+  Manafication (25 y). A ranged player stands within that except at our plan's far spots (`p12s.FAR`: Paradeigma I's
+  wall end, 18.3 y, and the Heavensflame corner of Superchain I, ~21.5 y), where they are out of reach around the
+  snapshot (`away` windows: 1.4 s and 2.5 s).
+
+Over the whole phase the best rotation deals 92,363 potency in `R1` and 92,343 in `R2` (width 1,000; 3,000 finds
+92,580 and 92,351); standing still 93,613, so our strategy costs a Red Mage 1.3%. Nearly all of it is Paradeigma I:
+the swap through the middle needs 4.7 s of running in 5.3 s, when Manafication, Swiftcast and Acceleration are still
+cooling down from the opener, so the rotation fills it with Enchanted Reprise. Corps-a-corps would close part of that
+run (it dashes to Athena) but the engine has no dashes. A look-ahead at upcoming runs like the Black Mage's never found
+a better rotation, so the ranking has none. The opener spends Manafication's free combo under Embolden, both
+Acceleration charges and Swiftcast on Verthunder III, and the rotation makes 11 combos (four of them free) in the phase.
+The clears' own rotations, replayed standing still over 0:00-380 s, deal 93-97% of the search's best (our pulls over
+0:00-2:00: 91-95%). A search takes ~35 s.
+
+What the logs couldn't settle, to be tested in game: [rdm-in-game-tests.md](rdm-in-game-tests.md).
+
 ## The fight
 
 `p12s.py` holds P12S P1 as the optimizer plays it; `p12s_p1.json` is built from six benchmark clears (`--build`).
@@ -213,6 +272,9 @@ eight Drakesbanes and four Heavens' Thrusts. A search takes ~70 s.
 - **Everything else** (Trinity of Souls, Dialogos, Glaukopis, and from Palladion to the end) takes its running from
   the benchmark clears' Black Mages: the median path they ran in each window, from their position at every cast. From
   Palladion on that is marked provisional: our strategy there may still change.
+- **Far spots**: a ranged player stands within a melee action's reach of Athena (14 y from her centre) everywhere but
+  Paradeigma I's wall end and Superchain I's Heavensflame corner (`FAR`); a ranged job with melee actions (Red Mage)
+  is out of reach around those snapshots (`far`).
 
 `python tools/rotation/p12s.py` lists every window with its source and compares our plan's distances with what the
 clears ran (within about ±30%: ours runs more in Paradeigma I-III, less in Superchain I).
@@ -305,7 +367,9 @@ she is away. A standing-still rotation, as a control, breaks several windows. Fo
 rule and positionals on hand-made windows, and replays quick M1 and M2 searches: every away window must hold a stretch
 of its length without a melee action (the standing-still rotation breaks one); the same for Monk and Dragoon. For the
 Bard it tests Repertoire under each song and Army's Muse on hand-made states, and that quick R1 and R2 searches cast
-nothing at Athena while she is away and score the same as standing still.
+nothing at Athena while she is away and score the same as standing still. For the Red Mage it tests Dualcast,
+Acceleration's priority, the expected procs and reach at a far spot (with and without Manafication) on hand-made states,
+and replays quick R1 and R2 searches like the Black Mage's, plus no melee action at a far spot without Manafication.
 
 ## Files
 
@@ -317,6 +381,7 @@ nothing at Athena while she is away and score the same as standing still.
 | `jobs/mnk.py` | Monk: forms, Fury, Perfect Balance, beast chakra and Nadi, chakra, positionals, auto-attacks |
 | `jobs/brd.py` | Bard: songs, Repertoire, Soul Voice, Coda and Radiant Finale, Army's Muse, DoTs, Hawk's Eye, auto-attacks |
 | `jobs/drg.py` | Dragoon: the two combos, Draconian Fire and Focus, Life of the Dragon, jumps, Life Surge, DoT, positionals, auto-attacks |
+| `jobs/rdm.py` | Red Mage: Dualcast, mana, the melee combo and finishers, Manafication, Acceleration, expected procs, reach at far spots |
 | `p12s.py`, `p12s_p1.json` | the fight: timeline, downtime, our strategy's runs, the clears' runs elsewhere |
 | `solve.py` | command line |
 | `logs.py` | detailed per-player logs from the benchmark clears, cached in `.cache/` |

@@ -1,6 +1,6 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
-    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg] [--clears] [--site [--gcds 2.30,2.40]]
+    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm] [--clears] [--site [--gcds 2.30,2.40]]
 
 Per player, from their clean pulls (alive through 2:00):
   damage per potency   their plain hits (no crit, no direct hit), external buffs divided out, over the model potency
@@ -37,10 +37,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
 import calibrate, engine, logs, p12s            # noqa: E402
 from engine import Fight                         # noqa: E402
-from jobs import blm, brd, drg, mnk, rpr         # noqa: E402
+from jobs import blm, brd, drg, mnk, rdm, rpr    # noqa: E402
 
 JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard"),
-        "drg": (drg, "Dragoon")}
+        "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage")}
 SITE_FILE = HERE / ".cache" / "ceilings.json"
 ROT_FILE = HERE / ".cache" / "rotations.json"
 WINDOW = 120
@@ -136,7 +136,7 @@ def site_fight(job, until=WINDOW):
     default)."""
     if (job.__name__, until) not in _fight:
         slot = p12s.worst_slot(getattr(job, "MELEE", False), ROT_UNTIL)
-        _fight[job.__name__, until] = (slot, p12s.fight(slot, until=until))
+        _fight[job.__name__, until] = (slot, p12s.fight(slot, until=until, far_spots=getattr(job, "FAR", False)))
     return _fight[job.__name__, until]
 
 
@@ -150,7 +150,8 @@ def timeline(job, until=ROT_UNTIL):
                 mechanics=[[r(t), n] for t, n in p12s.mechanics(data) if t < until],
                 runs=[[r(lo), r(hi), r(min(y / p12s.RUN, hi - lo)), r(y), mech, what, src]
                       for lo, hi, y, mech, what, src in p12s.windows(slot, None, data) if lo < until],
-                away=[[r(lo), r(hi), need, mech, src] for lo, hi, need, mech, src in p12s.away(slot, None, data) if lo < until],
+                away=[[r(lo), r(hi), need, mech, src] for lo, hi, need, mech, src in
+                      p12s.out_of_reach(slot, None, data, getattr(job, "FAR", False)) if lo < until],
                 pinned=[[r(lo), r(hi), mech] for lo, hi, mech in p12s.plan_spans(slot, None, data) if lo < until] if f.pinned else [],
                 untargetable=[[r(a), r(b)] for a, b in f.untargetable if a < until])
 

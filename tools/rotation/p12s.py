@@ -23,6 +23,10 @@ Every spot of our plan is within a melee's reach of Athena (REACH_MELEE from her
 only the hard casts its runs block, and positionals: while the plan fixes their spot (`pinned`) only True North gets
 one. Elsewhere the runs are the clears' Reapers' paths, and where those Reapers went longer than a GCD without a melee
 action, the melee is away (out of reach) for that long somewhere in the window.
+
+A ranged player stands within a melee's reach too, except at a few far spots of our plan (FAR: the wall end of
+Paradeigma I's bait line, the Heavensflame corner of Superchain I). A ranged job with melee actions (Red Mage's melee
+combo) is out of reach around those snapshots (`far`).
 """
 import argparse, collections, datetime, json, math, statistics as st, sys
 from pathlib import Path
@@ -109,6 +113,12 @@ PLAN = {
     },
 }
 DEFAULT_VAR = {"Paradeigma II": "tether", "Superchain I": "spread", "Paradeigma III": "straight"}   # the most running
+# Spots of our plan beyond a melee action's reach (REACH_MELEE from Athena's centre), where a ranged job with melee
+# actions (Red Mage) can't use them around the run's snapshot: (mechanic, variant, run index) -> yalms from her centre.
+# Paradeigma I: the wall end of the bait line (18.3 y); Superchain I: the ranged Heavensflame spot, back into the corner
+# behind the last cluster (mechanics/superchain-1.js: 110 px beyond the cluster, 12 y out, and 44 px aside: ~21.5 y).
+# Every other spot of the plan is within reach.
+FAR = {("Paradeigma I", "R1", 0): 18.3, ("Paradeigma I", "R2", 1): 18.3, ("Superchain I", "spread", 4): 21.5}
 # the major mechanics as the site's timeline marks them: when their boss cast's bar starts
 MECHANICS = [("Paradeigma#0.begin", "Paradeigma I"), ("Paradeigma#1.begin", "Paradeigma II"), ("Glaukopis#0.begin", "Glaukopis"),
              ("Superchain Theory I#0.begin", "Superchain I"), ("Peridialogos#0.begin", "Dialogos"),
@@ -354,6 +364,29 @@ def away(slot="R1", var=None, data=None):
     return sorted(out)
 
 
+def far(slot="R1", var=None, data=None):
+    """A ranged player's stretches out of melee reach at our plan's far spots (FAR): [(lo, hi, seconds, mechanic,
+    source)], each around the run's snapshot, for the time it takes to step out past REACH_MELEE and back (they run in
+    as late and leave as early as the mechanic allows)."""
+    if melee(slot): return []
+    data = data or load()
+    ev = lambda ref: _at(data["events"], tuple(ref) if isinstance(ref, list) else ref)
+    pick = dict(DEFAULT_VAR, **{"Paradeigma I": slot}, **(var or {}))
+    out = []
+    for (mech, v, i), d in FAR.items():
+        if pick[mech] != v: continue
+        x = (d - REACH_MELEE) / RUN
+        t = ev(PLAN[mech][v][i][1])
+        out.append((round(t - x, 2), round(t + x, 2), round(2 * x, 2), mech, f"plan, {v}: {d:.1f} y out"))
+    return sorted(out)
+
+
+def out_of_reach(slot="R1", var=None, data=None, far_spots=False):
+    """A melee slot's stretches out of reach (away); for a ranged slot, the plan's far spots if the job has melee
+    actions (far_spots), else none."""
+    return away(slot, var, data) if melee(slot) else far(slot, var, data) if far_spots else []
+
+
 def moves(slot="R1", var=None, data=None):
     """The windows as engine Moves; a run that can't fit its window is clipped to standing still through it."""
     out = []
@@ -363,10 +396,13 @@ def moves(slot="R1", var=None, data=None):
     return out
 
 
-def fight(slot="R1", var=None, until=None, still=False, **kw):
+def fight(slot="R1", var=None, until=None, still=False, far_spots=False, **kw):
+    """The fight for a slot and variants. far_spots: a ranged job with melee actions is out of reach at the plan's far
+    spots (far)."""
     data = load()
-    gone = [] if still else [Move(lo, hi, need, why=f"{mech}: out of reach as the clears' Reapers were ({src})")
-                             for lo, hi, need, mech, src in away(slot, var, data)]
+    gone = [] if still else [Move(lo, hi, need, why=f"{mech}: out of reach " +
+                                  (f"as the clears' Reapers were ({src})" if melee(slot) else f"at the far spot ({src})"))
+                             for lo, hi, need, mech, src in out_of_reach(slot, var, data, far_spots)]
     pinned = [] if still or not melee(slot) else [(lo, hi) for lo, hi, _ in plan_spans(slot, var, data)]
     return Fight(until=until or data["kill_median"], moves=[] if still else moves(slot, var, data),
                  untargetable=[tuple(w) for w in data["untargetable"]], away=gone, pinned=pinned, **kw)
@@ -402,6 +438,10 @@ def main():
             print(f"{lo:6.1f}-{hi:6.1f}s {need:5.1f}s  {mech} [{src}]")
         print("spot fixed by our plan (positionals need True North): " +
               ", ".join(f"{lo:.1f}-{hi:.1f}s {m}" for lo, hi, m in plan_spans(a.slot, parse_var(a.var), data)))
+    else:
+        print("\nout of melee reach at the plan's far spots (a ranged job with melee actions, e.g. Red Mage):")
+        for lo, hi, need, mech, src in far(a.slot, parse_var(a.var), data):
+            print(f"{lo:6.1f}-{hi:6.1f}s {need:5.1f}s  {mech} [{src}]")
     print("\nour plan against the clears' Black Mages (median yalms run in the same window):")
     for mech, variants in PLAN.items():
         for v, runs in variants.items():
