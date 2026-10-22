@@ -171,7 +171,7 @@ at the group's average player DPS (party DPS / 8). The scorecard also splits eac
 ### Rotation ceiling
 
 For jobs the rotation optimizer covers on the site (`tools/rotation`: Black Mage, Reaper, Dragoon, Red Mage, Viper,
-Samurai and Pictomancer so far; Monk and Bard have models not yet checked against logs), the rDPS on clean pulls chart
+Samurai, Pictomancer and Machinist so far; Monk and Bard have models not yet checked against logs), the rDPS on clean pulls chart
 marks each pull with a ceiling: the best rotation without raid buffs at the player's GCD over 0:00-2:00, with the runs
 our strategy needs at their worst for the role (the Paradeigma I slot with the most running, R1 or M2, and each mechanic's
 variant with the most), converted to
