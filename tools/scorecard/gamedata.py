@@ -55,18 +55,18 @@ def _icon_path(name, abbr):
     """The high-resolution icon of the job's PvE action of that name: the job's own, else one its category includes
     (role actions, a base class's spells); None if there is none. Not filtered on IsPlayerAction: actions that replace
     another on the hotbar (Paradox, Void Reaping) are not marked as player actions. A name the game capitalises
-    differently (Corps-a-corps) is found by a case-blind search."""
-    rows = []
+    differently (Corps-a-corps, the Forbidden Chakra) is found by a case-blind search, also when the exact name only
+    matches a jobless placeholder row (The Forbidden Chakra, The Wanderer's Minuet)."""
+    job = lambda f: ((f.get("ClassJob") or {}).get("fields") or {}).get("Abbreviation")
+    cat = lambda f: (((f.get("ClassJobCategory") or {}).get("fields") or {}).get("Name") or "").split()
     for op in ("=", "~"):
         q = urllib.parse.quote(f'Name{op}"{name}"')
         with urllib.request.urlopen(urllib.request.Request(SEARCH.format(q), headers=UA), timeout=60) as r:
             rows = [x["fields"] for x in json.load(r)["results"] if not x["fields"].get("IsPvP")
                     and (x["fields"].get("Name") or "").lower() == name.lower()]
-        if rows: break
-    job = lambda f: ((f.get("ClassJob") or {}).get("fields") or {}).get("Abbreviation")
-    cat = lambda f: (((f.get("ClassJobCategory") or {}).get("fields") or {}).get("Name") or "").split()
-    pick = next((f for f in rows if job(f) == abbr), None) or next((f for f in rows if abbr in cat(f)), None)
-    return pick["Icon"]["path_hr1"] if pick else None
+        pick = next((f for f in rows if job(f) == abbr), None) or next((f for f in rows if abbr in cat(f)), None)
+        if pick: return pick["Icon"]["path_hr1"]
+    return None
 
 
 def icons(job, names):

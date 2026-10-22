@@ -1,6 +1,6 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
-    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch] [--clears] [--site [--gcds 2.30,2.40]] [--offline]
+    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch|nin] [--clears] [--site [--gcds 2.30,2.40]] [--offline]
                                  [--no-polish]
 
 Per player, from their clean pulls (alive through 2:00):
@@ -32,7 +32,8 @@ the clears' median kill, FULL), shown and scored up to where our groups' progres
 spends, and as progress moves on the site shows more of the same rotation rather than a new one. Each also carries
 its 0:00-2:00 ceiling. A rotation's expected DPS
 is the median of our players' conversions on the job, each moved to its GCD (the speed points that takes come out of
-their other substats), so GCDs compare with each other.
+their other substats), so GCDs compare with each other. For a job none of our players plays (Ninja), they convert at the
+benchmark clears' players on it since the job's CONVERT_SINCE instead, at the GCDs those play, and the site says so.
 """
 import argparse, collections, json, re, statistics as st, sys
 from pathlib import Path
@@ -41,11 +42,11 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
 import calibrate, engine, logs, p12s, polish    # noqa: E402
 from engine import Fight                         # noqa: E402
-from jobs import blm, brd, drg, mch, mnk, pct, rdm, rpr, sam, vpr    # noqa: E402
+from jobs import blm, brd, drg, mch, mnk, nin, pct, rdm, rpr, sam, vpr    # noqa: E402
 
 JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard"),
         "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage"), "vpr": (vpr, "Viper"), "sam": (sam, "Samurai"),
-        "pct": (pct, "Pictomancer"), "mch": (mch, "Machinist")}
+        "pct": (pct, "Pictomancer"), "mch": (mch, "Machinist"), "nin": (nin, "Ninja")}
 SITE_FILE = HERE / ".cache" / "ceilings.json"
 ROT_FILE = HERE / ".cache" / "rotations.json"
 WINDOW = 120
@@ -314,12 +315,13 @@ def site_rotation(job, s, until=ROT_UNTIL):
     return out
 
 
-def rotations(job, rows, width, extra=()):
+def rotations(job, rows, width, extra=(), ours=None):
     """The site's optimized rotations for a job, {fight: timeline, rotations: {key: ...}}: at every GCD (and crit rate)
     searched for our players' ceilings, plus the extra GCDs (at the job's default crit rate), the best whole-phase
     rotation up to ROT_UNTIL, with its expected DPS there at the median of our players' conversions and their range, and the 0:00-2:00
     ceiling's at the median. Each player is moved to the rotation's GCD first (SPEED_PTS, STAT_PT): a faster GCD costs
-    them damage per potency, so GCDs compare at what a player would have there."""
+    them damage per potency, so GCDs compare at what a player would have there. `ours`: the players counted as playing
+    at each GCD, when `rows` (the conversions) are someone else's (the clears', for a job none of ours plays)."""
     for g in extra: ceiling(job, g, width, getattr(job, "CRIT", None))
     def conv(s, r, gcd, w=ROT_UNTIL):
         """The rotation in a player's DPS, the player moved to its GCD: the speed points that takes come out of their
@@ -335,7 +337,8 @@ def rotations(job, rows, width, extra=()):
         rot = site_rotation(job, whole)
         out[key] = dict(gcd=gcd, crit=crit, window=ROT_UNTIL, potency=round(s.dmg), dps=round(st.median(each)), dps_lo=round(min(each)),
                         ceiling_2min=round(st.median(conv(s2, r, gcd, WINDOW) for r in rows)),
-                        dps_hi=round(max(each)), players=sum(r["key"] == key for r in rows), conv_players=len(rows),
+                        dps_hi=round(max(each)), players=sum(r["key"] == key for r in (rows if ours is None else ours)),
+                        conv_players=len(rows),
                         waste={w: round(n, 1) for w, n in zip(job.WASTE, s.waste) if n}, rotation=rot)
     return dict(fight=timeline(job), rotations=out, speed_cost=round(100 * STAT_PT * SPEED_PTS * 0.01, 2))
 
@@ -380,9 +383,19 @@ def main():
                           for r in rows}
         SITE_FILE.parent.mkdir(exist_ok=True)
         SITE_FILE.write_text(json.dumps(saved, indent=1, ensure_ascii=False))
+        conv = rows
+        if not rows:     # none of our players on the job: the rotations convert at the benchmark clears' players instead
+            since = getattr(job, "CONVERT_SINCE", job.LOGS_SINCE)
+            days = {(k["code"], k["fight"]): k["day"] for k in json.loads(logs.BENCH.read_text())["kills"]}
+            conv = player_rows(job, [p for p in logs.clears(jobname) if days[(p["code"], p["fight"])] >= since], a.width)
+            show(conv, f"None of our players on {jobname}: the site converts at the benchmark clears' since {since} (DPS)")
+        mine = rotations(job, conv, a.width, [float(g) for g in a.gcds.split(",")] if a.gcds else (), ours=rows)
+        if conv is not rows:                              # the site says whose conversion it is
+            mine.update(converted_from="clears", converted_since=since)
+        if a.offline: mine["offline"] = True              # the site says its DPS comes from the acts caches
+        # read only now: the searches take long, and another job's run may have saved its rotations meanwhile
         rots = json.loads(ROT_FILE.read_text()) if ROT_FILE.exists() else {}
-        rots[jobname] = rotations(job, rows, a.width, [float(g) for g in a.gcds.split(",")] if a.gcds else ())
-        if a.offline: rots[jobname]["offline"] = True     # the site says its DPS comes from the acts caches
+        rots[jobname] = mine
         ROT_FILE.write_text(json.dumps(rots, indent=1, ensure_ascii=False))
         print(f"\nsaved {len(rows)} ceilings to {SITE_FILE} and {len(rots[jobname]['rotations'])} rotations to {ROT_FILE}")
     if a.clears:
