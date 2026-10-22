@@ -598,6 +598,12 @@ def prepare(p):
         LOG_MEDITATE[round(x["t"], 1)] = min(5, int((off - on + 0.3) // MEDITATE_TICK)) if off is not None else 0
 
 
+def unprepare():
+    """Forget the log (calibrate.prepared): searches and rebuilt rotations use the fight's hits and the usual opener."""
+    global LOG_HITS, LOG_OPENER, LOG_MEDITATE
+    LOG_HITS = LOG_OPENER = LOG_MEDITATE = None
+
+
 def cast_time(s, name, at):
     return CAST.get(name, 0.0), None
 
