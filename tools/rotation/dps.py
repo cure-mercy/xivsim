@@ -1,6 +1,6 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
-    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam] [--clears] [--site [--gcds 2.30,2.40]] [--offline]
+    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct] [--clears] [--site [--gcds 2.30,2.40]] [--offline]
                                  [--no-polish]
 
 Per player, from their clean pulls (alive through 2:00):

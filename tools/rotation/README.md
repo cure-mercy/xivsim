@@ -2,7 +2,7 @@
 
 Searches for the highest-potency rotation of a job over P12S phase 1 (level 90), from the pull to the kill, with the
 fight's fixed timeline: when Athena can't be hit, and where the player has to run under our groups' strategy. So far:
-Black Mage, Reaper, Monk, Bard, Dragoon, Red Mage, Viper and Samurai (Dragoon, Red Mage, Viper and Samurai checked only
+Black Mage, Reaper, Monk, Bard, Dragoon, Red Mage, Viper, Samurai and Pictomancer (Dragoon, Red Mage, Viper and Samurai checked only
 against the scorecard's cached events: see their sections).
 
 ```
@@ -17,6 +17,7 @@ python tools/rotation/solve.py --job drg [--slot M2]          # Dragoon, 2.49 s 
 python tools/rotation/solve.py --job rdm [--slot R2]          # Red Mage, 2.50 s GCD, R1 by default
 python tools/rotation/solve.py --job vpr [--slot M2]          # Viper, 2.49 s GCD (2.12 s under Swiftscaled), M1 by default
 python tools/rotation/solve.py --job sam [--slot M2]          # Samurai, 2.40 s GCD (2.09 s under Fuka), M1 by default
+python tools/rotation/solve.py --job pct [--slot R2]          # Pictomancer, 2.45 s GCD, R1 by default
 python tools/rotation/p12s.py [--slot R2]                     # the move windows; --build refetches the timeline
 python tools/rotation/check.py                                # movement and downtime checks
 python tools/rotation/calibrate.py [--job rpr] [--ours]       # check the job model against the clears' (or our) logs
@@ -28,7 +29,7 @@ python tools/rotation/dps.py --job drg --site --offline      # ...from the score
 
 | Option | Meaning |
 |---|---|
-| `--job` | `blm` (default), `rpr`, `mnk`, `brd`, `drg`, `rdm`, `vpr` or `sam` |
+| `--job` | `blm` (default), `rpr`, `mnk`, `brd`, `drg`, `rdm`, `vpr`, `sam` or `pct` |
 | `--gcd` | the player's GCD without haste (spell or skill speed; default the clears' median); `--compare` prints each clear's. Monk's Greased Lightning takes 20% off it |
 | `--crit` | critical-hit rate, for a job whose resources or buffs turn on crits (Monk's chakra, Dragoon's Life Surge and Battle Litany; default 0.25) |
 | `--slot` | Paradeigma I: `R1` / `M1` line up for the first lasers, `R2` / `M2` for the second (our BLMs play both R slots; the melee slot varies with the lineup). Default `R1`, or `M1` for a melee |
@@ -421,6 +422,69 @@ before Palladion rather than refresh it into the downtime, and spends Palladion 
 The clears' own rotations, replayed standing still over 0:00-380 s, deal 90-95% of the search's best (our pulls over
 0:00-2:00: 91-94%). A search takes ~2 minutes.
 
+## Pictomancer
+
+`jobs/pct.py`, from the job guide and the patch notes since 7.0, checked against our groups' logs: the scorecard's
+cached events (~200 pulls by three Pictomancers, Sep-Oct 2026) and the full FFLogs logs of our 27 clean pulls and the
+benchmark clears with one (three; two since 7.3); the measuring scripts are in `scratch/pct/`. Pictomancy Mastery IV
+(level 94) raises most potencies in the guide, and Rainbow Drip (92), the Claw / Maw motifs, a third Living Muse charge
+and Retribution of the Madeen (96) and Star Prism (100) lie above P12S. The guide's level-84 trait gives the level-90
+values, as the 7.2 and 7.3 notes left them, and the logs' plain hits (own Starry Muse and others' buffs divided out,
+scaled to Pom Muse, 800) match within ~2%:
+
+- Fire / Aero / Water in Blue 420 / 460 / 500, Blizzard / Stone / Thunder in Magenta 750 / 790 / 830, Holy in White 500,
+  Comet in Black 830, Pom and Winged Muse 800, Mog of the Ages 1,000; the hammers (always critical direct hits) 540 /
+  560 / 580, from 7.3's base values for Brush and Polishing Hammer (no level-84 step);
+- Living Muse has two charges at level 90, Striking Muse two; every canvas is painted at the pull (7.1).
+
+Rules from the logs the guide doesn't give:
+
+- **Inspiration** takes 25% off the cast and recast of the six colour spells and of Holy and Comet (Comet's 3.3 s too),
+  and each of those takes a Hyperphantasia stack; the hammers and motifs take neither. It comes on 0.58 s after Starry
+  Muse and ends when the stacks run out or the landscape does (~22 s);
+- **the landscape** is a circle of ~8 y around where Starry Muse was cast: players keep Inspiration at up to 8.4 y from
+  it and lose it from 6.5 y (positions on casts in the full logs, blurred by the 3 s tick). Our runs longer than that
+  take the player out (`LANDSCAPE`); Superchain I's 15 y run into the second doughnut is where our Pictomancers and the
+  benchmark ones lose it;
+- motifs cast in a fixed 3.0 s on a fixed 4.0 s recast, whatever the spell speed or Inspiration;
+- the Aetherhues step is shared: after Fire in Red, Subtractive Palette opens Stone in Yellow. Aetherhues lapses after
+  30 s; Subtractive Palette's stacks and Monochrome Tones stay until spent. Subtractive Spectrum is spent before gauge;
+- MP never binds (2,000 at the lowest), so the model leaves it out.
+
+Every cast in our 27 clean pulls (to each player's first death) and in the clears' whole pulls replays as legal
+(`calibrate.py --job pct [--ours]`); cast times match within 0.04 s. A log replay has no movement, so it takes every
+Starry Muse window as spent in the landscape: the 8 GCDs that start "early" all follow a player leaving it. A control
+with broken rules (Living Muse on 45 s, Striking Muse on 65 s, Starry Muse on 125 s, motifs on 4.4 s, four Hyperphantasia
+stacks, a 10% Inspiration, Hammer Time or Aetherhues on 20 s, three White Paint) shows each as illegal or early casts
+(`scratch/pct/tamper.py`); Mog of the Ages on 35 s doesn't, as Winged Muse gates it every ~40 s anyway.
+
+- **Loop**: Fire -> Aero -> Water in Blue (25 gauge, a White Paint for Holy), Subtractive Palette (50 gauge) for Blizzard
+  -> Stone -> Thunder in Magenta (a paint) and Monochrome Tones, under which a paint goes to Comet in Black instead. The
+  canvases are painted by motifs and rendered by Pom / Winged Muse (Winged paints the Moogle Portrait for Mog of the
+  Ages), Striking Muse (three hammers) and Starry Muse (+5% for 20.5 s on the Pictomancer, Subtractive Spectrum, five
+  Hyperphantasia). Motifs need no target, so Palladion repaints them.
+- **Hammers**: their potency counts plain in the printed potency; the search weighs them at a sure critical direct
+  hit's gain over an average hit (`SURE_W`, x1.62 at 25% crit and 30% direct hit) and `dps.py` converts them at each
+  player's own (`AUTO_CRIT`, as Samurai's sure crits).
+- **Ranking**: as for the Viper, each held resource at what it converts into less the GCD time it takes. Two additions:
+  a canvas or the Moogle Portrait counts only if what renders it is back before the window ends (without it the search
+  painted a starry sky it could never use over a Comet, and polish found 0.9-1.5% at the end), and a cooldown sitting
+  at full charges is charged twice its share of a use for each second (`CAPPED`: Living Muse was left full for ~30 s
+  after the opener; 1.5-2 times the share did best, +0.2-0.6%).
+- **Movement**: hard casts as for the Black Mage; most GCDs are 1.5 s casts on a 2.45 s recast or instants, so a
+  standing-still rotation happens to fit all our runs. What running costs is mostly Inspiration lost in the landscape.
+  **Smudge** dashes 15 y along whatever run is open (any direction: the player faces the way they dash) and banks
+  that running; its 5 s of faster running is left out. It ties with no Smudge (the search uses it once, in Paradeigma
+  I's swap).
+
+Over the whole phase the best rotation deals 93,782 potency in `R1` (103,194 with the hammers at their expected worth)
+and 93,146 in `R2` (102,558); standing still 94,243 (103,725), so our strategy costs a Pictomancer ~0.5% in R1 and up
+to ~1% in R2, about half of it Inspiration lost in Superchain I's runs (102,936 if the landscape were never left). It
+opens with Striking Muse, Starry Muse, Pom Muse, Wing Motif and Winged Muse into the inspired subtractive burst, covers
+Paradeigma I's runs with hammers and Holy, renders Living Muse 13 times (all its charges allow) and repaints the
+canvases in Palladion. The search's settings come from `tune.py` (values at 0.45-0.65 of the guesses); the sweep holds
+within 0.1% from width 1,000 to 3,000, the beam drops with width. A search takes ~30 s.
+
 ## The fight
 
 `p12s.py` holds P12S P1 as the optimizer plays it; `p12s_p1.json` is built from six benchmark clears (`--build`).
@@ -570,7 +634,12 @@ Acceleration's priority, the expected procs and reach at a far spot (with and wi
 and replays quick R1 and R2 searches like the Black Mage's, plus no melee action at a far spot without Manafication.
 Dashes: Corps-a-corps waits for its run to open and saves the stretch, saves nothing once the free time has covered it,
 and waits at a far spot for the snapshot; Displacement only once the path before its stretch is behind, and overshooting
-a short stretch; in the searches no dash saves more than its stretch allows, and the replay counts what they saved.
+a short stretch; in the searches no dash saves more than its stretch allows, and the replay counts what they saved. For the
+Pictomancer it tests Inspiration's haste and stacks, the landscape after a 15 y and a 6 y run, the shared Aetherhues step,
+Monochrome Tones, motifs while Athena is away and the capped muse charges on hand-made states, and replays quick R1 and
+R2 searches like the Black Mage's, plus no inspired GCD after a run past the landscape since Starry Muse. Its controls
+differ (a standing-still Pictomancer rotation fits our runs): the R1 rotation against the same runs at twice their
+length, and the standing-still one against R1's landscape.
 
 ## Files
 
@@ -584,6 +653,7 @@ a short stretch; in the searches no dash saves more than its stretch allows, and
 | `jobs/drg.py` | Dragoon: the two combos, Draconian Fire and Focus, Life of the Dragon, jumps, Life Surge, DoT, positionals, auto-attacks |
 | `jobs/rdm.py` | Red Mage: Dualcast, mana, the melee combo and finishers, Manafication, Acceleration, expected procs, reach at far spots |
 | `jobs/vpr.py` | Viper: the dual-wield combo, Honed and venoms, Vicewinder's Coils and bites, Rattling Coils, Serpent Offerings, Reawaken, Swiftscaled haste, positionals, auto-attacks |
+| `jobs/pct.py` | Pictomancer: the colour loop and Aetherhues, Palette Gauge and Subtractive Palette, White Paint, Monochrome Tones and Comet, the canvases and motifs, Living / Striking / Starry Muse, Mog of the Ages, hammers, Inspiration and Hyperphantasia in Starry Muse's landscape, Smudge |
 | `jobs/sam.py` | Samurai: the three combos, Sen and Iaijutsu, Tsubame-gaeshi, Meikyo Shisui, Kenki, Meditation and Shoha, Ogi Namikiri, Fugetsu and Fuka, Higanbana's DoT, Tengentsu on the fight's hits, Meditate in downtime, positionals, auto-attacks |
 | `p12s.py`, `p12s_p1.json` | the fight: timeline, downtime, our strategy's runs, the clears' runs elsewhere |
 | `solve.py` | command line |

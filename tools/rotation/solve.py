@@ -1,6 +1,6 @@
 """Searches for the highest-damage rotation of a job over P12S phase 1 and prints it.
 
-    python tools/rotation/solve.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam] [--gcd 2.32] [--until 449] [--slot R1] [--var para2=debuff]
+    python tools/rotation/solve.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct] [--gcd 2.32] [--until 449] [--slot R1] [--var para2=debuff]
                                    [--party AST,SCH,DRG,DNC] [--still] [--move 30-36] [--pot] [--carry] [--width 1000]
                                    [--layers time|gcd] [--no-polish] [--compare]
 
@@ -85,7 +85,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--job", default="blm", choices=sorted(JOBS))
     ap.add_argument("--gcd", type=float, default=None, help="GCD length without haste, from the player's spell or skill speed "
-                    "(default: the benchmark clears' median, 2.32 s for BLM, 2.49 s for RPR, BRD, DRG and VPR (2.12 s under Swiftscaled), 2.50 s for RDM, 2.40 s for SAM (2.09 s under Fuka); Monk's 20%% "
+                    "(default: the benchmark clears' median, 2.32 s for BLM, 2.49 s for RPR, BRD, DRG and VPR (2.12 s under Swiftscaled), 2.50 s for RDM, 2.40 s for SAM (2.09 s under Fuka), 2.45 s for PCT; Monk's 20%% "
                     "Greased Lightning comes off it: 2.43 s is a 1.94 s GCD)")
     ap.add_argument("--crit", type=float, default=None, help="critical-hit rate, for jobs whose resources or buffs "
                     "turn on critical hits (Monk's chakra, Dragoon's Life Surge and Battle Litany; default 0.25)")
