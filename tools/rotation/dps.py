@@ -1,6 +1,6 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
-    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch|nin|smn] [--clears] [--site [--gcds 2.30,2.40]] [--offline]
+    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch|nin|smn|dnc] [--clears] [--site [--gcds 2.30,2.40]] [--offline]
                                  [--no-polish]
 
 Per player, from their clean pulls (alive through 2:00):
@@ -42,12 +42,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
 import calibrate, engine, logs, p12s, polish    # noqa: E402
 from engine import Fight                         # noqa: E402
-from jobs import blm, brd, drg, mch, mnk, nin, pct, rdm, rpr, sam, smn, vpr    # noqa: E402
+from jobs import blm, brd, dnc, drg, mch, mnk, nin, pct, rdm, rpr, sam, smn, vpr    # noqa: E402
 
 JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard"),
         "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage"), "vpr": (vpr, "Viper"), "sam": (sam, "Samurai"),
         "pct": (pct, "Pictomancer"), "mch": (mch, "Machinist"), "nin": (nin, "Ninja"),
-        "smn": (smn, "Summoner")}
+        "smn": (smn, "Summoner"), "dnc": (dnc, "Dancer")}
 SITE_FILE = HERE / ".cache" / "ceilings.json"
 ROT_FILE = HERE / ".cache" / "rotations.json"
 WINDOW = 120
@@ -154,10 +154,12 @@ def tick_gain(pulls):
 
 def sure_gain(job, pulls, k, unbuffed=False):
     """Hits that always crit: their average logged damage (others' buffs divided out) over k times the model potency.
-    `unbuffed`: only hits under no crit or direct-hit raid buff (a crit buff raises a sure crit's damage instead)."""
+    `unbuffed`: only hits under no crit or direct-hit raid buff (a crit buff raises a sure crit's damage instead) but
+    the job's own (OWN_CRIT_BUFFS: Dancer's Starfall Dance always comes under their Devilment)."""
     names = getattr(job, "AUTO_CRIT", ())
     if not names: return None
-    keep = (lambda x: not CRIT_BUFFS & set((x.get("buffs") or "").strip(".").split("."))) if unbuffed else (lambda x: True)
+    crit = CRIT_BUFFS - set(getattr(job, "OWN_CRIT_BUFFS", ()))
+    keep = (lambda x: not crit & set((x.get("buffs") or "").strip(".").split("."))) if unbuffed else (lambda x: True)
     v = [d / m for p in pulls for a, lab, d, m in calibrate.model_hits(p, WINDOW, keep)
          if a in names and "sure crit" in lab and m]
     return st.mean(v) / k if v else None

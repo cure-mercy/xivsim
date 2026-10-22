@@ -32,7 +32,8 @@ python tools/rotation/dps.py --job drg --site --offline       # ...from the scor
 | `pct` | Pictomancer | 2.45 s | R1 / R2 | 93,782 / 93,146 (103,194 / 102,558 \*) | 94,243 (103,725 \*) | ~30 s |
 | `mch` | Machinist | 2.45 s | R1 = R2 = still | 107,858 (111,688 \*) | | ~30 s |
 | `nin` | Ninja | 2.09 s (2.46 s before Increase Attack Speed) | M1 = M2 | 131,340 | 131,525 | ~50 s |
-| `smn` | Summoner | 2.45 s | R1 = R2 = still | 94,536 | | ~20 s |
+| `smn` | Summoner | 2.45 s | R1 / R2 | 94,387 / 94,537 | 94,536 | ~20 s |
+| `dnc` | Dancer | 2.49 s | R1 = R2 = still | 83,902 (86,220 \*) | | ~40 s |
 
 Potency without raid buffs, over 0:00-449 s, as each job's section last recorded it. \* with sure critical (direct)
 hits at their expected worth, which is what the search ranks by.
@@ -417,19 +418,69 @@ cooldown 1.5-2 s longer, the demi's recast unscaled, a 14.5 s trance, fewer attu
 Further Ruin, slower Rites or Slipstream) shows each as illegal or early casts (`scratch/smn/tamper.py`).
 
 - The pets are booked when summoned or Enkindled, at their landing's buffs.
-- Crimson Cyclone rushes to Athena (`engine.dash`; as Red Mage's Corps-a-corps not off a far spot before its
-  snapshot) and Crimson Strike needs melee reach (`FAR`).
+- Crimson Cyclone rushes to Athena (`engine.dash`). While our plan holds the player to a spot (a mechanic's first cue
+  to its last snapshot, as `p12s.plan_spans`) it may only be a dash along a stretch of the run straight to her
+  (Paradeigma I's swap in R1), and as Red Mage's Corps-a-corps not off a far spot before its snapshot; Crimson Strike
+  needs melee reach (`FAR`).
 - Held values (each resource's conversion less Ruin III's rate over its GCDs) tie the filler exactly, so at their full
   scale the beam drifted holding Ruby stacks and Arcanum until the next demi-summon wiped them (-5.5%); `tune.py` puts
   the scale at 0.10-0.15. The search opens on a pre-cast Ruin III, as every clear does.
 
-Our runs cost a Summoner nothing: R1, R2 and standing still find the same 94,536 potency over the phase (Ruin III
-slidecasts, and all but Ruby Rite and Slipstream is instant; no Crimson Cyclone dash pays). Eight demi-summons, Searing
-Light with each Summon Bahamut, Swiftcast on Slipstream or a Ruby Rite, and only eight Ruin IIIs: every Arcanum is
+Our runs cost a Summoner next to nothing: 94,387 potency over the phase in R1 and 94,537 in R2, against 94,536
+standing still (Ruin III slidecasts, and all but Ruby Rite and Slipstream is instant); keeping Crimson Cyclone out of the
+plan's mechanics only moves it to the stretches between them. Eight demi-summons, Searing
+Light with each Summon Bahamut, Swiftcast on Slipstream, a Ruby Rite or Ruin III, and only eight Ruin IIIs: every Arcanum is
 spent but Garuda's before Palladion (the 27 s after the 4:00 trance fit Titan and Ifrit). The primals' order changes
 from cycle to cycle, a near-tie. Settings from `tune.py`; a search takes ~20 s and polish adds 0.2%. The clears'
 rotations, replayed standing still over 0:00-370 s, deal 95-98% of the best (one pull 89%); our pulls over 0:00-130 s,
 86-87%.
+
+## Dancer
+
+`jobs/dnc.py`, checked against our 62 clean pulls (five players) and the 38 benchmark clears with one (Feb 2025 - Sep
+2026, 13 players) in the full logs, and ~320 pulls in the acts caches for the rules. Dynamic Dancer (94) raises the main
+potencies in the guide, and Last Dance (92), Finishing Move (96) and Dance of the Dawn (100) lie above P12S. At level 90,
+scaled to Fan Dance (150):
+
+- Cascade 200, Fountain 100 / 260 in combo, Reverse Cascade 260, Fountainfall 320, Saber Dance 500, Fan Dance III 200,
+  Fan Dance IV 300, Double Standard Finish 800, Quadruple Technical Finish 1,200 (Triple 900), Tillana 600, Starfall
+  Dance 600 (a sure critical direct hit), auto-attacks 80 every 3.12 s; Standard and Technical Finish +5% each.
+
+From the logs:
+
+- nothing breaks the combo (30 s); every proc is 50%; a Reverse Cascade / Fountainfall spends the silken proc before
+  Flourish's; the Steps and finishes run on a fixed 1.5 s, the steps on 1.0 s; statuses outlast their tooltips (procs
+  spent up to 30.7 s after their grant, dances finished up to 15.1 s after the Step);
+- Standard Step goes before the pull (not logged; the opening Standard Finish comes at ~0.9 s, the second Step 16.4 s
+  at the earliest): the search presses it at -14 s and opens on the finish at 0:00;
+- FFLogs logs each Technical Finish twice, 0.5 s apart, the second `fake` (`calibrate.py` skips such casts; the second
+  of a lesser finish isn't flagged, `prepare` marks it).
+
+Randomness counts at its expectation, as Bard's Repertoire: a 50% proc, feather or Threefold is half a token, usable at
+a whole one. A replay reads the procs from the log's statuses and counts every feather chance (feathers aren't logged).
+Esprit isn't logged either: 5 / 10 from the Dancer's own GCDs, 50 from Tillana, and the party's chances at an expected
+0.7 a second from the dance partner while Standard Finish is up, plus 4.2 from the six others in the Technical Finish
+window (the same chance each). A regression on the pulls fixes only the total (~165 every two minutes); the split is the
+one that balances, over every replayed log, the Esprit the model lacks at Saber Dances against what it overcaps (46 / 43
+a pull). Every cast replays legal but five second tinctures, one clear's opener (a Technical Finish before the pull),
+and 423 of ~3,000 Saber Dances short by ~10 Esprit each: players spend a lucky draw at once. A control with broken rules
+(each cooldown 0.5-1.5 s longer, slower steps, Steps, finishes or GCD, shorter dances, procs, Flourishing Starfall or
+Finish, half the Esprit or feathers) shows each as illegal or early casts (`scratch/dnc/tamper.py`).
+
+- Devilment (+20% critical and direct-hit rate) counts on the Dancer's own hits at its expected worth (x1.155), as
+  Bard's Battle Voice. Starfall Dance is weighed at a sure critical direct hit with Devilment's rates turned into damage
+  (`STAR_W`, x1.88) and converted per player (`AUTO_CRIT`; `dps.py` measures it under Devilment, `OWN_CRIT_BUFFS`).
+- A dance is one step of the search (Step, steps and finish): a state halfway through had dealt nothing, so states
+  banking filler damage outranked it and the search danced Standard Step once a minute, just keeping its buff (-3%).
+- While Athena is away the steps are danced so that the finish comes as she returns.
+
+Every action is instant and reaches the plan's spots, so R1, R2 and standing still find the same 83,902 potency over the
+phase (86,220 weighted): Technical Step every two minutes with Devilment, Starfall Dance and Tillana in its window,
+Standard Step every ~32 s (13 finishes), seven Flourishes, 29 Saber Dances. Devilment lands just before Technical Step
+rather than after its finish, a near-tie for the Dancer's own damage (what it gives the partner isn't counted).
+Settings from `tune.py` (scales 0.25-0.35 tie, as Summoner's); a search takes ~40 s. The clears' rotations, replayed
+standing still over 0:00-370 s, deal 93-99% of the best (one pull 83%; two lucky ones just over 100%, as a replay takes
+the log's procs).
 
 ## The fight
 
@@ -506,7 +557,7 @@ standing-still rotation, as a control, breaks several windows). For the melee jo
 that every away window holds a stretch of its length without a melee action. Each job adds its own rules on hand-made
 states (Reaper's positionals, Bard's Repertoire and Army's Muse, Red Mage's Dualcast, procs, far spots and dashes,
 Pictomancer's Inspiration, landscape and capped charges, Machinist's heat, Blazing Shot, Wildfire and queen,
-Summoner's trances, pets, attunement and favors, ...).
+Summoner's trances, pets, attunement and favors, Dancer's dances, procs, feathers, Esprit and Devilment, ...).
 
 ## Files
 
