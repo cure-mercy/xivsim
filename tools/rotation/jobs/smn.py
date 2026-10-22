@@ -38,11 +38,14 @@ From the logs (none of it in the guide):
 - MP never binds (lowest logged 1,600 in 15,000 casts): the model leaves it out; Rekindle, Radiant Aegis, Lucid Dreaming
   and Addle only take time in a replay.
 
-Crimson Cyclone rushes to Athena (engine.dash's gap closer, and as Red Mage's Corps-a-corps it can't pull the player off
-a far spot before its snapshot); Crimson Strike reaches 3 y beyond her hitbox, so it needs melee reach (p12s.FAR).
+Crimson Cyclone rushes to Athena (engine.dash's gap closer). While our plan holds the player to a spot (from a
+mechanic's first cue to its last snapshot, as p12s.plan_spans) it may only be a dash along a stretch of the run that goes
+straight to her (Paradeigma I's swap in R1): anywhere else it would pull them off the spot. As Red Mage's Corps-a-corps
+it can't pull them off a far spot before its snapshot. Crimson Strike reaches 3 y beyond her hitbox, so it needs melee
+reach (p12s.FAR).
 """
 import itertools
-from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, dash, gcd_times, settle, stand
+from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, dash, dash_gain, gcd_times, settle, stand
 
 POTENCY = {"Ruin III": 310, "Ruin IV": 430, "Astral Impulse": 440, "Fountain of Fire": 540, "Ruby Rite": 510,
            "Topaz Rite": 330, "Emerald Rite": 230, "Fester": 340, "Energy Drain": 200, "Deathflare": 500,
@@ -240,6 +243,28 @@ def cyclone_lands(s, fight, t):
     return True
 
 
+_spans = {}
+
+
+def plan_spans(fight):
+    """[(lo, hi)] from the first cue to the last snapshot of each mechanic of our plan, as p12s.plan_spans, rebuilt from
+    the fight's move windows (a plan run's `why` ends "(.. y; plan, ..)"): the plan holds a ranged player to its spots."""
+    k = id(fight.moves)
+    if k not in _spans:
+        by = {}
+        for w in fight.moves:
+            if "; plan" in w.why: by.setdefault(w.why.split(":")[0], []).extend((w.lo, w.hi))
+        _spans[k] = (fight.moves, sorted((min(v), max(v)) for v in by.values()))
+    return _spans[k][1]
+
+
+def cyclone_spot(s, fight, t):
+    """Crimson Cyclone rushes the player to Athena: inside a mechanic of our plan only as a dash along a stretch of its
+    run that goes straight to her (engine.dash_gain), which lands them where the plan sends them; anywhere else in it
+    the dash would pull them off their spot."""
+    return not any(lo <= t <= hi for lo, hi in plan_spans(fight)) or dash_gain(s, fight, t, "in") is not None
+
+
 # --- actions -------------------------------------------------------------------------------------------------------
 
 def cast_time(s, name, at):
@@ -308,7 +333,7 @@ def do_gcd(s, fight, name):
     if cast and stand(s, fight, start, start + cast - SLIDE) is None: return None
     if fight.next_down(start) <= start + max(cast - RESOLVE, 0) + DELAY.get(name, 0.0): return None
     if name in MELEE_ACTIONS and not reach(s, fight, start): return None
-    if name == "Crimson Cyclone" and not cyclone_lands(s, fight, start): return None
+    if name == "Crimson Cyclone" and not (cyclone_spot(s, fight, start) and cyclone_lands(s, fight, start)): return None
     snap, free, nxt = gcd_times(start, cast, recast(name))
     if used == "swift": s.swift = -1.0
     saved = dash(s, fight, start, "in") if name == "Crimson Cyclone" else 0.0

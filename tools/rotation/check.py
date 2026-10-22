@@ -22,6 +22,9 @@
    quick searches for R1 and R2 replayed as for the Bard.
 8. Ninja: mudra charges, Kassatsu, Ten Chi Jin, Raiju Ready, Bunshin, Meisui, Trick Attack's window, Kazematoi and
    mudras while Athena is away on hand-made states; then the melee searches of 3.
+9. Dancer: the opening finish, dances (only steps while dancing, their recasts, Technical Finish's window), Tillana,
+   the half-token procs, feathers and Threefold, Esprit (own and the partner's), Devilment and Starfall Dance, and a
+   dance timed to Athena's return on hand-made states; then quick searches for R1 and R2 replayed as for the Bard.
 Exits non-zero on any failure.
 """
 import dataclasses, itertools, re, sys
@@ -31,7 +34,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import engine, p12s                              # noqa: E402
 from engine import Fight, Move, SLIDE            # noqa: E402
-from jobs import blm, brd, drg, mch, mnk, nin, pct, rdm, rpr, sam, smn, vpr    # noqa: E402
+from jobs import blm, brd, dnc, drg, mch, mnk, nin, pct, rdm, rpr, sam, smn, vpr    # noqa: E402
 
 HARM = {"Fire III", "Fire IV", "Despair", "Paradox", "Blizzard III", "Blizzard IV", "Thunder III", "Xenoglossy"}
 HARM |= (set(rpr.GCDS) - {"Soulsow"}) | rpr.AVATAR | {"Gluttony", "Lemure's Slice"}
@@ -44,6 +47,7 @@ HARM |= set(sam.POTENCY)
 HARM |= set(pct.POTENCY)
 HARM |= set(mch.POTENCY) | {"Wildfire"}
 HARM |= set(nin.POTENCY)
+HARM |= set(dnc.POTENCY) | set(dnc.FINISH)
 HARM |= set(smn.POTENCY) | set(smn.DEMIS) | set(smn.PRIMALS) | {"Enkindle Bahamut", "Enkindle Phoenix"}
 fails = []
 
@@ -528,17 +532,28 @@ def smn_cases():
     expect(smn.do_gcd(y, a, "Crimson Cyclone") is None, "no Crimson Cyclone off a far spot before its snapshot")
     y.t = y.gcd = 36.0; y = smn.do_gcd(y, a, "Crimson Cyclone")
     expect(y is not None and smn.do_gcd(y, a, "Crimson Strike") is not None, "after the snapshot it brings the player back: Crimson Strike")
+    pl = Fight(until=200, moves=[Move(30, 40, 2.0, why="Mech: to a spot (12 y; plan, x)"),
+                                 Move(50, 60, 2.0, dash=(("in", 0.0, 12.0),), why="Mech2: straight to Athena (12 y; plan, x)")])
+    v = smn.State.initial(pl); v.first = False; v.favor = "ifrit"; v.t = v.gcd = 35.0
+    expect(smn.do_gcd(v, pl, "Crimson Cyclone") is None, "no Crimson Cyclone while our plan holds the player to a spot")
+    v.t = v.gcd = 45.0
+    expect(smn.do_gcd(v, pl, "Crimson Cyclone") is not None, "Crimson Cyclone between the plan's mechanics")
+    v.t = v.gcd = 51.0; v = smn.do_gcd(v, pl, "Crimson Cyclone")
+    expect(v is not None and "dash" in v.history()[-1][2], "Crimson Cyclone in a plan run straight to Athena: a dash")
     w = smn.State.initial(a); w.first = False; w.csr = True; w.t = w.gcd = 36.5; w.mlast = 33.0
     expect(smn.do_gcd(w, a, "Crimson Strike") is None, "no Crimson Strike that leaves a far spot's 4 s stretch no room (3.5 s each side)")
 
 
-def smn_faults(state, fight):
+def smn_faults(state, fight, slot="R1", var=None):
     """Crimson Strikes inside a far spot's stretch out of reach not brought back by a Crimson Cyclone after the spot's
-    snapshot, and Crimson Cyclones saving more running than the window's stretch toward Athena."""
+    snapshot, Crimson Cyclones inside our plan's mechanics that aren't a dash along their run (p12s.plan_spans), and
+    Crimson Cyclones saving more running than the window's stretch toward Athena."""
     h, out = state.history(), []
     back = lambda w, t: any(n == "Crimson Cyclone" and (w.lo + w.hi) / 2 - 1e-9 <= c <= t for c, n, _ in h)
     out += [f"{name} at {t:.2f}" for t, name, _ in h if name in smn.MELEE_ACTIONS
             and any(w.lo < t < w.hi and not back(w, t) for w in fight.away)]
+    out += [f"{name} at {t:.2f} pulls the player off our plan's spot" for t, name, note in h if name == "Crimson Cyclone"
+            and "dash" not in note and any(lo <= t <= hi for lo, hi, _ in p12s.plan_spans(slot, var))]
     for t, name, note in h:
         d = re.search(r"dash ([\d.]+)s", note)
         w = next((w for w in fight.moves if w.lo <= t < w.hi), None)
@@ -555,7 +570,7 @@ def smn_searches(width=200):
         f = p12s.fight(slot, var, far_spots=True)
         s = engine.sweep(smn, f, width)
         short, away, hard = replay(s, f)
-        bad = smn_faults(s, f)
+        bad = smn_faults(s, f, slot, var)
         dashes = sum(1 for _, _, note in s.history() if "dash " in note)
         label = f"{slot}" + "".join(f", {v}" for v in var.values())
         expect(not short and not away and not bad, f"{label}: {sum(1 for w in f.moves if w.need)} windows, {len(f.away)} far spots, "
@@ -566,6 +581,79 @@ def smn_searches(width=200):
     double = dataclasses.replace(f1, moves=[dataclasses.replace(w, need=min(2 * w.need, w.hi - w.lo)) for w in f1.moves])
     short, _, _ = replay(r1, double)
     expect(bool(short), f"control: the R1 rotation breaks {len(short)} of the R1 windows at twice their running")
+
+
+def dnc_cases():
+    print("\nDancer: dances, procs, feathers, Esprit, Devilment, Athena away")
+    dnc.SPEED = 0.99
+    f = Fight(until=200)
+    s = dnc.State.initial(f); s.auto_next = 1e9         # no auto-attacks in the damage differences below
+    s = dnc.expand(s, f)[0]
+    expect(s.history()[-1][:2] == (0.0, "Double Standard Finish") and s.sf_until == 60.0
+           and dnc.ready(s, "Standard Step", 0.0) == 16.0,
+           "the search opens on Standard Finish at 0:00 (Step at -14 s): Standard Finish for 60 s, the Step back at 16 s")
+    d = dnc.do_gcd(s, f, "Technical Step")
+    expect(dnc.do_gcd(d, f, "Cascade") is None and dnc.do_ogcd(d, f, "Devilment") is None,
+           "while dancing only steps: no Cascade, no Devilment")
+    for _ in range(4): d = dnc.do_gcd(d, f, "Step")
+    expect(dnc.do_gcd(d, f, "Step") is None, "four steps, then only the finish")
+    d = dnc.do_gcd(d, f, "Quadruple Technical Finish")
+    times = [t for t, _, _ in d.history()[-6:]]
+    expect(times == [1.5, 3.0, 4.0, 5.0, 6.0, 7.0] and abs(d.tf_from - 7.54) < 1e-9 and abs(d.gcd - 8.5) < 1e-9,
+           f"Technical Step 1.5 s, steps 1.0 s, the finish 1.5 s; Technical Finish from 0.54 s after it ({times})")
+    d0, e0 = d.dmg, d.esprit
+    t = dnc.do_gcd(d, f, "Tillana")
+    expect(abs(t.dmg - d0 - 600 * 1.05 * 1.05) < 1e-6 and t.esprit - e0 >= 50 and t.ffin_until < t.t,
+           "Tillana: 600 under Standard and Technical Finish, 50 Esprit")
+    c = dnc.do_gcd(t, f, "Cascade")
+    expect(c.sym == 0.5 and dnc.do_gcd(c, f, "Reverse Cascade") is None, "a Cascade is half a Silken Symmetry: no Reverse Cascade yet")
+    c2 = dnc.do_gcd(dnc.do_gcd(c, f, "Saber Dance") if c.esprit >= 50 else c, f, "Fountain")
+    expect("combo" in c2.history()[-1][2], "Fountain keeps its combo across another GCD")
+    c3 = dnc.do_gcd(c2, f, "Cascade")
+    r = dnc.do_gcd(c3, f, "Reverse Cascade")
+    expect(c3.sym == 1.0 and r.sym == 0.0 and r.feathers == 0.5 and r.esprit >= c3.esprit + 10,
+           "two Cascades: a whole token; Reverse Cascade spends it for half a feather and 10 Esprit")
+    fl = dnc.do_ogcd(c3, f, "Flourish")
+    r2 = dnc.do_gcd(fl, f, "Reverse Cascade")
+    expect(r2.sym == 0.0 and r2.fsym_until > r2.t and fl.three == 1.0 and fl.four_until > fl.t,
+           "with Flourishing Symmetry up too, Reverse Cascade spends the silken one first")
+    q = r.copy(); q.feathers = 1.0
+    fd = dnc.do_ogcd(q, f, "Fan Dance")
+    expect(fd.feathers == 0.0 and fd.three == 0.5 and dnc.do_ogcd(fd, f, "Fan Dance III") is None,
+           "Fan Dance: a feather for half a Threefold")
+    v = dnc.do_ogcd(r, f, "Devilment")
+    d0, k0 = v.dmg, v.critp
+    w = dnc.do_gcd(v, f, "Starfall Dance")
+    m = 1.05 * (1.05 if v.tf_until > w.history()[-1][0] else 1)
+    expect(abs(w.critp - k0 - 600 * m) < 1e-6 and abs(w.dmg - d0 - 600 * m) < 1e-6,
+           "Starfall Dance: 600 as a sure critical direct hit (s.critp), without Devilment's expected worth")
+    d0 = w.dmg; x = dnc.do_gcd(w, f, "Cascade")
+    m = 1.05 * (1.05 if w.tf_until > x.history()[-1][0] else 1) * dnc.DEV
+    expect(abs(x.dmg - d0 - 200 * m) < 1e-6, f"Devilment counts at its expected worth on the Dancer's own hits (x{dnc.DEV:.3f})")
+    g = Fight(until=200)
+    p = dnc.State.initial(g); p.first = False; p.dance = None; p.sf_until = 100.0; p.t = p.gcd = p.ep_t = 10.0
+    dnc.advance(p, g, 20.0)
+    expect(abs(p.esprit - 0.7 * 10) < 1e-6, "the partner's Esprit: 0.7 a second while Standard Finish is up")
+    dn = Fight(until=200, untargetable=[(20.0, 60.0)])
+    z = dnc.State.initial(dn); z.first = False; z.dance = None; z.t = z.gcd = z.ep_t = 21.0; z.sf_until = 70.0
+    y = next((k for k in dnc.expand(z, dn) if k.history()[-1][1] == "Double Standard Finish"), None)
+    expect(y is not None and [e[:2] for e in y.history()[-4:]] == [(56.5, "Standard Step"), (58.0, "Step"), (59.0, "Step"),
+                                                                    (60.0, "Double Standard Finish")] and dnc.at(z, dn, 59.0).esprit == z.esprit,
+           "while Athena is away the steps are danced so the finish comes as she returns; no party Esprit meanwhile")
+
+
+def dnc_searches(width=200):
+    print(f"\nDancer searches (width {width}) replayed")
+    dnc.SPEED = 0.99
+    alt = {m: [v for v in vs if v != p12s.DEFAULT_VAR[m]] for m, vs in p12s.PLAN.items() if m in p12s.DEFAULT_VAR}
+    still = engine.sweep(dnc, p12s.fight("R1", still=True), width)
+    for slot, var in [("R1", {}), ("R2", {m: v[0] for m, v in alt.items()})]:
+        f = p12s.fight(slot, var)
+        s = engine.sweep(dnc, f, width)
+        _, away, _ = replay(s, f)
+        label = f"{slot}" + "".join(f", {v}" for v in var.values())
+        expect(not away and abs(s.dmg - still.dmg) < 1e-6, f"{label}: {s.dmg:,.0f} potency, standing still {still.dmg:,.0f}"
+                                                           + "".join(f"\n          {x}" for x in away))
 
 
 if __name__ == "__main__":
@@ -590,5 +678,7 @@ if __name__ == "__main__":
     nin_control()
     smn_cases()
     smn_searches()
+    dnc_cases()
+    dnc_searches()
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED"))
     sys.exit(1 if fails else 0)
