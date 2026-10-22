@@ -14,16 +14,19 @@
    nothing cast at Athena while she is away, and (every action being instant) the strategy's running costs nothing.
 5. Red Mage: Dualcast, Acceleration's priority, the expected procs and the far spots' reach on hand-made states; then
    quick searches for R1 and R2 replayed as in 2, plus no melee action at a far spot without Manafication.
+6. Pictomancer: Inspiration's haste and stacks, the landscape after a long run and a short one, the shared Aetherhues
+   step, Monochrome Tones, motifs while Athena is away and the capped muse charges on hand-made states; then quick
+   searches for R1 and R2 replayed as in 2, plus no inspired GCD after a run past the landscape since Starry Muse.
 Exits non-zero on any failure.
 """
-import itertools, re, sys
+import dataclasses, itertools, re, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import engine, p12s                              # noqa: E402
 from engine import Fight, Move, SLIDE            # noqa: E402
-from jobs import blm, brd, drg, mnk, rdm, rpr, sam, vpr    # noqa: E402
+from jobs import blm, brd, drg, mnk, pct, rdm, rpr, sam, vpr    # noqa: E402
 
 HARM = {"Fire III", "Fire IV", "Despair", "Paradox", "Blizzard III", "Blizzard IV", "Thunder III", "Xenoglossy"}
 HARM |= (set(rpr.GCDS) - {"Soulsow"}) | rpr.AVATAR | {"Gluttony", "Lemure's Slice"}
@@ -33,6 +36,7 @@ HARM |= set(drg.POTENCY)
 HARM |= set(rdm.POTENCY)
 HARM |= set(vpr.POTENCY)
 HARM |= set(sam.POTENCY)
+HARM |= set(pct.POTENCY)
 fails = []
 
 
@@ -232,6 +236,87 @@ def rdm_cases():
     expect(rdm.do_ogcd(s, f, "Corps-a-Corps") is None, "...and can't be used before it")
 
 
+def pct_cases():
+    print("\nPictomancer: Inspiration, the landscape, the colour steps, Comet, motifs, capped charges")
+    pct.SPEED = 0.98
+    f = Fight(until=60)
+    s = pct.State.initial(f); s.first = False; s.t = s.gcd = 1.0
+    m = pct.do_ogcd(s, f, "Starry Muse")
+    a = pct.do_gcd(m, f, "Fire in Red")
+    t, _, note = a.history()[-1]
+    expect("insp" in note and a.hyper == 4 and abs(a.gcd - t - 2.45 * 0.75) < 0.01,
+           f"after Starry Muse, Fire in Red is inspired: a stack spent, a 25% shorter recast ({a.gcd - t:.2f} s)")
+    h = pct.do_gcd(pct.do_ogcd(a, f, "Striking Muse"), f, "Hammer Stamp")
+    expect(h.hyper == 4 and abs(h.gcd - h.history()[-1][0] - 2.45) < 0.01, "a hammer takes no stack and no haste")
+    b = pct.do_ogcd(a, f, "Subtractive Palette")
+    expect(b.gauge == 0 and b.spec_until < b.t and b.mono, "Subtractive Palette spends Subtractive Spectrum first, grants Monochrome")
+    expect(pct.do_gcd(b, f, "Blizzard in Cyan") is None and pct.do_gcd(b, f, "Stone in Yellow") is not None,
+           "after Fire in Red the subtractive step is Stone in Yellow (Aetherhues is shared)")
+    c = pct.do_gcd(pct.do_gcd(b, f, "Stone in Yellow"), f, "Thunder in Magenta")
+    expect(c.paint == 1 and c.gauge == 0 and c.sp == 1, f"Thunder in Magenta: a White Paint, no gauge ({c.paint}, {c.gauge})")
+    expect(pct.do_gcd(c, f, "Holy in White") is None and pct.do_gcd(c, f, "Comet in Black") is not None,
+           "under Monochrome Tones the paint goes to Comet in Black, not Holy")
+    for yalms, kept in ((15.0, False), (6.0, True)):
+        g = Fight(until=60, moves=[Move(10, 14, yalms / engine.RUN)])
+        s = pct.State.initial(g); s.first = False; s.t = s.gcd = 1.0
+        m = pct.do_ogcd(s, g, "Starry Muse"); m.t = m.gcd = 15.0
+        n = pct.do_gcd(m, g, "Fire in Red")
+        expect(("insp" in n.history()[-1][2]) == kept, f"a {yalms:.0f} y run after Starry Muse: " +
+               ("still in the landscape" if kept else "out of the landscape, no Inspiration"))
+    d = Fight(until=60, untargetable=[(10, 30)])
+    s = pct.State.initial(d); s.first = False; s.t = s.gcd = 12.0; s.creature = None
+    w = pct.do_gcd(s, d, "Wing Motif")
+    expect(w is not None and w.creature == "wing" and pct.do_ogcd(w, d, "Winged Muse") is None,
+           "a motif is painted while Athena is away; its Muse waits for her")
+    s = pct.State.initial(f); s.first = False
+    full = sum(pct.VALUE[k] for k in pct.CAPPED.values())
+    expect(abs(pct.capped(s, 20.0) - 20 * full) < 1e-6, "every muse full since the pull: 20 s capped each")
+    s.t = 20.0; u = pct.do_ogcd(s, f, "Pom Muse")
+    expect(abs(pct.capped(u, 30.0) - 20 * pct.VALUE["cap_living"] - 30 * (full - pct.VALUE["cap_living"])) < 1e-6,
+           "a Muse used at 20 s stops Living Muse's count; the others go on")
+
+
+def landscape_faults(state, fight):
+    """Inspired GCDs after a run longer than the landscape's radius that lay wholly between Starry Muse and the GCD, and
+    Smudges saving more than its 15 y."""
+    h = state.history()
+    muses = [t for t, n, _ in h if n == "Starry Muse"]
+    out = []
+    for t, name, note in h:
+        if " insp" in note:
+            m = max((x for x in muses if x <= t), default=None)
+            out += [f"{name} at {t:.2f} inspired after the {w.lo:.1f}-{w.hi:.1f}s run" for w in fight.moves
+                    if m is not None and w.need * engine.RUN > pct.LANDSCAPE and w.lo >= m and w.hi <= t]
+        d = re.search(r"dash ([\d.]+)s", note)
+        if d and float(d[1]) > pct.SMUDGE_Y / engine.RUN + 0.01: out.append(f"{name} at {t:.2f} saves {d[1]} s")
+    return out
+
+
+def pct_searches(width=200):
+    print(f"\nPictomancer searches (width {width}) replayed")
+    pct.SPEED = 0.98
+    alt = {m: [v for v in vs if v != p12s.DEFAULT_VAR[m]] for m, vs in p12s.PLAN.items() if m in p12s.DEFAULT_VAR}
+    for slot, var in [("R1", {}), ("R2", {m: v[0] for m, v in alt.items()})]:
+        f = p12s.fight(slot, var)
+        s = engine.beam(pct, f, width=width)
+        short, away, hard = replay(s, f)
+        bad = landscape_faults(s, f)
+        insp = sum(1 for _, _, note in s.history() if " insp" in note)
+        label = f"{slot}" + "".join(f", {v}" for v in var.values())
+        expect(not short and not away and not bad, f"{label}: {sum(1 for w in f.moves if w.need)} windows, {hard} hard casts, "
+                                                   f"{insp} inspired GCDs, {s.dmg:,.0f} potency" + "".join(f"\n          {x}" for x in short + away + bad))
+        if slot == "R1": r1, f1 = s, f
+    # controls: a standing-still Pictomancer rotation happens to fit our runs (1.5 s casts on a 2.45 s GCD, many
+    # instants), so the R1 rotation is replayed against the same runs at twice their length instead, and the
+    # standing-still one against R1's runs for the landscape
+    double = dataclasses.replace(f1, moves=[dataclasses.replace(w, need=min(2 * w.need, w.hi - w.lo)) for w in f1.moves])
+    short, _, _ = replay(r1, double)
+    expect(bool(short), f"control: the R1 rotation breaks {len(short)} of the R1 windows at twice their running")
+    still = engine.beam(pct, p12s.fight("R1", still=True), width=width)
+    bad = landscape_faults(still, f1)
+    expect(bool(bad), f"control: the standing-still rotation casts {len(bad)} inspired GCDs that R1's runs take out of the landscape")
+
+
 def far_hits(state, fight):
     """Melee actions inside a far spot's stretch out of reach, not under Manafication, nor after a Corps-a-corps that
     brought the player back once the spot's snapshot (the stretch's middle) was past."""
@@ -286,5 +371,7 @@ if __name__ == "__main__":
     bard_searches()
     rdm_cases()
     rdm_searches()
+    pct_cases()
+    pct_searches()
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED"))
     sys.exit(1 if fails else 0)
