@@ -55,6 +55,7 @@ def _replay(p, until, out, fight):
     seq = []
     last_begin = {}
     for x in p["casts"]:
+        if x.get("fake"): continue              # FFLogs' second record of one cast (Dancer's Technical Finish)
         name = n[str(x["abilityGameID"])]
         if x["type"] == "begincast": last_begin[name] = x["t"]; continue
         if x["type"] != "cast" or x["t"] > until: continue
@@ -137,6 +138,7 @@ def gcd_of(p):
         return g
     starts, lb = [], {}
     for x in p["casts"]:
+        if x.get("fake"): continue
         name = n[str(x["abilityGameID"])]
         if x["type"] == "begincast": lb[name] = x["t"]; continue
         if x["type"] == "cast" and name in J.GCDS:
@@ -187,7 +189,7 @@ def _model_hits(p, until, keep, hit):
     s = J.State.initial(fight)
     out = []
     for x in p["casts"]:
-        if x["type"] != "cast" or x["t"] > until: continue
+        if x["type"] != "cast" or x["t"] > until or x.get("fake"): continue
         name = n[str(x["abilityGameID"])]
         if name in J.GCDS or name in J.OGCDS:
             lab = J.label(J.at(s, fight, x["t"]), fight, name, x["t"])
@@ -222,7 +224,7 @@ def damage_check(L, until=None):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--job", default="blm", help="job model in jobs/ (blm, rpr, mnk, brd, drg, rdm, vpr, sam, pct, mch, nin, smn)")
+    ap.add_argument("--job", default="blm", help="job model in jobs/ (blm, rpr, mnk, brd, drg, rdm, vpr, sam, pct, mch, nin, smn, dnc)")
     ap.add_argument("--since", default=None, help="first day of logs used (default: the job model's)")
     ap.add_argument("--until", type=float, default=None, help="end of the replay, s (default: the whole pull)")
     ap.add_argument("--ours", action="store_true", help="our groups' clean pulls instead of the benchmark clears")
