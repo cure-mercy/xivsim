@@ -1262,6 +1262,14 @@ const ROT_CHALLENGES = {
     ["Out of reach", "The red bands: 2.5 s on end somewhere in the band from 2:53 to Paradeigma III's tethers, 1.2 s before Palladion, worth about 0.5%. Enpi (20 y) fills them, enhanced by Hissatsu: Yaten. Iaijutsu, Ogi Namikiri and Shoha reach 6–10 y and may still land a little farther out.", ["away"]],
     ["Palladion", "Athena leaves at the timeline's right edge (4:41) for 44 s: let Higanbana run out before then rather than refresh it into the downtime, and spend the downtime on Tengentsu and Meditate.", [[261.4, 281.6]]],
     ["Cost", "About 0.7% against standing still."]]],
+  Pictomancer: ["Short casts and plenty of instants make our runs cheap; what P1 takes from a Pictomancer is Inspiration in Superchain I, and the time its motifs need.", [
+    ["Paradeigma I", "R1 runs out to the wall end (the 3.1 s band from 0:27), then swaps 28 y through the middle: 4.7 s of running in the 5.3 s band from 0:37.6. The second Striking Muse's hammers and Holy in White are the instants for it: paint the hammer just before (Swiftcast on Hammer Motif at 2.31 and 2.49 s), so its three hammers land in the bands.", [[27.3, 42.9]]],
+    ["Smudge", "Dash in the swap (0:38–0:39): it covers 15 y of the run, 2.5 s, room for a hard cast before the band ends.", [[37.6, 42.9]]],
+    ["Starry Muse in Superchain I", "The second one comes back at 2:02–2:09, right into Superchain I's runs. Its landscape is a circle of about 8 y around where you cast it, and the 15 y run into the second doughnut (the band from 2:09.6) takes you out of it: only one or two colour spells get Inspiration's haste there, against four at 0:02 and 4:05–4:10. Spend the stacks before that run; the hammers, Comet and the muses still get the 5%.", [[122.3, 136.8]]],
+    ["Motifs", "Each is a 3 s cast on a 4 s recast that Spell Speed doesn't shorten. Swiftcast goes on a motif (or a hard cast in a run), and the next pom or wings get painted as soon as a Living Muse charge is back, so the charges never sit full."],
+    ["GCD", "As motifs don't speed up, Spell Speed buys less than it costs: expected DPS at 2.49 s comes out about 2% above 2.31 s."],
+    ["Palladion", "Spend White Paint on Holy in White and Comet in Black before Athena leaves at the timeline's right edge (4:41), and repaint all three canvases in the 44 s downtime.", [[261.4, 281.6]]],
+    ["Cost", "About 0.5% against standing still in R1 (about 1% in R2), half of it Inspiration lost in Superchain I."]]],
 };
 // the job's points against its fight: [[key, from, to]] for the timeline to draw hidden, one key per point
 function challengeFocus(job, f) {
