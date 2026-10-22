@@ -425,6 +425,7 @@ VALUE = dict(combo_1=140, combo_v=300, combo_d=110, combo_h=160, combo_c=160, co
 RATE = 220                                            # potency per second, to compare states at slightly different times
 HEURISTICS = [(r, 1.0, 0.0) for r in (200, 220, 245, 270)]
 WIDTH = 3000
+SWEEP_WIDTH = 15000                                   # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: level (a beam this wide: -0.06%)
 MOVE_WEIGHT = 0.0
 
 
@@ -484,7 +485,9 @@ def force_ogcd(s, fight, name, t):
     if name == "Nastrond": s.nr_until = t + 1
     if name == "Stardiver": s.lotd_until = t + 1
     if name == "Wyrmwind Thrust": s.focus = 2
-    if name in CDS: s.cds[name] = (1, None)
+    if name in CDS:                                 # one charge, the recharge still running (Life Surge has two)
+        rec, mx = CDS[name]
+        s.cds[name] = (1, charges(s, name, t)[1] or (None if mx == 1 else t + rec))
     return do_ogcd(s, fight, name, policy=False) or s
 
 

@@ -440,6 +440,7 @@ RATE = 320                                            # potency per second, to c
 # rates below the filler's own ~275 / s make time look cheap and lose ~1.5%
 HEURISTICS = [(r, v, 0.0) for r in (290, 320, 350) for v in (1.0, 0.5)]
 WIDTH = 3000
+SWEEP_WIDTH = 3000                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: +0.05% (in 3/4 of the time)
 MOVE_WEIGHT = 0.0
 
 
@@ -499,7 +500,8 @@ def force(s, fight, name, start):
     if name in FINISHERS["s"]: s.combo, s.combo_until = "s", start + 1
     if name == "Hunter's Coil": s.coil, s.coil_until = "v", start + 1
     if name == "Swiftskin's Coil": s.coil, s.coil_until = "v", start + 1
-    if name == "Vicewinder": s.cds[name] = (1, None)
+    if name == "Vicewinder":                        # one charge, the recharge still running (it has two)
+        s.cds[name] = (1, charges(s, name, start)[1] or start + CDS[name][0])
     if name == "Uncoiled Fury": s.rattle = max(s.rattle, 1)
     if name == "Reawaken": s.rr_until = start + 1; s.tribute = 0
     if name in GENERATIONS: s.tribute, s.ra_until = max(s.tribute, 1), start + 1
@@ -510,7 +512,9 @@ def force_ogcd(s, fight, name, t):
     s = s.copy()
     if name == "Death Rattle": s.tail = True
     if name in ("Twinfang Bite", "Twinblood Bite"): s.bites = max(s.bites, 1)
-    if name in CDS: s.cds[name] = (1, None)
+    if name in CDS:                                 # one charge, the recharge still running (True North has two)
+        rec, mx = CDS[name]
+        s.cds[name] = (1, charges(s, name, t)[1] or (None if mx == 1 else t + rec))
     return do_ogcd(s, fight, name, policy=False) or s
 
 

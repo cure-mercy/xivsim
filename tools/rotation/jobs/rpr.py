@@ -382,6 +382,7 @@ RATE = 220                                            # potency per second, to c
 # the search: at width 3,000 every setting lands within 0.02% (at 1,000 they spread 3%), so a few settings are enough
 HEURISTICS = [(r, 1.0, 0.0) for r in (200, 220, 245, 270)]
 WIDTH = 3000
+SWEEP_WIDTH = 3000                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: -0.04%
 MOVE_WEIGHT = 0.0                                     # melee movement is a different problem (time out of range): not yet
 
 
@@ -444,7 +445,8 @@ def force(s, fight, name, start):
     if name in ("Void Reaping", "Cross Reaping", "Communio"): s.lemure, s.shroud_until = max(s.lemure, 1), start + 5
     if name == "Harvest Moon": s.soulsow = True
     if name == "Plentiful Harvest": s.sacrifice, s.sacrifice_until, s.bloodsown_until = SACRIFICE, start + 5, -1.0
-    if name == "Soul Slice": s.cds[name] = (1, None)
+    if name == "Soul Slice":                        # one charge, the recharge still running (it has two)
+        s.cds[name] = (1, charges(s, name, start)[1] or start + CDS[name][0])
     return do_gcd(s, fight, name) or s
 
 

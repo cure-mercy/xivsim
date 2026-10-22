@@ -166,34 +166,42 @@ def move_credit(s, fight):
 
 # The beam ranks states by damage so far, plus a guess at what the resources they hold are worth, minus the time they
 # have used, minus the running ahead that the instants in hand won't cover (the job's move_debt). Over a whole phase
-# the result moves by ~1% with that guess and no single setting is best, so `search` runs the beam under several (time's
+# the result moves by ~1% with that guess and no single setting is best, so `search` runs under several (time's
 # worth in potency per second, scale on the job's resource values, weight on uncovered running) and keeps the best
 # rotation: each one is a legal rotation, so the best of them is never worse than any.
 HEURISTICS = [(r, v, m) for r, v in [(200, 0.5), (220, 0.5), (220, 0.1), (245, 0.5)] for m in (0.0, 1.0)]
 
 
-def _search_one(args):
+def configure(jobname, speed, setting, params=None):
+    """The job module set up for one heuristic setting (rate, scale, move weight), in this process."""
     import importlib
-    jobname, speed, fight, width, (rate, scale, mw), params = args
+    rate, scale, mw = setting
     job = importlib.import_module(f"jobs.{jobname}")
     job.SPEED, job.RATE, job.MOVE_WEIGHT = speed, rate, mw
     for k, v in (params or {}).items(): setattr(job, k, v)
     if not hasattr(job, "VALUE0"): job.VALUE0 = dict(job.VALUE)     # a worker may run several settings
     job.VALUE = {k: v * scale for k, v in job.VALUE0.items()}
-    s = beam(job, fight, width)
+    return job
+
+
+def _search_one(args):
+    jobname, speed, fight, width, (rate, scale, mw), params, layers = args
+    job = configure(jobname, speed, (rate, scale, mw), params)
+    s = sweep(job, fight, width, getattr(job, "SWEEP_STEP", 0.5)) if layers == "time" else beam(job, fight, width)
     h = s.history(); s.hist = None                  # the history is a deep chain of tuples: send it flat
     return job.final(s, fight), (rate, scale, mw), s, h
 
 
-def search(jobname, fight, width=None, speed=None, settings=None, procs=None, params=None):
-    """The best rotation over the heuristic settings (the job's own HEURISTICS and WIDTH if it has them), searched in
-    parallel; `params` sets other job constants in the workers (e.g. Monk's CRIT). Returns (state, setting, all
-    scores)."""
+def search(jobname, fight, width=None, speed=None, settings=None, procs=None, params=None, layers="time"):
+    """The best rotation over the heuristic settings (the job's own HEURISTICS if it has them), searched in parallel;
+    `params` sets other job constants in the workers (e.g. Monk's CRIT). `layers`: "time" for `sweep` (at the job's
+    SWEEP_WIDTH and SWEEP_STEP), "gcd" for `beam` (at its WIDTH). With polish on top the sweep found 0.3-0.6% more for
+    BRD, RDM, MNK and SAM and was level elsewhere (within 0.04%; 2026-10-22). Returns (state, setting, all scores)."""
     import importlib, multiprocessing
     job = importlib.import_module(f"jobs.{jobname}")
     settings = settings or getattr(job, "HEURISTICS", HEURISTICS)
-    width = width or getattr(job, "WIDTH", 1000)
-    args = [(jobname, speed or job.SPEED, fight, width, x, params) for x in settings]
+    width = width or (getattr(job, "SWEEP_WIDTH", 1000) if layers == "time" else getattr(job, "WIDTH", 1000))
+    args = [(jobname, speed or job.SPEED, fight, width, x, params, layers) for x in settings]
     with multiprocessing.Pool(min(procs or len(args), len(args))) as pool:
         res = pool.map(_search_one, args)
     score, setting, s, h = max(res, key=lambda r: r[0])
@@ -201,10 +209,11 @@ def search(jobname, fight, width=None, speed=None, settings=None, procs=None, pa
     return s, setting, sorted((r[1], r[0]) for r in res)
 
 
-def beam(job, fight, width=2000, log=None):
+def beam(job, fight, width=2000, log=None, start=None):
     """Best action sequence for the job in this fight. States are expanded one GCD at a time (any oGCDs woven before
-    it come with it), and each layer keeps the `width` states with the best damage-so-far plus held-resource value."""
-    layer = [job.State.initial(fight)]
+    it come with it), and each layer keeps the `width` states with the best damage-so-far plus held-resource value.
+    `start`: carry on from this state instead of the pull (polish.py finishes rotations with it)."""
+    layer = [start or job.State.initial(fight)]
     best = None
     step = 0
     while layer:
@@ -221,4 +230,34 @@ def beam(job, fight, width=2000, log=None):
         layer = heapq.nlargest(width, (c for _, c in seen.values()), key=lambda c: job.rank(c, fight))
         step += 1
         if log and step % 10 == 0 and layer: log(f"  step {step}: {len(layer)} states, t={min(c.t for c in layer):.1f}-{max(c.t for c in layer):.1f}")
+    return best
+
+
+def sweep(job, fight, width=2000, step=0.5, log=None, start=None):
+    """The beam with layers by time instead of by GCD count: states fall into `step`-second buckets by when they can
+    act next (s.t), and the earliest bucket keeps its best `width * step / BASE_GCD` (as many per second as the beam
+    keeps per GCD) and is expanded into later ones. States are only ranked against others at nearly the same time, so
+    the rank's potency per second of time (RATE) moves the order by at most RATE * step."""
+    per = max(1, round(width * step / BASE_GCD))
+    buckets = {}
+    best = None
+
+    def push(c, b):
+        k, v = c.key(), job.rank(c, fight)
+        seen = buckets.setdefault(b, {})
+        if k not in seen or seen[k][0] < v: seen[k] = (v, c)
+
+    s0 = start or job.State.initial(fight)
+    push(s0, int(s0.t // step))
+    while buckets:
+        b = min(buckets)
+        if b * step >= fight.until: break
+        layer = heapq.nlargest(per, (c for _, c in buckets.pop(b).values()), key=lambda c: job.rank(c, fight))
+        for s in layer:
+            for c in job.expand(s, fight):
+                if c.t >= fight.until:
+                    if best is None or job.final(c, fight) > job.final(best, fight): best = c
+                    continue
+                push(c, max(int(c.t // step), b + 1))     # a child that gains no time still moves on (no hang)
+        if log and b % 100 == 0: log(f"  t={b * step:.1f}: {len(layer)} states, {len(buckets)} buckets ahead")
     return best

@@ -2,8 +2,8 @@
 
 Searches for the highest-potency rotation of a job over P12S phase 1 (level 90), from the pull to the kill, with the
 fight's fixed timeline: when Athena can't be hit, and where the player has to run under our groups' strategy. So far:
-Black Mage, Reaper, Monk, Bard, Dragoon, Red Mage, Viper and Samurai (Monk and Bard not yet checked against logs,
-Dragoon, Red Mage, Viper and Samurai only against the scorecard's cached events: see their sections).
+Black Mage, Reaper, Monk, Bard, Dragoon, Red Mage, Viper and Samurai (Dragoon, Red Mage, Viper and Samurai checked only
+against the scorecard's cached events: see their sections).
 
 ```
 python tools/rotation/solve.py                                # R1, 2.32 s GCD, no raid buffs, 0:00 to the median kill (449 s)
@@ -39,7 +39,9 @@ python tools/rotation/dps.py --job drg --site --offline      # ...from the score
 | `--pot` | allow one tincture (off by default: the scorecard strips tinctures) |
 | `--carry` | also value resources still held at the end, instead of dumping everything |
 | `--until` | end of the scored window, seconds (default: the clears' median kill, 449 s; enrage is 458 s) |
-| `--width` | beam width per heuristic setting (default: the job's, 1,000 for BLM and RDM, 3,000 for RPR, MNK, BRD, DRG, VPR and SAM) |
+| `--width` | search width per heuristic setting (default: the job's `SWEEP_WIDTH`, from 1,000 for BLM and RDM to 15,000 for DRG; `WIDTH` with `--layers gcd`) |
+| `--layers` | `time` (default): states compete with others at the same time (`engine.sweep`); `gcd`: after the same number of GCDs (`engine.beam`, the search before 2026-10-22) |
+| `--no-polish` | skip the local search on the search's best rotation (`polish.py`) |
 | `--compare` | replay every benchmark clear's logged rotation under the same buffs, downtime and window |
 
 Damage is in potency (Xenoglossy 890) times the raid buffs active when each hit lands; crit and direct-hit buffs count
@@ -94,15 +96,27 @@ Slice and Enshroud for raid buffs, lose uptime in mechanics, and some die.
 
 ## Monk
 
-`jobs/mnk.py`, from the job guide and the patch notes since 7.0 only: **not yet checked against any log** (FFLogs was
-down when it was written; `calibrate.py --job mnk [--ours]` fetches them: 19 benchmark clears have a Monk, our groups
-64 clean pulls). The guide's traits give most level-90 values: Melee Mastery (84) sets Bootshine 220, True Strike 300,
+`jobs/mnk.py`, from the job guide and the patch notes since 7.0, checked against the logs of the 19 benchmark clears
+with a Monk and our groups' 64 clean pulls (`calibrate.py --job mnk [--ours]`; the measuring scripts are in
+`scratch/mnk/`). The guide's traits give most level-90 values: Melee Mastery (84) sets Bootshine 220, True Strike 300,
 Snap Punch 270, Twin Snakes 380, Demolish 320, Dragon Kick 280 and The Forbidden Chakra 400 (the reference action);
 Melee Mastery II (94) and the level-92 upgrades (Leaping Opo, Rising Raptor, Pouncing Coeurl, Elixir Burst) lie above
-P12S. No single-target potency has changed since 7.05, so every Dawntrail clear will do. Marked PENDING in the code,
-to be measured: Phantom Rush (1,150 assumed) and Six-sided Star (710) at level 90, auto-attacks (77 potency every
-2.05 s), the default GCD (1.94 s), the party's chakra under Meditative Brotherhood, and whether Perfect Balance and
-Formless Fist count as opo-opo form for Bootshine's sure crit and Dragon Kick's Fury.
+P12S. No single-target potency has changed since 7.05, so every Dawntrail clear will do. Every action's plain hits
+match the model within 3% (Snap Punch and Demolish with their positional: the players take it nearly always). From the
+logs:
+
+- **Phantom Rush is 1,400** at level 90 (plain hits 1,400-1,415; Endwalker's 1,150 was assumed), **Six-Sided Star 710**
+  (695 with no chakra open, 874 with two).
+- **Auto-attacks**: 78 potency every 2.05 s, 1.03 s under Riddle of Wind. **GCD**: 1.92-1.96 s (1.94 s by default).
+- **Hit delays** run from 0.40 s (Phantom Rush) to 1.60 s (Demolish).
+- **Recasts**: the meditations take a fixed 1 s, not a GCD; Six-Sided Star's 4 s is shortened by skill speed but not by
+  Greased Lightning (3.9 s between it and the next GCD).
+- **Forms**: every Bootshine under Perfect Balance or Formless Fist crits, as in opo-opo form.
+- **Party chakra** under Meditative Brotherhood: 0.57 a second in our windows, 0.51 in the clears, as the model's
+  expected 20% of seven party members' GCDs. One window's share swings from about 0.4 to 0.7, so a replay at the
+  expected rate finds 50-60 Forbidden Chakras (of 1,500) a chakra or two short: luck, not a rule.
+
+The logs spell it Six-Sided Star (the model now does too: before, a replay skipped it).
 
 - **Forms and Fury**: Dragon Kick, Twin Snakes and Demolish bank +200 / +200 / 2 x +150 for the next Bootshine, True
   Strike and Snap Punches; Perfect Balance's three GCDs make the beast chakra for Elixir Field, Rising Phoenix and then
@@ -116,23 +130,35 @@ Formless Fist count as opo-opo form for Bootshine's sure crit and Dragon Kick's 
   (rear) as the positionals. Every weaponskill and The Forbidden Chakra need reach; out of reach a Monk can only
   meditate, Form Shift, or spend chakra on Enlightenment (a 10 y line).
 
-Over the whole phase the best rotation deals 131,432 potency in `M1` and 131,825 in `M2` (equal within the search's
-noise: the settings spread up to 1.2% in `M2`); standing still 134,306, so our strategy costs a Monk ~2%: the
-pinned spots' positionals take 11 True Norths, and the away stretches can't be filled. Six-sided Star is only offered
-before Palladion and at the end of the window: elsewhere its assumed potency about ties the rotation per second, and
-the search drifted into chaining it.
+Over the whole phase the best rotation deals 132,942 potency in `M1` (131,432 before the logs' values); standing still
+136,209, so our strategy costs a Monk ~2.4%: the pinned spots' positionals take True Norths, and the away stretches
+can't be filled. Six-Sided Star is only offered before Palladion and at the end of the window (elsewhere it about ties
+the rotation per second, and the search drifted into chaining it); the search fires it just before Palladion and
+meditates back up in the downtime, as the benchmark Monks do.
 
 ## Bard
 
-`jobs/brd.py`, from the job guide and the patch notes since 7.0 only: **not yet checked against any log** (FFLogs was
-down when it was written). No benchmark clear has a Bard, so `calibrate.py --job brd --ours` (our groups' 62 clean pulls,
-four players) is the only check, and `solve.py --compare` has nothing to replay. Since 7.0 the patch notes only touch AoE
-potencies and actions above level 90 (Resonant Arrow 96, Radiant Encore 100). But Ranged Mastery (level 94) raises
-Burst Shot, Refulgent Arrow, Empyreal Arrow, Sidewinder and Apex Arrow to the guide's values, and the guide doesn't
-say from what. Marked PENDING in the code, to be measured: those five (assumed 200, 260, 240, 360 and 6 per Soul Voice),
-the DoT ticks (the tooltips' 20 and 25), auto-attacks (80 potency per 3.04 s), the default GCD (2.49 s), the logs'
-spelling of the Minuet and the status ids `own_factor` reads. Bloodletter (130, the reference action), Pitch Perfect,
-the bites, Iron Jaws and Blast Arrow (700) are the guide's: no trait touches them.
+`jobs/brd.py`, from the job guide and the patch notes since 7.0, checked against the logs. No benchmark clear has a
+Bard, so `calibrate.py --job brd --ours` (our groups' 62 clean pulls, four players) is the only check, and
+`solve.py --compare` has nothing to replay; the measuring scripts are in `scratch/brd/`. Since 7.0 the patch notes only
+touch AoE potencies and actions above level 90 (Resonant Arrow 96, Radiant Encore 100). Ranged Mastery (level 94) raises
+Burst Shot, Refulgent Arrow, Empyreal Arrow, Sidewinder and Apex Arrow to the guide's values, and the guide doesn't say
+from what. From the logs (plain hits scaled to Bloodletter, 130, the reference action):
+
+- **Burst Shot 200, Refulgent Arrow 260, Empyreal Arrow 240** (as guessed), **Sidewinder 320** (not 360), **Apex Arrow
+  5 a Soul Voice** (~400 at 80, ~500 at 100; not 6). Pitch Perfect, the bites, Iron Jaws and Blast Arrow (700) are the
+  guide's, within 1%.
+- **DoT ticks**: 25 and 31, 1.25x the tooltips' 20 and 25 (as Black Mage's Thunder III).
+- **Auto-attacks**: 68 potency every 3.07 s (not 80 per 3.04 s). **GCD**: 2.45-2.50 s (2.49 s by default).
+- **Hit delays** run from 0.53 s (Sidewinder) to 1.65 s (Blast Arrow).
+- The logs spell it The Wanderer's Minuet. Radiant Finale's damage status is 2964 (`own_factor` read 2722, its other
+  status, which is never on a hit).
+
+Repertoire isn't logged (the songs' statuses refresh every tick, proc or not), so a replay counts the expected 0.8 a
+tick: of 48 illegal casts left, the Bloodletters under the Ballad and the Blast Arrows (Soul Voice under 80 in the model)
+are that. A forced cast in a replay used to leave a multi-charge action without its recharge, which made every later
+Bloodletter illegal (309 before the fix). Dragoon, Red Mage, Viper, Reaper and Monk had the same line and are fixed too;
+their replays of today's logs come out the same (none had an illegal multi-charge cast to set it off).
 
 - **Songs and Repertoire**: each server tick (3 s) with a bite on Athena gives Repertoire with an 80% chance while a song
   plays, and the search counts the expected 0.8 per tick. Under the Minuet that means Pitch Perfect stacks, under the
@@ -152,11 +178,12 @@ the bites, Iron Jaws and Blast Arrow (700) are the guide's: no trait touches the
 - **Movement** costs a Bard nothing: every action is instant and reaches 25 y. R1, R2 and standing still give the same
   rotation; only Palladion's downtime matters.
 
-Over the whole phase the best rotation deals 87,790 potency (at width 3,000: the settings spread 0.5%, and width 1,000
-finds 0.3% less). It keeps the 2-minute burst on the Minuet (Raging Strikes, Battle Voice, Barrage, Radiant Finale at
-three Coda), refreshes Iron Jaws under it, and fires Blast Arrow after every Apex Arrow at 80+. It sings Minuet ->
-Paeon -> Ballad, not the usual Minuet -> Ballad -> Paeon. That may come from the guessed values, so check it again once
-they are measured.
+Over the whole phase the best rotation deals 85,922 potency (87,790 with the guessed values: Sidewinder, Apex Arrow
+and the autos came out lower, the DoTs higher; the settings spread 0.3%). It keeps Raging Strikes and Battle Voice on
+the Minuet, refreshes Iron Jaws under them, and fires Blast Arrow after every Apex Arrow at 80+. With the measured
+values it sings the usual Minuet -> Ballad -> Paeon (the guessed ones had Minuet -> Paeon -> Ballad). Radiant Finale
+lands in the Ballad, not the 2-minute burst: the search counts only the Bard's own potency, and Radiant Finale's worth
+to the party isn't in it.
 
 ## Dragoon
 
@@ -427,7 +454,10 @@ clears ran (within about ±30%: ours runs more in Paradeigma I-III, less in Supe
 
 ## The search
 
-A beam search, one GCD per step with the oGCDs woven before it. It ranks states by damage so far, plus a guess at
+A beam search, one GCD per step with the oGCDs woven before it, whose states compete with those at the same time
+(`engine.sweep`: 0.5 s layers, 0.25 s for BLM) rather than with those after as many GCDs (`engine.beam`, before
+2026-10-22): a state that spent its time on long casts no longer has to be weighed against one that didn't by a guessed
+potency per second. It ranks states by damage so far, plus a guess at
 what the resources they hold are worth, minus the time used, minus the running in the next 25 s that their instants
 won't cover. That last term counts what a held Triplecast or Swiftcast charge is worth before a run: hard casts leave
 ~40% of a window free anyway, each instant in hand (Triplecast stacks and charges, Swiftcast, Polyglot, Paradox,
@@ -437,6 +467,11 @@ Over a whole phase the result moves by ~1% with these guesses and no single sett
 under some settings and costs under others), so `solve.py` runs eight settings in parallel, four tunings each with
 and without the running term (about 70 s), and keeps the best rotation. Differences between scenarios below ~0.4%
 are within that noise: R2, which runs less than R1, comes out 0.35% lower.
+
+`polish.py` then improves that rotation by local search, scoring each edit over the whole fight: another legal
+choice in one step's place, two neighbouring GCDs swapped, an oGCD moved up to three steps, a step dropped. It works
+on any job through its `expand`, takes 1-60 s, and found 0-0.7% more (2026-10-22). `--layers gcd` and `--no-polish`
+bring back the earlier search.
 
 The best clear's own rotation, replayed at the same 2.32 s GCD with its own movement (`--compare`), deals 101,033:
 0.3% below the search's best under our (heavier) strategy, 0.6% below its best standing still.
@@ -482,7 +517,8 @@ conversions fall 0.38% per 0.01 s of GCD), and DoT ticks gain as much per point 
 melee's auto-attacks.
 
 `--offline` takes our players' pulls from the scorecard's acts caches instead of FFLogs (`logs.ours_offline`, for
-when FFLogs is down; Dragoon, Red Mage, Viper and Samurai went on the site this way on 2026-10-22). Those have no crit
+when FFLogs is down; Dragoon, Red Mage, Viper and Samurai went on the site this way on 2026-10-22, and were rerun from
+the full logs the same day once FFLogs was back: ceilings moved -4.6% to +6.4%, most within 2%). Those have no crit
 or direct-hit flags, no FFLogs multiplier and no record of others' buffs on a hit, so `logs.from_acts` leaves out the
 hits under others' raid buffs (`acts.buff_uses`, 20 s each) and in tinctures, takes the player's own damage-ups from
 their own statuses (the job's `own_factor`, which reads the same status ids), and `flag_hits` reads crit and direct hit
@@ -493,8 +529,8 @@ divided out this way. Against the full logs, on Black Mage (`scratch/offline/mea
 same for all seven players, damage per potency within 0.5% for six of them, crit gain within 2.2%, so the conversion
 reads 0-3% higher (about 1% at the median; one player 3%, likely a Dancer partner or Astrologian card the caches can't
 show). The replay check against the scorecard's rDPS gives the same picture: 0.97-1.00 offline, 1.00-1.02 from the full
-logs. 'logged' in the printed table misses the hits left out. The site says which jobs were converted this way.
-Rerun without `--offline` once FFLogs is back.
+logs. 'logged' in the printed table misses the hits left out. The site says which jobs were converted this way; a
+rerun without `--offline` clears the note.
 
 ## How the job model was checked
 

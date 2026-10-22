@@ -97,6 +97,11 @@ h2{ font-size: 17px; font-weight: 650; margin: 32px 0 10px; scroll-margin-top: 6
 .lede.challenges ul{ margin: 0; padding-left: 18px; }
 .lede.challenges li{ margin: 4px 0; }
 .lede.challenges strong{ color: var(--ink); font-weight: 600; }
+.lede.challenges li[data-k]{ cursor: pointer; border-radius: 4px; margin-left: -4px; padding: 1px 4px; outline: none; }
+.lede.challenges li[data-k]:focus-visible{ box-shadow: 0 0 0 2px var(--accent); }
+.lede.challenges li.on{ background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.focus-band{ fill: var(--accent); fill-opacity: .2; stroke: var(--accent); stroke-width: 1.5; opacity: 0; pointer-events: none; transition: opacity .15s; }
+.focus-band.on{ opacity: 1; }
 
 /* stat tiles */
 .kpis{ display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin: 16px 0 8px; }
@@ -215,3 +220,4 @@ td.good{ color: #3fae5a; } td.bad{ color: var(--div-neg); }
 .chart .extra.x-death{ stroke: var(--div-neg); } .chart .mark-extra.x-death{ fill: var(--div-neg); }
 .chart .extra.x-dd{ stroke: #e0a03a; } .chart .mark-extra.x-dd{ fill: #e0a03a; }
 .chart .extra.x-min{ stroke: #9b6cf2; } .chart .mark-extra.x-min{ fill: #9b6cf2; }
+.card + .table-wrap{ margin-top: 16px; }
