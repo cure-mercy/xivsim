@@ -1303,6 +1303,16 @@ const ROT_CHALLENGES = {
     ["GCD", "Skill Speed buys less than it costs: expected DPS at 2.50 s comes out about 2% above 2.41 s."],
     ["Expected DPS", "None of our players plays Ninja, so it converts at the four Ninjas of the benchmark clears since patch 7.3, whose damage per potency differs by up to 40% between them: read it as a rough figure. No player page links here yet."],
     ["Cost", "About 0.1% against standing still, within the optimizer's noise."]]],
+  Summoner: ["Ruin III slidecasts and nearly everything else is instant, so our runs cost a Summoner nothing; what P1 asks is to spend every Arcanum between demi-summons and fit the last cycle before Palladion.", [
+    ["Opener", "Pre-cast Ruin III to land at the pull, then Summon Bahamut with Searing Light and Energy Drain woven, Enkindle Bahamut and Deathflare inside the trance's six Astral Impulses.", [[0, 16.5]]],
+    ["Demi-summons", "Summon Bahamut and Summon Phoenix alternate on a 60 s that Spell Speed shortens (58.8 s at 2.45 s, 57 s at 2.31 s): five by Palladion. Their four pet hits come on their own timer, so only the trance's 15 s matters, not what you cast in it."],
+    ["Primals", "After each trance, Titan (four Topaz Rites, a Mountain Buster after each), Ifrit (two Ruby Rites, Crimson Cyclone into Crimson Strike) and Garuda (Slipstream, four Emerald Rites) in any order: the optimizer changes the order from cycle to cycle, a near-tie. Summon the next one only once the last one's Rites and favor are spent."],
+    ["Swiftcast", "On a Ruby Rite or Slipstream (a Ruin III at 2.41 and 2.49 s): no Movement band needs it."],
+    ["Searing Light", "Every two minutes as it comes back: 0:02–0:05, 2:03–2:06 and 4:05–4:07.", [[2.1, 24.7], [123.4, 146.2], [244.7, 267.0]]],
+    ["Out of reach", "Crimson Strike reaches only 3 y past Athena's hitbox: not at the red bands' far spots (0:37 in R1, 2:25 in Superchain I's spread).", ["away"]],
+    ["Palladion", "After the trance that starts around 4:00, Titan and Ifrit fit before Athena leaves at the timeline's right edge (4:41) but Garuda doesn't (at 2.31 s the earlier demi fits all three): its Arcanum is lost to the next demi-summon.", [[239.1, 281.6]]],
+    ["GCD", "Spell Speed buys less than it costs: expected DPS at 2.49 s comes out about 2% above 2.31 s."],
+    ["Cost", "Nothing against standing still."]]],
 };
 // the job's points against its fight: [[key, from, to]] for the timeline to draw hidden, one key per point
 function challengeFocus(job, f) {

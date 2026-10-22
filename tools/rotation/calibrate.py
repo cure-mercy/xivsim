@@ -222,7 +222,7 @@ def damage_check(L, until=None):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--job", default="blm", help="job model in jobs/ (blm, rpr, mnk, brd, drg, rdm, vpr, sam, pct, mch, nin)")
+    ap.add_argument("--job", default="blm", help="job model in jobs/ (blm, rpr, mnk, brd, drg, rdm, vpr, sam, pct, mch, nin, smn)")
     ap.add_argument("--since", default=None, help="first day of logs used (default: the job model's)")
     ap.add_argument("--until", type=float, default=None, help="end of the replay, s (default: the whole pull)")
     ap.add_argument("--ours", action="store_true", help="our groups' clean pulls instead of the benchmark clears")

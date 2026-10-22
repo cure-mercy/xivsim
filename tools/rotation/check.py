@@ -31,7 +31,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import engine, p12s                              # noqa: E402
 from engine import Fight, Move, SLIDE            # noqa: E402
-from jobs import blm, brd, drg, mch, mnk, nin, pct, rdm, rpr, sam, vpr    # noqa: E402
+from jobs import blm, brd, drg, mch, mnk, nin, pct, rdm, rpr, sam, smn, vpr    # noqa: E402
 
 HARM = {"Fire III", "Fire IV", "Despair", "Paradox", "Blizzard III", "Blizzard IV", "Thunder III", "Xenoglossy"}
 HARM |= (set(rpr.GCDS) - {"Soulsow"}) | rpr.AVATAR | {"Gluttony", "Lemure's Slice"}
@@ -44,6 +44,7 @@ HARM |= set(sam.POTENCY)
 HARM |= set(pct.POTENCY)
 HARM |= set(mch.POTENCY) | {"Wildfire"}
 HARM |= set(nin.POTENCY)
+HARM |= set(smn.POTENCY) | set(smn.DEMIS) | set(smn.PRIMALS) | {"Enkindle Bahamut", "Enkindle Phoenix"}
 fails = []
 
 
@@ -475,6 +476,98 @@ def nin_control(width=200):
                                    f" breaks {len(bad)}, the search for them {len(bad2)} ({s2.dmg:,.0f} potency)")
 
 
+def smn_cases():
+    print("\nSummoner: demi-summons and pets, primals and attunement, favors, Aetherflow, Searing Light, Crimson Strike's reach")
+    smn.SPEED = 0.98
+    f = Fight(until=200)
+    s = smn.State.initial(f)
+    s = smn.do_gcd(s, f, "Ruin III")
+    expect(s.history()[-1][0] < 0 and smn.candidates(s, f, s.gcd) and smn.do_gcd(s, f, "Astral Impulse") is None,
+           "the opener is a pre-cast Ruin III; no Astral Impulse before a trance")
+    d0 = s.dmg; b = smn.do_gcd(s, f, "Summon Bahamut")
+    expect(abs(b.dmg - d0 - 4 * 119) < 1e-6 and len(b.arc) == 3, "Summon Bahamut: four Wyrmwaves booked, three Arcanum")
+    expect(smn.candidates(b, f, b.gcd) == ["Astral Impulse"] and smn.do_gcd(b, f, "Summon Titan II") is None,
+           "in the trance only Astral Impulse; no primal until it ends")
+    e = smn.do_ogcd(b, f, "Enkindle Bahamut")
+    t0 = b.history()[-1][0]
+    expect(abs(e.dmg - b.dmg - 1030) < 1e-6 and smn.do_ogcd(e, f, "Enkindle Bahamut") is None,
+           "Enkindle Bahamut: Akh Morn once a trance")
+    x = b
+    while smn.in_trance(x, max(x.t, x.gcd)): x = smn.do_gcd(x, f, "Astral Impulse")
+    n = sum(1 for _, a, _ in x.history() if a == "Astral Impulse")
+    expect(n == 6 and smn.do_gcd(x, f, "Astral Impulse") is None, f"six Astral Impulses in the 15 s trance at a 2.45 s GCD ({n})")
+    expect(abs(smn.charges(x, "Demi", x.t)[1] - (t0 + 60 * 0.98)) < 1e-9 and smn.do_gcd(x, f, "Summon Phoenix") is None,
+           "the next demi is Summon Phoenix, 58.8 s after (spell speed)")
+    t = smn.do_gcd(x, f, "Summon Titan II")
+    r = smn.do_gcd(t, f, "Topaz Rite")
+    expect(r.mb and r.stacks == 3 and smn.do_ogcd(r, f, "Mountain Buster") is not None, "Topaz Rite: Titan's Favor for a Mountain Buster")
+    r2 = smn.do_gcd(r, f, "Topaz Rite")
+    expect(r2.waste[2] == 1, "a second Topaz Rite over an unspent Titan's Favor loses it")
+    g = smn.do_gcd(r, f, "Summon Garuda II")
+    expect(g.att == "emerald" and g.stacks == 4 and g.waste[1] == 3 and g.favor == "garuda" and not g.mb,
+           "a primal over three Topaz stacks: lost, with Titan's Favor; Garuda's Favor and four Emerald stacks")
+    em = smn.do_gcd(g, f, "Emerald Rite")
+    expect(abs(em.gcd - em.history()[-1][0] - 1.5) < 1e-9, "Emerald Rite: a fixed 1.5 s recast")
+    d0 = em.dmg; sl = smn.do_gcd(em, f, "Slipstream")
+    expect(abs(sl.dmg - d0 - 430 - 6 * 30) < 1e-6 and abs(sl.dotp - 180) < 1e-6 and sl.favor is None,
+           "Slipstream: 430 and six 30-potency windstorm ticks")
+    i = smn.do_gcd(sl, f, "Summon Ifrit II")
+    c = smn.do_gcd(i, f, "Crimson Cyclone")
+    expect(c.csr and c.favor is None and smn.do_gcd(c, f, "Crimson Strike") is not None, "Ifrit's Favor: Crimson Cyclone, then Crimson Strike")
+    ed = smn.do_ogcd(i, f, "Energy Drain")
+    expect(ed.af == 2 and smn.further_ruin(ed, ed.t), "Energy Drain: two Aetherflow, Further Ruin")
+    l = smn.do_ogcd(i, f, "Searing Light")
+    d0 = l.dmg; l2 = smn.do_gcd(l, f, "Ruby Rite")
+    expect(abs(l2.dmg - d0 - 510 * 1.05) < 1e-6, "Searing Light: +5% on the Summoner's own hits")
+    dn = Fight(until=200, untargetable=[(20.0, 60.0)])
+    z = smn.State.initial(dn); z.first = False; z.t = z.gcd = 10.0
+    d0 = z.dmg; z = smn.do_gcd(z, dn, "Summon Bahamut")
+    expect(abs(z.dmg - d0 - 2 * 119) < 1e-6, "a demi summoned 10 s before Athena leaves: two Wyrmwaves land")
+    a = Fight(until=200, away=[Move(30, 40, 4.0)])
+    y = smn.State.initial(a); y.first = False; y.favor = "ifrit"; y.t = y.gcd = 31.0
+    expect(smn.do_gcd(y, a, "Crimson Cyclone") is None, "no Crimson Cyclone off a far spot before its snapshot")
+    y.t = y.gcd = 36.0; y = smn.do_gcd(y, a, "Crimson Cyclone")
+    expect(y is not None and smn.do_gcd(y, a, "Crimson Strike") is not None, "after the snapshot it brings the player back: Crimson Strike")
+    w = smn.State.initial(a); w.first = False; w.csr = True; w.t = w.gcd = 36.5; w.mlast = 33.0
+    expect(smn.do_gcd(w, a, "Crimson Strike") is None, "no Crimson Strike that leaves a far spot's 4 s stretch no room (3.5 s each side)")
+
+
+def smn_faults(state, fight):
+    """Crimson Strikes inside a far spot's stretch out of reach not brought back by a Crimson Cyclone after the spot's
+    snapshot, and Crimson Cyclones saving more running than the window's stretch toward Athena."""
+    h, out = state.history(), []
+    back = lambda w, t: any(n == "Crimson Cyclone" and (w.lo + w.hi) / 2 - 1e-9 <= c <= t for c, n, _ in h)
+    out += [f"{name} at {t:.2f}" for t, name, _ in h if name in smn.MELEE_ACTIONS
+            and any(w.lo < t < w.hi and not back(w, t) for w in fight.away)]
+    for t, name, note in h:
+        d = re.search(r"dash ([\d.]+)s", note)
+        w = next((w for w in fight.moves if w.lo <= t < w.hi), None)
+        cap = max((length / engine.RUN for k, _, length in (w.dash if w else ()) if k == "in"), default=0)
+        if d and float(d[1]) > cap + 0.01: out.append(f"{name} at {t:.2f} saves {d[1]} s, at most {cap:.2f}")
+    return out
+
+
+def smn_searches(width=200):
+    print(f"\nSummoner searches (width {width}) replayed")
+    smn.SPEED = 0.98
+    alt = {m: [v for v in vs if v != p12s.DEFAULT_VAR[m]] for m, vs in p12s.PLAN.items() if m in p12s.DEFAULT_VAR}
+    for slot, var in [("R1", {}), ("R2", {m: v[0] for m, v in alt.items()})]:
+        f = p12s.fight(slot, var, far_spots=True)
+        s = engine.sweep(smn, f, width)
+        short, away, hard = replay(s, f)
+        bad = smn_faults(s, f)
+        dashes = sum(1 for _, _, note in s.history() if "dash " in note)
+        label = f"{slot}" + "".join(f", {v}" for v in var.values())
+        expect(not short and not away and not bad, f"{label}: {sum(1 for w in f.moves if w.need)} windows, {len(f.away)} far spots, "
+                                                   f"{hard} hard casts, {dashes} dashes, {s.dmg:,.0f} potency" + "".join(f"\n          {x}" for x in short + away + bad))
+        if slot == "R1": r1, f1 = s, f
+    # control (as Pictomancer's): a Summoner has so many instants that the R1 rotation is replayed against its runs at
+    # twice their length, which it must break
+    double = dataclasses.replace(f1, moves=[dataclasses.replace(w, need=min(2 * w.need, w.hi - w.lo)) for w in f1.moves])
+    short, _, _ = replay(r1, double)
+    expect(bool(short), f"control: the R1 rotation breaks {len(short)} of the R1 windows at twice their running")
+
+
 if __name__ == "__main__":
     stand_cases()
     searches()
@@ -495,5 +588,7 @@ if __name__ == "__main__":
     nin_cases()
     melee_searches(nin, 2.46, control=False)
     nin_control()
+    smn_cases()
+    smn_searches()
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED"))
     sys.exit(1 if fails else 0)
