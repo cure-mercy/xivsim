@@ -7,11 +7,11 @@ logged plain hits (no crit, no direct hit, buffs divided out).
 By default each log is replayed over the whole pull, up to the player's first death (a death strips the gauge and
 procs, which the model doesn't follow). A job model supplies the hooks at the end of jobs/<job>.py: LOG_NAME,
 LOGS_SINCE, OGCDS, REFERENCE, at, status, force, label, cast_label; optionally prepare(p) (read what the replay
-takes from the log itself, e.g. Monk's critical hits), force_ogcd, HASTE (a permanent GCD haste, e.g. Monk's 20%),
-HASTE_STATUSES (statuses whose haste comes and goes, e.g. Bard's Army's Paeon: gcd_of leaves the GCDs under them out,
-as it does Ley Lines).
+takes from the log itself, e.g. Monk's critical hits) with unprepare() (forget it again afterwards), force_ogcd, HASTE
+(a permanent GCD haste, e.g. Monk's 20%), HASTE_STATUSES (statuses whose haste comes and goes, e.g. Bard's Army's
+Paeon: gcd_of leaves the GCDs under them out, as it does Ley Lines).
 """
-import argparse, collections, datetime, importlib, json, math, statistics as st, sys
+import argparse, collections, contextlib, datetime, importlib, json, math, statistics as st, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -34,10 +34,23 @@ def cd_of(name):
     return J.cd_name(name) if hasattr(J, "cd_name") else name
 
 
+@contextlib.contextmanager
+def prepared(p):
+    """The job reads what a replay takes from log p (prepare) and forgets it afterwards (unprepare): a search or a
+    rebuilt rotation later in the same process (dps.upto) must not start from that log's opener or its hits."""
+    if hasattr(J, "prepare"): J.prepare(p)
+    try: yield
+    finally:
+        if hasattr(J, "unprepare"): J.unprepare()
+
+
 def replay(p, until, out, fight=None):
+    with prepared(p): return _replay(p, until, out, fight)
+
+
+def _replay(p, until, out, fight):
     n = p["names"]
     fight = fight or Fight(until=until + 30, pot=True)
-    if hasattr(J, "prepare"): J.prepare(p)
     s = J.State.initial(fight)
     seq = []
     last_begin = {}
@@ -160,6 +173,10 @@ def plain_hits(p, until):
 
 def model_hits(p, until, keep, hit=False):
     """The same for the hits `keep` picks (outside tinctures); `hit`: each tuple ends with the logged hit itself."""
+    with prepared(p): return _model_hits(p, until, keep, hit)
+
+
+def _model_hits(p, until, keep, hit):
     n = p["names"]
     pot = [x["t"] for x in p["buffs"] if n[str(x["abilityGameID"])] == "Medicated" and x["type"] == "applybuff"]
     plain = {}
@@ -167,7 +184,6 @@ def model_hits(p, until, keep, hit=False):
         if x["type"] == "damage" and keep(x) and not x.get("tick") and not any(a <= x["t"] < a + 30 for a in pot):
             plain.setdefault(n[str(x["abilityGameID"])], []).append((x["t"], x["amount"] / x.get("multiplier", 1), x))
     fight = Fight(until=until + 30)
-    if hasattr(J, "prepare"): J.prepare(p)
     s = J.State.initial(fight)
     out = []
     for x in p["casts"]:

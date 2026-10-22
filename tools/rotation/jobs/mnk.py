@@ -466,6 +466,12 @@ def prepare(p):
             LOG_CRIT[round(x["t"], 1)] = h
 
 
+def unprepare():
+    """Forget the log (calibrate.prepared): searches and rebuilt rotations use the expected crit rate."""
+    global LOG_CRIT
+    LOG_CRIT = None
+
+
 def at(s, fight, t):
     c = s.copy(); advance(c, fight, t)
     return c
