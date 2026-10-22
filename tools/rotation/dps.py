@@ -41,10 +41,11 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
 import calibrate, engine, logs, p12s, polish    # noqa: E402
 from engine import Fight                         # noqa: E402
-from jobs import blm, brd, drg, mnk, rdm, rpr, sam, vpr    # noqa: E402
+from jobs import blm, brd, drg, mnk, pct, rdm, rpr, sam, vpr    # noqa: E402
 
 JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard"),
-        "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage"), "vpr": (vpr, "Viper"), "sam": (sam, "Samurai")}
+        "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage"), "vpr": (vpr, "Viper"), "sam": (sam, "Samurai"),
+        "pct": (pct, "Pictomancer")}
 SITE_FILE = HERE / ".cache" / "ceilings.json"
 ROT_FILE = HERE / ".cache" / "rotations.json"
 WINDOW = 120

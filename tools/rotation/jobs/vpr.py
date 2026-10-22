@@ -436,9 +436,9 @@ def expand(s, fight):
 VALUE = dict(combo_1=50, combo_h=335, combo_s=335, coil_v=660, coil_h=330, coil_s=330, tail=300, bite=185, venom=100,
              honed=100, offer=26, rr=1300, tribute=255, rattle=60, hi=25, ss=40)
 RATE = 320                                            # potency per second, to compare states at slightly different times
-# the search: at width 3,000 these settings land within ~0.5% of each other over the phase (and of width 8,000's best);
-# rates below the filler's own ~275 / s make time look cheap and lose ~1.5%
-HEURISTICS = [(r, v, 0.0) for r in (290, 320, 350) for v in (1.0, 0.5)]
+# the search (beam): rates below the filler's own ~275 / s made time look cheap and lost ~1.5%; tune.py (2026-10-22,
+# sweep): (270, 0.45) is now the best by a little, +0.03% over the old grid
+HEURISTICS = [(270, 0.45, 0.0), (350, 1.0, 0.0), (415, 1.0, 0.0), (340, 0.9, 0.0)]
 WIDTH = 3000
 SWEEP_WIDTH = 3000                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: +0.05% (in 3/4 of the time)
 MOVE_WEIGHT = 0.0
