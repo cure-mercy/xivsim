@@ -17,6 +17,9 @@
 6. Pictomancer: Inspiration's haste and stacks, the landscape after a long run and a short one, the shared Aetherhues
    step, Monochrome Tones, motifs while Athena is away and the capped muse charges on hand-made states; then quick
    searches for R1 and R2 replayed as in 2, plus no inspired GCD after a run past the landscape since Starry Muse.
+7. Machinist: heat and Hypercharge, Barrel Stabilizer, Blazing Shot's recast and cuts, Wildfire's count, the queen's
+   battery, downtime and redeploy, the pre-pull Reassemble and Drill's skill-speed recast on hand-made states; then
+   quick searches for R1 and R2 replayed as for the Bard.
 Exits non-zero on any failure.
 """
 import dataclasses, itertools, re, sys
@@ -26,7 +29,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import engine, p12s                              # noqa: E402
 from engine import Fight, Move, SLIDE            # noqa: E402
-from jobs import blm, brd, drg, mnk, pct, rdm, rpr, sam, vpr    # noqa: E402
+from jobs import blm, brd, drg, mch, mnk, pct, rdm, rpr, sam, vpr    # noqa: E402
 
 HARM = {"Fire III", "Fire IV", "Despair", "Paradox", "Blizzard III", "Blizzard IV", "Thunder III", "Xenoglossy"}
 HARM |= (set(rpr.GCDS) - {"Soulsow"}) | rpr.AVATAR | {"Gluttony", "Lemure's Slice"}
@@ -37,6 +40,7 @@ HARM |= set(rdm.POTENCY)
 HARM |= set(vpr.POTENCY)
 HARM |= set(sam.POTENCY)
 HARM |= set(pct.POTENCY)
+HARM |= set(mch.POTENCY) | {"Wildfire"}
 fails = []
 
 
@@ -358,6 +362,55 @@ def rdm_searches(width=200):
     expect(bool(short), f"control: the standing-still rotation breaks {len(short)} of the R1 windows")
 
 
+def mch_cases():
+    print("\nMachinist: heat, Hypercharge, Blazing Shot, Wildfire, the queen, Reassemble")
+    mch.SPEED = 0.98
+    f = Fight(until=120)
+    s = mch.State.initial(f); s.first = False; s.ra_until = -1.0
+    for g in mch.COMBO: s = mch.do_gcd(s, f, g)
+    expect(s.heat == 15 and s.batt == 10 and s.combo == 0, f"a combo gives 15 heat and 10 battery ({s.heat}, {s.batt})")
+    expect(mch.do_ogcd(s, f, "Hypercharge") is None, "no Hypercharge below 50 heat")
+    h = mch.do_ogcd(mch.do_ogcd(s, f, "Barrel Stabilizer"), f, "Hypercharge")
+    expect(h is not None and h.heat == 15 and h.oh == 5, "Barrel Stabilizer's Hypercharged pays for it: five stacks, heat kept")
+    g = mch.do_ogcd(h, f, "Gauss Round")
+    nxt = mch.charges(g, "Gauss Round", g.t)[1]
+    b = mch.do_gcd(g, f, "Blazing Shot")
+    expect(abs(mch.charges(b, "Gauss Round", b.t)[1] - (nxt - 15)) < 1e-9 and abs(b.gcd - b.t + mch.ANIM_LOCK - 1.5) < 1e-9,
+           "Blazing Shot takes 15 s off Gauss Round and runs on a 1.5 s recast")
+    expect(mch.candidates(b, f, b.gcd) == ["Blazing Shot"], "the search plays only Blazing Shot while Overheated")
+    w = mch.do_ogcd(b, f, "Wildfire")
+    for _ in range(4): w = mch.do_gcd(w, f, "Blazing Shot")
+    for g in mch.COMBO: w = mch.do_gcd(w, f, g)
+    expect(w.wf_n == 6 and abs(w.dotp - 1440) < 1e-6, f"Wildfire counts six weaponskills, 1,440 as ticks ({w.wf_n}, {w.dotp:,.0f})")
+    q = mch.State.initial(f); q.first = False; q.batt = 100; q.t = q.gcd = 10.0; q.auto_next = 1e9
+    d0 = q.dmg; q = mch.do_ogcd(q, f, "Automaton Queen")
+    expect(abs(q.dmg - d0 - 24.15 * 100) < 1e-6 and q.batt == 0, f"a queen at 100 battery: {q.dmg - d0:,.0f} potency")
+    q.batt = 50
+    expect(mch.do_ogcd(q, f, "Automaton Queen") is None, "no second queen while the first is out")
+    d = Fight(until=120, untargetable=[(20.0, 60.0)])
+    q = mch.State.initial(d); q.first = False; q.batt = 50; q.t = q.gcd = 10.0; q.auto_next = 1e9
+    d0 = q.dmg; q = mch.do_ogcd(q, d, "Automaton Queen")
+    expect(abs(q.dmg - d0 - 2.2 * 3 * 50) < 1e-6, f"a queen running into downtime keeps the three punches before it ({q.dmg - d0:,.0f})")
+    r = mch.State.initial(f)
+    r = mch.do_gcd(r, f, "Drill")
+    expect(abs(r.critp - 620) < 1e-6 and r.ra_until < r.t, "the pre-pull Reassemble makes the first Drill a critical direct hit")
+    expect(abs(mch.charges(r, "Drill", 0.0)[1] - 20 * 0.98) < 1e-9, "Drill's recast scales with skill speed (19.6 s)")
+
+
+def mch_searches(width=200):
+    print(f"\nMachinist searches (width {width}) replayed")
+    mch.SPEED = 0.98
+    alt = {m: [v for v in vs if v != p12s.DEFAULT_VAR[m]] for m, vs in p12s.PLAN.items() if m in p12s.DEFAULT_VAR}
+    still = engine.sweep(mch, p12s.fight("R1", still=True), width)
+    for slot, var in [("R1", {}), ("R2", {m: v[0] for m, v in alt.items()})]:
+        f = p12s.fight(slot, var)
+        s = engine.sweep(mch, f, width)
+        _, away, _ = replay(s, f)
+        label = f"{slot}" + "".join(f", {v}" for v in var.values())
+        expect(not away and abs(s.dmg - still.dmg) < 1e-6, f"{label}: {s.dmg:,.0f} potency, standing still {still.dmg:,.0f}"
+                                                           + "".join(f"\n          {x}" for x in away))
+
+
 if __name__ == "__main__":
     stand_cases()
     searches()
@@ -373,5 +426,7 @@ if __name__ == "__main__":
     rdm_searches()
     pct_cases()
     pct_searches()
+    mch_cases()
+    mch_searches()
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED"))
     sys.exit(1 if fails else 0)

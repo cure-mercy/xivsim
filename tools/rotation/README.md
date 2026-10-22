@@ -2,7 +2,7 @@
 
 Searches for the highest-potency rotation of a job over P12S phase 1 (level 90), from the pull to the kill, with the
 fight's fixed timeline: when Athena can't be hit, and where the player has to run under our groups' strategy. So far:
-Black Mage, Reaper, Monk, Bard, Dragoon, Red Mage, Viper, Samurai and Pictomancer (Dragoon, Red Mage, Viper and Samurai checked only
+Black Mage, Reaper, Monk, Bard, Dragoon, Red Mage, Viper, Samurai, Pictomancer and Machinist (Dragoon, Red Mage, Viper and Samurai checked only
 against the scorecard's cached events: see their sections).
 
 ```
@@ -18,6 +18,7 @@ python tools/rotation/solve.py --job rdm [--slot R2]          # Red Mage, 2.50 s
 python tools/rotation/solve.py --job vpr [--slot M2]          # Viper, 2.49 s GCD (2.12 s under Swiftscaled), M1 by default
 python tools/rotation/solve.py --job sam [--slot M2]          # Samurai, 2.40 s GCD (2.09 s under Fuka), M1 by default
 python tools/rotation/solve.py --job pct [--slot R2]          # Pictomancer, 2.45 s GCD, R1 by default
+python tools/rotation/solve.py --job mch                      # Machinist, 2.45 s GCD (R2 and standing still come out the same)
 python tools/rotation/p12s.py [--slot R2]                     # the move windows; --build refetches the timeline
 python tools/rotation/check.py                                # movement and downtime checks
 python tools/rotation/calibrate.py [--job rpr] [--ours]       # check the job model against the clears' (or our) logs
@@ -29,7 +30,7 @@ python tools/rotation/dps.py --job drg --site --offline      # ...from the score
 
 | Option | Meaning |
 |---|---|
-| `--job` | `blm` (default), `rpr`, `mnk`, `brd`, `drg`, `rdm`, `vpr`, `sam` or `pct` |
+| `--job` | `blm` (default), `rpr`, `mnk`, `brd`, `drg`, `rdm`, `vpr`, `sam`, `pct` or `mch` |
 | `--gcd` | the player's GCD without haste (spell or skill speed; default the clears' median); `--compare` prints each clear's. Monk's Greased Lightning takes 20% off it |
 | `--crit` | critical-hit rate, for a job whose resources or buffs turn on crits (Monk's chakra, Dragoon's Life Surge and Battle Litany; default 0.25) |
 | `--slot` | Paradeigma I: `R1` / `M1` line up for the first lasers, `R2` / `M2` for the second (our BLMs play both R slots; the melee slot varies with the lineup). Default `R1`, or `M1` for a melee |
@@ -485,6 +486,78 @@ Paradeigma I's runs with hammers and Holy, renders Living Muse 13 times (all its
 canvases in Palladion. The search's settings come from `tune.py` (values at 0.45-0.65 of the guesses); the sweep holds
 within 0.1% from width 1,000 to 3,000, the beam drops with width. A search takes ~30 s.
 
+## Machinist
+
+`jobs/mch.py`, from the job guide and the patch notes since 7.0, checked against our groups' logs: the scorecard's
+cached events (~186 pulls by four Machinists, Sep-Oct 2026; the queen's hits count for her owner there) and the full
+FFLogs logs of our 38 clean pulls and the seven benchmark clears with one (four since 7.3, all one player); the measuring
+scripts are in `scratch/mch/`. Marksman's Mastery II (level 94) raises the combo, Blazing Shot and the tools in the guide,
+Enhanced Multiweapon (94) gives Drill its second charge, and Double Check / Checkmate (92), Excavator (96) and Full Metal
+Field (100) lie above P12S. Each action's plain-hit cluster, others' damage buffs divided out and Reassembled hits left
+out, scaled to Gauss Round (130, untouched at level 90):
+
+- Heated Split Shot 200, Heated Slug Shot 120 / 300 in combo, Heated Clean Shot 120 / 380 in combo (Marksman's
+  Mastery, 84); Drill, Air Anchor and Chain Saw 620 (7.3's base values); Blazing Shot 240 (taken as 220 plus Overheated's
+  +20 on single-target weaponskills); Gauss Round and Ricochet 130; auto-attacks 60 potency every 2.67 s;
+- the queen's hits grow linearly with the battery she was deployed with, at about 0.9 times the tooltips: Arm Punch 2.2,
+  Pile Bunker 6.15, Crowned Collider 7.0 potency a battery point. She punches five times 6.4-12.6 s after the deploy (or
+  opens with a Roller Dash worth two punches), then Pile Bunker at 14.7 s and Crowned Collider at 17.4 s: ~24 potency a
+  battery point, 1,208 at 50 and 2,415 at 100. Nobody used Queen Overdrive;
+- Wildfire detonates 10.6 s after its cast for 240 a weaponskill landed under it (six at most). FFLogs logs it as a tick
+  that never crits, so it counts with the DoT ticks (`dotp`). Its clean samples are few (most go off under raid buffs).
+
+Rules from the logs the guide doesn't give:
+
+- Drill, Air Anchor and Chain Saw recast on skill speed (Drill 19.3 s at a 2.41 s GCD); Blazing Shot's 1.5 s doesn't
+  (1.47-1.51 s at every skill speed), and takes 15 s off both Gauss Round and Ricochet;
+- the tools, Hypercharge and Blazing Shot never break the combo; heat is +5 for Heated Split Shot and each combo step,
+  and was never below 50 at a paid Hypercharge; Barrel Stabilizer gives only Hypercharged at level 90 (a free
+  Hypercharge, spent once 30.26 s after it);
+- 37 of 45 full logs open with a Reassemble pressed before the pull: its status falls off on the first tool, its cast
+  isn't logged. A replay presses it 5 s before that (pressed at 0 s instead, 27 later Reassembles come out illegal), and
+  the search opens with one at -4.5 s. Every Reassemble in the logs went on Drill, Air Anchor or Chain Saw;
+- queens were deployed at least 21.8 s apart: one can't go out while the last is still fighting.
+
+Every cast in the four clears since 7.3 replays as legal (`calibrate.py --job mch`), and in our 38 pulls all but four
+Drills of one player (`--ours`): their GCD reads 2.50 s to the hundredth, and Drill's 20 s recast turns that rounding
+into 0.04 s. Each action's plain hits match the model within 1.5%. A control with broken rules (each tool's or oGCD's
+recast 2-5 s longer, unscaled tool recasts, Blazing Shot cutting 10 s or on a 1.7 s recast, four Overheated stacks,
+Hypercharged lasting 20 s, the queen out 25 s, Heated Clean Shot giving 5 battery, the pre-pull Reassemble at 0 s) shows
+each as illegal or early casts (`scratch/mch/tamper.py`).
+
+- **Loop**: the combo gives heat and (Heated Clean Shot) battery; at 50 heat (or Hypercharged) Hypercharge gives five
+  Blazing Shots on a 1.5 s GCD, each with a Gauss Round or Ricochet woven; Wildfire goes on just before it and counts
+  the five Blazing Shots and the next GCD. Air Anchor and Chain Saw give 20 battery; at 50-100 the queen goes out.
+- **Reassemble** makes the next weaponskill a critical direct hit. Their potency counts plain in the printed potency;
+  the search weighs them at a sure critical direct hit's gain over an average hit (`SURE_W`, x1.62 at 25% crit and 30%
+  direct hit, as the Pictomancer's hammers), and `dps.py` converts them at each player's own (`AUTO_CRIT` names the
+  tools so it measures that gain there). The search only presses it right before a tool.
+- **The queen and Wildfire** are booked when deployed or cast, for the hits that land on Athena inside the window.
+- **Ranking**: as for the Viper, each held resource at what it converts into less the GCD time it takes, with the
+  Pictomancer's charge for cooldowns sitting full (`CAPPED`). A battery point is valued at two thirds of what the queen
+  pays for it: at the full 24, any scale above 1 made the beam hold battery (five queens in the phase instead of 11,
+  -3.5%). Gauss Round and Ricochet are offered as one action on two recasts, and the search plays only Blazing Shot while
+  Overheated.
+- **Movement** costs a Machinist nothing: every action is instant and reaches 25 y, the queen and the autos too
+  (Flamethrower, a channel, is left out). Only Palladion's downtime matters; whether the queen can be deployed while
+  Athena is away isn't in the logs, so the search waits for her (it scores the same).
+
+Over the whole phase the best rotation deals 107,858 potency (111,688 with the Reassembled hits at their expected worth)
+in `R1`, `R2` and standing still alike. It opens with Air Anchor on the pre-pull Reassemble, Barrel Stabilizer, Chain Saw,
+Drill on the second Reassemble, then Wildfire and the free Hypercharge, and makes 12 Hypercharges, eight queens (at 80
+battery on average, ~15% of the potency) and four Wildfires in the phase, keeping heat and 50 battery through Palladion
+for after it. The settings come from `tune.py`
+(values at 1.25-1.9 of the guesses: all tie at 111,688; at 0.5-1.0 0.4% less); the sweep at 500-2,000 and the beam at
+500-4,000 agree within 0.3%, and polish finds nothing more. The clears' rotations, replayed standing still over 0:00-370 s,
+deal 96-98% of the search's best at their GCD; our pulls over 0:00-2:00 90-95% (one player 80-87%: two Hypercharges in
+the first two minutes where the others fit three). A search takes ~30 s.
+
+`dps.py`: each player's logged casts, replayed through the model and converted, land within 1.5% of their scorecard
+rDPS over 0:00-2:00 (-1.2% to +1.5%, the queen included). FFLogs' full logs hold the player's own hits only
+(`logs.player_log` takes their source id), so the queen's ~10% of those two minutes is missing from the 'logged'
+column; the ceiling and the conversion count her, at the player's own damage per potency and crit gain. Our four
+Machinists' median pulls come to 82-94% of their ceilings (12,700-13,100 DPS).
+
 ## The fight
 
 `p12s.py` holds P12S P1 as the optimizer plays it; `p12s_p1.json` is built from six benchmark clears (`--build`).
@@ -639,7 +712,9 @@ Pictomancer it tests Inspiration's haste and stacks, the landscape after a 15 y 
 Monochrome Tones, motifs while Athena is away and the capped muse charges on hand-made states, and replays quick R1 and
 R2 searches like the Black Mage's, plus no inspired GCD after a run past the landscape since Starry Muse. Its controls
 differ (a standing-still Pictomancer rotation fits our runs): the R1 rotation against the same runs at twice their
-length, and the standing-still one against R1's landscape.
+length, and the standing-still one against R1's landscape. For the Machinist it tests heat and Hypercharge, Barrel
+Stabilizer, Blazing Shot's recast and cuts, Wildfire's count, the queen's battery, downtime and redeploy, the pre-pull
+Reassemble and Drill's skill-speed recast on hand-made states, and replays quick R1 and R2 searches as for the Bard.
 
 ## Files
 
@@ -654,6 +729,7 @@ length, and the standing-still one against R1's landscape.
 | `jobs/rdm.py` | Red Mage: Dualcast, mana, the melee combo and finishers, Manafication, Acceleration, expected procs, reach at far spots |
 | `jobs/vpr.py` | Viper: the dual-wield combo, Honed and venoms, Vicewinder's Coils and bites, Rattling Coils, Serpent Offerings, Reawaken, Swiftscaled haste, positionals, auto-attacks |
 | `jobs/pct.py` | Pictomancer: the colour loop and Aetherhues, Palette Gauge and Subtractive Palette, White Paint, Monochrome Tones and Comet, the canvases and motifs, Living / Striking / Starry Muse, Mog of the Ages, hammers, Inspiration and Hyperphantasia in Starry Muse's landscape, Smudge |
+| `jobs/mch.py` | Machinist: the combo, heat and Hypercharge, Blazing Shot's cuts to Gauss Round and Ricochet, Barrel Stabilizer, Wildfire, Reassemble's critical direct hits, battery and the Automaton Queen, the tools' skill-speed recasts, auto-attacks |
 | `jobs/sam.py` | Samurai: the three combos, Sen and Iaijutsu, Tsubame-gaeshi, Meikyo Shisui, Kenki, Meditation and Shoha, Ogi Namikiri, Fugetsu and Fuka, Higanbana's DoT, Tengentsu on the fight's hits, Meditate in downtime, positionals, auto-attacks |
 | `p12s.py`, `p12s_p1.json` | the fight: timeline, downtime, our strategy's runs, the clears' runs elsewhere |
 | `solve.py` | command line |

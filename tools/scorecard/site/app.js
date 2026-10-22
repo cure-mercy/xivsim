@@ -1270,6 +1270,14 @@ const ROT_CHALLENGES = {
     ["GCD", "As motifs don't speed up, Spell Speed buys less than it costs: expected DPS at 2.49 s comes out about 2% above 2.31 s."],
     ["Palladion", "Spend White Paint on Holy in White and Comet in Black before Athena leaves at the timeline's right edge (4:41), and repaint all three canvases in the 44 s downtime.", [[261.4, 281.6]]],
     ["Cost", "About 0.5% against standing still in R1 (about 1% in R2), half of it Inspiration lost in Superchain I."]]],
+  Machinist: ["Every action is instant and reaches 25 y, so our runs cost a Machinist nothing; what P1 asks is to fit the burst and the queen around Palladion.", [
+    ["Movement", "R1, R2 and standing still play the same rotation: no Movement band needs anything from it."],
+    ["Wildfire", "With a Hypercharge every two minutes, at 0:08 (on Barrel Stabilizer's free one), about 2:10 and 4:14: its five Blazing Shots and the next GCD make its six.", [[8.0, 18.7], [130.9, 141.6], [254.1, 264.8]]],
+    ["Queen", "She fights for 17.4 s (Crowned Collider last) and makes about 24 potency of each battery point, whenever she goes out: send her at 50 or more before the battery overcaps, but not in the last 17 s before Palladion. The last one goes out around 4:00–4:08; keep what builds after it (50 by Palladion) for when Athena is back.", [[264.2, 281.6]]],
+    ["Reassemble", "Only on Drill, Air Anchor or Chain Saw, starting with one pressed before the pull for the first tool."],
+    ["Palladion", "Put the last Reassemble on a tool just before Athena leaves at the timeline's right edge (4:41); heat and battery keep through the downtime.", [[261.4, 281.6]]],
+    ["GCD", "Skill Speed buys about what it costs: expected DPS at 2.41, 2.45 and 2.49 s comes out within 0.2%."],
+    ["Cost", "Nothing against standing still."]]],
 };
 // the job's points against its fight: [[key, from, to]] for the timeline to draw hidden, one key per point
 function challengeFocus(job, f) {
