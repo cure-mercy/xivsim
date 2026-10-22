@@ -1,6 +1,6 @@
 """Searches for the highest-damage rotation of a job over P12S phase 1 and prints it.
 
-    python tools/rotation/solve.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch|nin] [--gcd 2.32] [--until 449] [--slot R1] [--var para2=debuff]
+    python tools/rotation/solve.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch|nin|smn] [--gcd 2.32] [--until 449] [--slot R1] [--var para2=debuff]
                                    [--party AST,SCH,DRG,DNC] [--still] [--move 30-36] [--pot] [--carry] [--width 1000]
                                    [--layers time|gcd] [--no-polish] [--compare]
 
@@ -17,11 +17,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
 import engine, p12s, polish                      # noqa: E402
 from engine import Move                          # noqa: E402
-from jobs import blm, brd, drg, mch, mnk, nin, pct, rdm, rpr, sam, vpr    # noqa: E402
+from jobs import blm, brd, drg, mch, mnk, nin, pct, rdm, rpr, sam, smn, vpr    # noqa: E402
 
 JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard"),
         "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage"), "vpr": (vpr, "Viper"), "sam": (sam, "Samurai"),
-        "pct": (pct, "Pictomancer"), "mch": (mch, "Machinist"), "nin": (nin, "Ninja")}
+        "pct": (pct, "Pictomancer"), "mch": (mch, "Machinist"), "nin": (nin, "Ninja"),
+        "smn": (smn, "Summoner")}
 CRIT, CRIT_DMG, DH = 0.25, 1.60, 0.36            # typical rates at this gear level, for the value of crit and direct hit buffs
 BUFFS = {   # name: (job, multiplier)
     "Divination": ("AST", 1.06), "Technical Finish": ("DNC", 1.05), "Brotherhood": ("MNK", 1.05), "Embolden": ("RDM", 1.05),
@@ -85,7 +86,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--job", default="blm", choices=sorted(JOBS))
     ap.add_argument("--gcd", type=float, default=None, help="GCD length without haste, from the player's spell or skill speed "
-                    "(default: the benchmark clears' median, 2.32 s for BLM, 2.49 s for RPR, BRD, DRG and VPR (2.12 s under Swiftscaled), 2.50 s for RDM, 2.40 s for SAM (2.09 s under Fuka), 2.45 s for PCT and MCH, 2.46 s for NIN; "
+                    "(default: the benchmark clears' median, 2.32 s for BLM, 2.49 s for RPR, BRD, DRG and VPR (2.12 s under Swiftscaled), 2.50 s for RDM, 2.40 s for SAM (2.09 s under Fuka), 2.45 s for PCT, MCH and SMN, 2.46 s for NIN; "
                     "Monk's 20%% Greased Lightning comes off it: 2.43 s is a 1.94 s GCD; Ninja's 15%%: 2.46 s is 2.09 s)")
     ap.add_argument("--crit", type=float, default=None, help="critical-hit rate, for jobs whose resources or buffs "
                     "turn on critical hits (Monk's chakra, Dragoon's Life Surge and Battle Litany; default 0.25)")

@@ -32,6 +32,7 @@ python tools/rotation/dps.py --job drg --site --offline       # ...from the scor
 | `pct` | Pictomancer | 2.45 s | R1 / R2 | 93,782 / 93,146 (103,194 / 102,558 \*) | 94,243 (103,725 \*) | ~30 s |
 | `mch` | Machinist | 2.45 s | R1 = R2 = still | 107,858 (111,688 \*) | | ~30 s |
 | `nin` | Ninja | 2.09 s (2.46 s before Increase Attack Speed) | M1 = M2 | 131,340 | 131,525 | ~50 s |
+| `smn` | Summoner | 2.45 s | R1 = R2 = still | 94,536 | | ~20 s |
 
 Potency without raid buffs, over 0:00-449 s, as each job's section last recorded it. \* with sure critical (direct)
 hits at their expected worth, which is what the search ranks by.
@@ -386,6 +387,50 @@ values x1.0 tie, x0.5 is 0.4% lower); the sweep holds within 0.5% from width 1,0
 clears' Ninjas' GCDs since 7.3 (`CONVERT_SINCE`), converted to DPS at those four players (whose damage per potency
 differs by up to 40%); no player page links there.
 
+## Summoner
+
+`jobs/smn.py`, checked against our 15 clean pulls (two players) and the 11 benchmark clears with one (Mar-Dec 2025,
+mostly one player) in the full logs, and our 77 pulls in the acts caches, which alone hold the pets' hits. Arcane
+Mastery (94) raises nearly every potency in the guide; at level 90 they are Endwalker's, scaled to Fester (340):
+
+- Ruin III 310, Ruin IV 430, Astral Impulse 440, Fountain of Fire 540, Ruby / Topaz / Emerald Rite 510 / 330 / 230,
+  Energy Drain 200, Deathflare 500, Mountain Buster 150, Crimson Cyclone and Crimson Strike 430, Slipstream 430 and its
+  windstorm six ticks of 30;
+- the pets hit at 0.79 of their tooltips: Wyrmwave and Scarlet Flame 119, Akh Morn and Revelation 1,030, Inferno,
+  Earthen Fury and Aerial Blast 600; Searing Light (+5%, 20 s) raises them as it does the Summoner's own hits.
+
+From the logs:
+
+- Summon Bahamut and Summon Phoenix are GCDs whose 60 s shrinks with spell speed (57 s at a 2.31 s GCD); the 15 s
+  trance allows only Astral Impulse / Fountain of Fire (six at 2.45 s), Enkindle once and, under Bahamut, Deathflare;
+  the primals come after it (16-22 s after the summon, any order);
+- the demi hits four times on its own timer, 5.1 / 7.3 / 10.4 / 13.5 s after the summon, whatever is cast; Akh Morn and
+  Revelation land 1.0 s after Enkindle but not before ~3 s after the summon; Inferno and Earthen Fury 4.06 s after
+  their summon, Aerial Blast 3.39 s;
+- Ruby Rite casts 2.8 s on a 3 s recast and Slipstream 3 s on 3.5 s, both shortened by spell speed; Emerald Rite's
+  1.5 s isn't (1.47-1.51 s at a 2.31 s GCD); a demi-summon or a primal ends whatever favor is left (Ifrit's / Garuda's
+  Favor and Crimson Strike Ready otherwise outlast 50 s); MP never binds (lowest 1,600).
+
+Every cast in the clears replays legal but six second tinctures, and in our pulls all but one Astral Impulse after an
+opener without the pre-cast Ruin III (a replay places the first GCD at 0:00). A control with broken rules (each
+cooldown 1.5-2 s longer, the demi's recast unscaled, a 14.5 s trance, fewer attunement stacks, shorter attunement or
+Further Ruin, slower Rites or Slipstream) shows each as illegal or early casts (`scratch/smn/tamper.py`).
+
+- The pets are booked when summoned or Enkindled, at their landing's buffs.
+- Crimson Cyclone rushes to Athena (`engine.dash`; as Red Mage's Corps-a-corps not off a far spot before its
+  snapshot) and Crimson Strike needs melee reach (`FAR`).
+- Held values (each resource's conversion less Ruin III's rate over its GCDs) tie the filler exactly, so at their full
+  scale the beam drifted holding Ruby stacks and Arcanum until the next demi-summon wiped them (-5.5%); `tune.py` puts
+  the scale at 0.10-0.15. The search opens on a pre-cast Ruin III, as every clear does.
+
+Our runs cost a Summoner nothing: R1, R2 and standing still find the same 94,536 potency over the phase (Ruin III
+slidecasts, and all but Ruby Rite and Slipstream is instant; no Crimson Cyclone dash pays). Eight demi-summons, Searing
+Light with each Summon Bahamut, Swiftcast on Slipstream or a Ruby Rite, and only eight Ruin IIIs: every Arcanum is
+spent but Garuda's before Palladion (the 27 s after the 4:00 trance fit Titan and Ifrit). The primals' order changes
+from cycle to cycle, a near-tie. Settings from `tune.py`; a search takes ~20 s and polish adds 0.2%. The clears'
+rotations, replayed standing still over 0:00-370 s, deal 95-98% of the best (one pull 89%); our pulls over 0:00-130 s,
+86-87%.
+
 ## The fight
 
 `p12s.py` holds P12S P1 as the optimizer plays it; `p12s_p1.json` is built from six benchmark clears (`--build`).
@@ -460,7 +505,8 @@ variant: each window gets its running time outside cast bars, and nothing is cas
 standing-still rotation, as a control, breaks several windows). For the melee jobs it tests reach and positionals and
 that every away window holds a stretch of its length without a melee action. Each job adds its own rules on hand-made
 states (Reaper's positionals, Bard's Repertoire and Army's Muse, Red Mage's Dualcast, procs, far spots and dashes,
-Pictomancer's Inspiration, landscape and capped charges, Machinist's heat, Blazing Shot, Wildfire and queen, ...).
+Pictomancer's Inspiration, landscape and capped charges, Machinist's heat, Blazing Shot, Wildfire and queen,
+Summoner's trances, pets, attunement and favors, ...).
 
 ## Files
 
