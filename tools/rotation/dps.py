@@ -1,6 +1,7 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
     python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam] [--clears] [--site [--gcds 2.30,2.40]] [--offline]
+                                 [--no-polish]
 
 Per player, from their clean pulls (alive through 2:00):
   damage per potency   their plain hits (no crit, no direct hit), external buffs divided out, over the model potency
@@ -14,7 +15,8 @@ Per player, from their clean pulls (alive through 2:00):
   GCD                  their unhasted GCD, from back-to-back casts
 Check: each pull's logged casts, replayed through the model without buffs and converted, against the pull's logged
 damage (buffs divided out) and against the scorecard's rDPS.
-Ceiling: the best rotation without raid buffs at the player's GCD, converted. FFLogs' rDPS credits a raid buff's gain to
+Ceiling: the best rotation without raid buffs at the player's GCD (the search's best, polished by polish.py unless
+--no-polish), converted. FFLogs' rDPS credits a raid buff's gain to
 the job that gave it, so for a job without raid buffs rDPS is its damage with others' buffs divided out, and the best
 unbuffed rotation is the rDPS ceiling. A job with a raid buff (Reaper's Arcane Circle) also gets credit for what it
 added to the others' damage: the ceiling here leaves that out, and the scorecard site adds each pull's own credit to
@@ -24,9 +26,11 @@ variant with the most, so the rotation holds whichever the player is given.
 
 --site writes each of our players' ceiling to .cache/ceilings.json, and the optimized rotations behind them, one per GCD
 (plus any --gcds), to .cache/rotations.json with the fight's timeline (mechanics, runs, out of reach), where the
-scorecard's build_site.py picks both up. The site's rotations run on from the pull until Palladion takes Athena away
-(ROT_UNTIL, ~4:41): a second search per GCD, since the engine scores a whole window and a rotation that goes on holds
-resources a 0:00-2:00 one spends. Each also carries its 0:00-2:00 ceiling. A rotation's expected DPS
+scorecard's build_site.py picks both up. The site's rotations are a second search per GCD, over the whole phase (to
+the clears' median kill, FULL), shown and scored up to where our groups' progress reaches, Palladion taking Athena away
+(ROT_UNTIL, ~4:41). Not a search for that window: a rotation that has to go on holds resources one that ends there
+spends, and as progress moves on the site shows more of the same rotation rather than a new one. Each also carries
+its 0:00-2:00 ceiling. A rotation's expected DPS
 is the median of our players' conversions on the job, each moved to its GCD (the speed points that takes come out of
 their other substats), so GCDs compare with each other.
 """
@@ -35,7 +39,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
-import calibrate, engine, logs, p12s            # noqa: E402
+import calibrate, engine, logs, p12s, polish    # noqa: E402
 from engine import Fight                         # noqa: E402
 from jobs import blm, brd, drg, mnk, rdm, rpr, sam, vpr    # noqa: E402
 
@@ -164,12 +168,14 @@ def convert(s, k, e, et, ec=None, window=WINDOW):
 
 
 _ceiling, _fight = {}, {}
-ROT_UNTIL = p12s.load()["untargetable"][0][0]   # the site's rotations: until Palladion takes Athena away (281.65 s)
+POLISH = True                                   # polish each search's best rotation (polish.py); --no-polish turns it off
+ROT_UNTIL = p12s.load()["untargetable"][0][0]   # the site's rotations: shown until Palladion takes Athena away (281.65 s)
+FULL = p12s.load()["kill_median"]               # ...and searched over the whole phase (449 s)
 
 
 def site_fight(job, until=WINDOW):
-    """(slot, Fight) the ceilings (and the site's rotations, until ROT_UNTIL) are searched in, with our strategy's runs
-    for the role's slot with the most running before Palladion, each mechanic's variant with the most (p12s's
+    """(slot, Fight) the ceilings (and the site's rotations, over the whole phase) are searched in, with our strategy's
+    runs for the role's slot with the most running before Palladion, each mechanic's variant with the most (p12s's
     default)."""
     if (job.__name__, until) not in _fight:
         slot = p12s.worst_slot(getattr(job, "MELEE", False), ROT_UNTIL)
@@ -205,8 +211,15 @@ def ceiling(job, gcd, width, crit=None, until=WINDOW):
     key = (job.__name__, round(gcd, 2), round(crit, 2) if crit is not None else None, until)
     if key not in _ceiling:
         job.SPEED = key[1] / engine.BASE_GCD
-        _ceiling[key] = engine.search(job.__name__.split(".")[-1], site_fight(job, until)[1], width=width, speed=job.SPEED,
-                                      params={"CRIT": key[2]} if key[2] is not None else None)[0]
+        name, fight = job.__name__.split(".")[-1], site_fight(job, until)[1]
+        params = {"CRIT": key[2]} if key[2] is not None else None
+        s, setting, _ = engine.search(name, fight, width=width, speed=job.SPEED, params=params)
+        if POLISH:
+            before = job.final(s, fight)
+            s, passes = polish.polish(name, fight, s, setting, job.SPEED, params=params, log=lambda m: None)
+            print(f"  {rot_key(key[1], key[2])} until {until:.0f}s: polished {before:,.0f} -> {job.final(s, fight):,.0f} "
+                  f"in {passes} passes", flush=True)
+        _ceiling[key] = s
     return _ceiling[key]
 
 
@@ -266,12 +279,30 @@ def placed_runs(hist, fight):
     return sorted(out)
 
 
+def upto(job, s, fight, gcd, crit=None, until=ROT_UNTIL):
+    """A whole-phase rotation's state once its steps that start before `until` are done: its damage, DoT and sure-crit
+    potency and waste are the window's. Exact at Palladion: Athena is away from then, so nothing cast before lands
+    later and no DoT ticks on. Replayed at the GCD (and crit rate) it was searched at."""
+    h = s.history()
+    keep = job.SPEED, getattr(job, "CRIT", None)
+    job.SPEED = gcd / engine.BASE_GCD
+    if crit is not None: job.CRIT = crit
+    try:
+        steps, states = polish.split(job, fight, job.State.initial(fight), h)
+    finally:
+        job.SPEED = keep[0]
+        if crit is not None: job.CRIT = keep[1]
+    i = k = 0
+    while k < len(steps) and h[i][0] < until: i += len(steps[k]); k += 1
+    return states[k]
+
+
 def site_rotation(job, s, until=ROT_UNTIL):
-    """The site's rotation: [time, action, "g" for a GCD / "o" for an oGCD, cast time, seconds run], waits left out. A
-    GCD's running is what placed_runs puts between its start and the next GCD's."""
+    """The site's rotation, a whole-phase one up to `until`: [time, action, "g" for a GCD / "o" for an oGCD, cast
+    time, seconds run], waits left out. A GCD's running is what placed_runs puts between its start and the next GCD's."""
     hist = s.history()
     acts = [(t, n, note) for t, n, note in hist if t < until and not n.startswith("(")]
-    runs, gs = placed_runs(hist, site_fight(job, until)[1]), [t for t, n, _ in acts if n in job.GCDS]
+    runs, gs = placed_runs(hist, site_fight(job, FULL)[1]), [t for t, n, _ in acts if n in job.GCDS]
     out = []
     for t, n, note in acts:
         m, run = CAST_NOTE.search(note or ""), 0.0
@@ -284,8 +315,8 @@ def site_rotation(job, s, until=ROT_UNTIL):
 
 def rotations(job, rows, width, extra=()):
     """The site's optimized rotations for a job, {fight: timeline, rotations: {key: ...}}: at every GCD (and crit rate)
-    searched for our players' ceilings, plus the extra GCDs (at the job's default crit rate), the best rotation until
-    ROT_UNTIL, with its expected DPS at the median of our players' conversions and their range, and the 0:00-2:00
+    searched for our players' ceilings, plus the extra GCDs (at the job's default crit rate), the best whole-phase
+    rotation up to ROT_UNTIL, with its expected DPS there at the median of our players' conversions and their range, and the 0:00-2:00
     ceiling's at the median. Each player is moved to the rotation's GCD first (SPEED_PTS, STAT_PT): a faster GCD costs
     them damage per potency, so GCDs compare at what a player would have there."""
     for g in extra: ceiling(job, g, width, getattr(job, "CRIT", None))
@@ -297,9 +328,10 @@ def rotations(job, rows, width, extra=()):
     out = {}
     for (jn, gcd, crit, until), s2 in sorted(_ceiling.items(), key=lambda x: (x[0][1], x[0][2] or 0)):
         if jn != job.__name__ or until != WINDOW: continue
-        s = ceiling(job, gcd, width, crit, ROT_UNTIL)
+        whole = ceiling(job, gcd, width, crit, FULL)
+        s = upto(job, whole, site_fight(job, FULL)[1], gcd, crit)
         key, each = rot_key(gcd, crit), [conv(s, r, gcd) for r in rows]
-        rot = site_rotation(job, s)
+        rot = site_rotation(job, whole)
         out[key] = dict(gcd=gcd, crit=crit, window=ROT_UNTIL, potency=round(s.dmg), dps=round(st.median(each)), dps_lo=round(min(each)),
                         ceiling_2min=round(st.median(conv(s2, r, gcd, WINDOW) for r in rows)),
                         dps_hi=round(max(each)), players=sum(r["key"] == key for r in rows), conv_players=len(rows),
@@ -322,13 +354,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--job", default="blm", choices=sorted(JOBS))
     ap.add_argument("--clears", action="store_true", help="also the benchmark clears' players (tincture hits are kept)")
-    ap.add_argument("--width", type=int, default=None, help="beam width (default: the job's)")
+    ap.add_argument("--width", type=int, default=None, help="search width (default: the job's SWEEP_WIDTH)")
     ap.add_argument("--site", action="store_true", help=f"save our players' ceilings and the optimized rotations for the scorecard site "
                     f"({SITE_FILE.name}, {ROT_FILE.name})")
     ap.add_argument("--gcds", help="with --site: also optimize at these GCDs (comma-separated), for the site's rotation pages")
     ap.add_argument("--offline", action="store_true", help="our players' logs from the scorecard's acts caches, not FFLogs "
                     "(logs.ours_offline, flag_hits): for when FFLogs is down; 'logged' then misses the hits left out")
+    ap.add_argument("--no-polish", action="store_true", help="skip the local search on each search's best rotation (polish.py)")
     a = ap.parse_args()
+    global POLISH
+    POLISH = not a.no_polish
     job, jobname = JOBS[a.job]
     calibrate.use(a.job)
     pulls = flag_hits(job, logs.ours_offline(jobname, getattr(job, "own_factor", lambda p, h: 1.0))) if a.offline else logs.ours(jobname)

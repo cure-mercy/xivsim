@@ -5,12 +5,13 @@ Rules follow the official job guide (na.finalfantasyxiv.com/jobguide/monk) and t
 Bootshine 220, True Strike 300, Snap Punch 270, Twin Snakes 380, Demolish 320, Dragon Kick 280 and The Forbidden
 Chakra 400; Melee Mastery II (94) raises Twin Snakes, Demolish, Dragon Kick, Six-sided Star and Phantom Rush beyond
 P12S. Leaping Opo, Rising Raptor, Pouncing Coeurl and Elixir Burst are level 92, Wind's and Fire's Reply 96 and 100.
-PENDING marks the values the guide doesn't give at level 90; they are to be measured from the logs (calibrate.py).
+The guide doesn't give Phantom Rush and Six-sided Star at level 90, nor the auto-attacks, hit delays and recasts: those
+were measured in the logs (2026-10-22: 19 benchmark clears and our 64 clean pulls; scratch/mnk).
 
 Forms: an opo-opo action (Bootshine, Dragon Kick) leads to raptor form, a raptor action (True Strike, Twin Snakes) to
 coeurl, a coeurl action (Snap Punch, Demolish) back to opo-opo. Raptor and coeurl actions need their form; Formless
 Fist (Form Shift, any Masterful Blitz) and Perfect Balance stand in for any form, and count as it for the form bonuses
-(Bootshine's sure critical hit, Dragon Kick's Opo-opo's Fury). Fury: Dragon Kick +200 to the next Bootshine, Twin
+(Bootshine's sure critical hit: every Bootshine under either crits in the logs; Dragon Kick's Opo-opo's Fury). Fury: Dragon Kick +200 to the next Bootshine, Twin
 Snakes +200 to the next True Strike, Demolish two stacks of +150 for Snap Punch.
 
 Perfect Balance: three form actions in any order, each adding the beast chakra of the form it leads to (opo-opo action:
@@ -21,6 +22,8 @@ Chakra: a weaponskill that crits opens one (Bootshine in opo-opo form always doe
 CRIT of one per weaponskill, a replay of a log its actual crits. Under Meditative Brotherhood each own weaponskill opens
 one more and every party member's weaponskill or spell has a 20% chance (PARTY_CHAKRA a second, a full party assumed,
 as Reaper's Plentiful Harvest assumes eight stacks). Brotherhood lets ten be open; The Forbidden Chakra spends five.
+The logs bear the expected rate out (0.57 a second in our windows, 0.51 in the clears), but a window's real share swings
+from about 0.4 to 0.7, so a replay of a log at the expected rate finds some Forbidden Chakras a chakra or two short.
 
 Positionals: Snap Punch (flank) and Demolish (rear) gain 60 potency from the right side; inside the fight's `pinned`
 windows only True North gets it. Reach: every weaponskill and The Forbidden Chakra need the player beside Athena
@@ -34,22 +37,25 @@ POTENCY = {"Bootshine": (220, 420), "True Strike": (300, 500), "Snap Punch": (27
            "Dragon Kick": 280, "Twin Snakes": 380, "Demolish": 320,
            "Shadow of the Destroyer": 120, "Four-point Fury": 140, "Rockbreaker": 150,     # AoE: only in replays
            "Elixir Field": 800, "Rising Phoenix": 900, "Celestial Revolution": 600,
-           "Phantom Rush": 1150,                    # PENDING: 1,500 at level 94 (Melee Mastery II); 1,150 is Endwalker's
-           "Six-sided Star": 710,                   # PENDING: 780 at level 94 (Melee Mastery II)
+           "Phantom Rush": 1400,                    # logs: 1,400-1,415 (1,500 at level 94, Melee Mastery II)
+           "Six-Sided Star": 710,                   # logs: 695 with no chakra open, 874 with two (780 at level 94)
            "The Forbidden Chakra": 400, "Enlightenment": 160}
 SSS_CHAKRA = 80                                 # Six-sided Star: +80 a chakra open, closing them all
 POSITIONAL = 60                                 # Snap Punch from the flank, Demolish from the rear
-# auto-attacks: fist weapons have a 2.56 s delay; melee autos are 90 potency per 3 s of delay, and Greased Lightning
-# shortens the delay (not the damage). PENDING: measure in the logs, as for Reaper.
-AUTO, AUTO_DELAY = 77, 2.56 * 0.8
-DELAY = {}                                      # PENDING: seconds from execution to the damage landing (0.6 by default)
+# auto-attacks: 78 potency (logs, scaled to The Forbidden Chakra) every 2.05 s, 1.03 s under Riddle of Wind
+AUTO, AUTO_DELAY = 78, 2.05
+# seconds from executing an action to its damage landing, the logs' medians; buffs snapshot on execution
+DELAY = {"Bootshine": 1.11, "True Strike": 0.80, "Snap Punch": 0.76, "Dragon Kick": 1.29, "Twin Snakes": 0.85,
+         "Demolish": 1.60, "Elixir Field": 1.07, "Rising Phoenix": 0.76, "Celestial Revolution": 0.89,
+         "Phantom Rush": 0.40, "Six-Sided Star": 0.62, "The Forbidden Chakra": 1.47}
 HASTE = 0.8                                     # Enhanced Greased Lightning III: weaponskill recast -20%
 WEAVE_SLACK = 0.05                              # a double weave in a 1.94 s GCD clips it by 0.01 s: allowed
-SSS_RECAST = 4.0                                # Six-sided Star, before skill speed and Greased Lightning (PENDING: check)
+SSS_RECAST = 4.0                                # Six-sided Star: skill speed shortens it, Greased Lightning doesn't (3.9 s logged)
+MEDITATION_RECAST = 1.0                         # the meditations: 1 s, fixed (0.98-0.99 s between them in the logs)
 RIDDLE_OF_FIRE, BROTHERHOOD = 1.15, 1.05
 FIRE_S, BH_S, WIND_S, PB_S, FORM_S, FORMLESS_S, TN_S = 20, 20, 15, 20, 30, 30, 10
 CRIT = 0.25                                     # the player's critical-hit rate: chakra per weaponskill (dps.py sets it)
-PARTY_CHAKRA = 7 * 0.20 / 2.45                  # PENDING: seven party members, a GCD each ~2.45 s, 20% each
+PARTY_CHAKRA = 7 * 0.20 / 2.45                  # seven party members, a GCD each ~2.45 s, 20% each (logs: 0.51-0.57)
 CDS = {"Perfect Balance": (40, 2), "Riddle of Fire": (60, 1), "Brotherhood": (120, 1), "Riddle of Wind": (90, 1),
        "True North": (45, 2), "Chakra": (1, 1), "Tincture": (270, 1)}
 KIND = {"Bootshine": "o", "Dragon Kick": "o", "Shadow of the Destroyer": "o", "True Strike": "r", "Twin Snakes": "r",
@@ -57,13 +63,13 @@ KIND = {"Bootshine": "o", "Dragon Kick": "o", "Shadow of the Destroyer": "o", "T
 NEXT = {"o": "r", "r": "c", "c": "o"}
 BLITZ = ("Elixir Field", "Rising Phoenix", "Celestial Revolution", "Phantom Rush")
 MEDITATION = ("Forbidden Meditation", "Enlightened Meditation", "Steeled Meditation", "Inspirited Meditation")
-GCDS = list(KIND) + list(BLITZ) + ["Six-sided Star", "Form Shift"] + list(MEDITATION)
-HARM_GCDS = set(KIND) | set(BLITZ) | {"Six-sided Star"}
+GCDS = list(KIND) + list(BLITZ) + ["Six-Sided Star", "Form Shift"] + list(MEDITATION)
+HARM_GCDS = set(KIND) | set(BLITZ) | {"Six-Sided Star"}
 MELEE_ACTIONS = HARM_GCDS | {"The Forbidden Chakra"}
 OGCD_ORDER = ["Tincture", "Brotherhood", "Riddle of Fire", "Perfect Balance", "Riddle of Wind", "The Forbidden Chakra",
               "Enlightenment", "True North"]
 AUTO_CRIT = {"Bootshine"}                       # dps.py: hits that always crit (in opo-opo form) count at their own gain
-SPEED = 0.97                                    # skill speed factor: 2.43 s unhasted, a 1.94 s GCD (PENDING: clears' median)
+SPEED = 0.97                                    # skill speed factor: 2.43 s unhasted, a 1.94 s GCD (logs: 1.92-1.96)
 MELEE = True
 LOG_CRIT = None                                 # a replay: {cast time (0.1 s): crit} of the log's weaponskills
 
@@ -240,7 +246,7 @@ def potency(s, fight, name, at):
     if name == "Snap Punch": return p[s.coeurl > 0] + POSITIONAL * flank_rear(s, fight, at), False
     if name == "Demolish": return p + POSITIONAL * flank_rear(s, fight, at), False
     if name == "Shadow of the Destroyer": return p, in_form(s, "o", at)
-    if name == "Six-sided Star": return p + SSS_CHAKRA * s.chakra, False
+    if name == "Six-Sided Star": return p + SSS_CHAKRA * s.chakra, False
     return p, False
 
 
@@ -265,7 +271,8 @@ def do_gcd(s, fight, name):
     if harm and (not fight.targetable(start) or fight.next_down(start) <= start): return None
     if name in MELEE_ACTIONS and not reach(s, fight, start): return None
     s.first = False
-    recast = (SSS_RECAST if name == "Six-sided Star" else BASE_GCD) * SPEED * HASTE
+    recast = (MEDITATION_RECAST if name in MEDITATION else SSS_RECAST * SPEED if name == "Six-Sided Star"
+              else BASE_GCD * SPEED * HASTE)
     snap, free, nxt = start, start + ANIM_LOCK, start + recast
     crit = False
     if harm:
@@ -298,11 +305,11 @@ def do_gcd(s, fight, name):
         else: s.lunar = True
         s.beast = ()
         s.formless_until = snap + FORMLESS_S
-    elif name == "Six-sided Star": s.chakra = 0.0
+    elif name == "Six-Sided Star": s.chakra = 0.0
     elif name == "Form Shift": s.formless_until = snap + FORMLESS_S
     elif name in MEDITATION: add_chakra(s, snap, 1)
     if harm:                                    # chakra: a critical weaponskill, and Meditative Brotherhood
-        n = (0.0 if name == "Six-sided Star" else 1.0 if crit else crit_chance(snap)) + (s.bh_until > snap)
+        n = (0.0 if name == "Six-Sided Star" else 1.0 if crit else crit_chance(snap)) + (s.bh_until > snap)
         add_chakra(s, snap, n)
     s.t, s.gcd = free, nxt
     s.near = away_soon(s, fight, s.t)
@@ -366,7 +373,7 @@ def candidates(c, fight, now):
     out = list(SEARCH_GCDS)
     b = blitz(c)
     if b: out.append(b)
-    if min(fight.next_down(now), fight.until) - now < 8: out.append("Six-sided Star")
+    if min(fight.next_down(now), fight.until) - now < 8: out.append("Six-Sided Star")
     if not fight.targetable(now) or c.near or not reach(c, fight, now, commit=False):
         out.append("Forbidden Meditation")
         if c.formless_until - now < 5: out.append("Form Shift")
@@ -411,6 +418,7 @@ VALUE = dict(chakra=70, opo=170, raptor=170, coeurl=130, beast=180, nadi=150, pb
 RATE = 220                                            # potency per second, to compare states at slightly different times
 HEURISTICS = [(r, 1.0, 0.0) for r in (200, 220, 240, 270)]   # 180-240 agree within 0.01%; 270-300 0.4% lower
 WIDTH = 3000
+SWEEP_WIDTH = 7500                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: +0.22%
 MOVE_WEIGHT = 0.0
 
 
@@ -452,7 +460,7 @@ def prepare(p):
     for x in p["casts"]:
         name = n[str(x["abilityGameID"])]
         if x["type"] == "cast" and name in HARM_GCDS:
-            h = next((c for t, a, c in hits if a == name and 0 <= t - x["t"] < 1.5), False)
+            h = next((c for t, a, c in hits if a == name and 0 <= t - x["t"] < DELAY.get(name, 0.6) + 0.5), False)
             LOG_CRIT[round(x["t"], 1)] = h
 
 
@@ -485,7 +493,8 @@ def force_ogcd(s, fight, name, t):
     s = s.copy()
     if name in ("The Forbidden Chakra", "Enlightenment"): s.chakra = max(s.chakra, 5)
     if name == "Perfect Balance": s.beast = ()
-    s.cds[cd_name(name)] = (1, None)
+    rec, mx = CDS[cd_name(name)]                   # one charge, the recharge still running (Perfect Balance has two)
+    s.cds[cd_name(name)] = (1, charges(s, cd_name(name), t)[1] or (None if mx == 1 else t + rec))
     return do_ogcd(s, fight, name, policy=False) or s
 
 
@@ -504,7 +513,7 @@ def label(s, fight, name, t):
         tn = s.tn_until > t
         return ("TN" if tn else ""), POTENCY[name] + POSITIONAL * tn
     if name == "Dragon Kick": return ("opo-opo form" if in_form(s, "o", t) else "no form"), POTENCY[name]
-    if name == "Six-sided Star": return f"{s.chakra:.0f} chakra", potency(s, fight, name, t)[0]
+    if name == "Six-Sided Star": return f"{s.chakra:.0f} chakra", potency(s, fight, name, t)[0]
     if name in POTENCY: return "", POTENCY[name]
     return None
 
@@ -515,8 +524,8 @@ def cast_label(s, name, t):
 
 def own_factor(p, h):
     """The part of a logged hit's FFLogs multiplier that is the player's own (Riddle of Fire, their Brotherhood):
-    FFLogs counts every damage-up on the hit, so dividing it out takes these away too. PENDING: check the status ids
-    (Riddle of Fire 1181, Brotherhood 1185) in the logs."""
+    FFLogs counts every damage-up on the hit, so dividing it out takes these away too. Status ids from the logs: Riddle
+    of Fire 1181, Brotherhood 1185."""
     b = h.get("buffs") or ""
     m = RIDDLE_OF_FIRE if "1001181." in b else 1.0
     if "1001185." in b:

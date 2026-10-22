@@ -4,8 +4,8 @@ Rules follow the official job guide (na.finalfantasyxiv.com/jobguide/bard) and t
 (patchnotes.py): 7.2-7.3 only touched AoE potencies and actions above level 90 (Resonant Arrow 96, Radiant Encore 100).
 Both show level-100 values. Ranged Mastery (level 94) raises Empyreal Arrow to 260, Sidewinder to 400, Refulgent Arrow
 to 280, Burst Shot to 220 and Apex Arrow to 140-700, so those five are lower at level 90 by an amount the guide doesn't
-give; Heartbreak Shot (92) is still Bloodletter. PENDING marks the values to measure from the logs (calibrate.py --job
-brd --ours: no benchmark clear has a Bard, our groups have 62 clean pulls by four).
+give; Heartbreak Shot (92) is still Bloodletter. Those, the DoT ticks, auto-attacks and hit delays were measured in
+the logs (2026-10-22, scratch/brd): no benchmark clear has a Bard, so our groups' 62 clean pulls by four Bards.
 
 Every action is instant and reaches 25 y, so the strategy's running costs a Bard nothing: only the boss's downtime.
 
@@ -35,23 +35,26 @@ and a refresh (Iron Jaws, or the bite again) loses the ticks the old one still h
 import itertools, math
 from engine import ANIM_LOCK, BASE_GCD, settle
 
-# PENDING: Burst Shot, Refulgent Arrow, Empyreal Arrow, Sidewinder and Apex Arrow are guesses below Ranged Mastery's
-# level-94 values (220 / 280 / 260 / 400 / 140-700); the others are the guide's, untouched by traits.
+# Burst Shot, Refulgent Arrow, Empyreal Arrow, Sidewinder and Apex Arrow from the logs (plain hits scaled to Bloodletter:
+# 199 / 260 / 241 / 318 / 5 a Soul Voice), below Ranged Mastery's level-94 values (220 / 280 / 260 / 400 / 140-700);
+# the others are the guide's, untouched by traits (the logs agree within 1%).
 POTENCY = {"Burst Shot": 200, "Refulgent Arrow": 260, "Caustic Bite": 150, "Stormbite": 100, "Iron Jaws": 100,
-           "Blast Arrow": 700, "Empyreal Arrow": 240, "Sidewinder": 360, "Bloodletter": 130,
+           "Blast Arrow": 700, "Empyreal Arrow": 240, "Sidewinder": 320, "Bloodletter": 130,
            "Shadowbite": 200, "Ladonsbite": 140, "Rain of Death": 100}       # AoE: only in replays
-APEX = 6.0                                      # PENDING: Apex Arrow potency per Soul Voice (120 at 20 up to 600 at 100)
+APEX = 5.0                                      # Apex Arrow potency per Soul Voice (logs: ~400 at 80, ~500 at 100)
 BARRAGE_HITS = 3
 PP = (0, 100, 220, 360)                         # Pitch Perfect by Repertoire stacks (in between: interpolated)
-DOT = {"Caustic Bite": 20, "Stormbite": 25}     # PENDING: tick potency in the logs (BLM's Thunder III ticks at 1.26x its tooltip)
+DOT = {"Caustic Bite": 25, "Stormbite": 31}     # tick potency in the logs: 1.25x the tooltip's 20 / 25, as BLM's Thunder III
 DOT_S = 45.0
 HAWK, REPERTOIRE = 0.35, 0.80                   # chances: Hawk's Eye per proc-granting GCD, Repertoire per server tick
 HAWK_GCDS = {"Burst Shot", "Caustic Bite", "Stormbite", "Iron Jaws"}
 HAWK_EV = HAWK * (POTENCY["Refulgent Arrow"] - POTENCY["Burst Shot"]) / (1 + HAWK)
-# auto-attacks: ranged autos are 80 potency per 3 s of delay; a bow's delay ~3.04 s. Army's Paeon / Muse shorten it.
-AUTO_DELAY = 3.04                               # PENDING: both from the logs
-AUTO = 80 * AUTO_DELAY / 3
-DELAY = {}                                      # PENDING: seconds from execution to the damage landing (0.6 by default)
+# auto-attacks: 68 potency (logs, scaled to Bloodletter) every 3.07 s; Army's Paeon / Muse shorten the delay
+AUTO, AUTO_DELAY = 68, 3.07
+# seconds from executing an action to its damage landing, the logs' medians; buffs snapshot on execution
+DELAY = {"Burst Shot": 1.47, "Refulgent Arrow": 1.47, "Caustic Bite": 1.29, "Stormbite": 1.29, "Iron Jaws": 0.62,
+         "Apex Arrow": 1.07, "Blast Arrow": 1.65, "Empyreal Arrow": 1.03, "Sidewinder": 0.53, "Bloodletter": 1.60,
+         "Rain of Death": 1.65, "Pitch Perfect": 0.80}
 TICK_PHASE = 1.5                                # server ticks land at TICK_PHASE + 3k seconds
 SONG_S, ETHOS_S, MUSE_S, BUFF_S, BARRAGE_S, BLAST_S = 45, 30, 10, 20, 10, 10
 SV_PER = 5
@@ -64,7 +67,7 @@ MINUET = 1 + 0.02 * (CRIT_DMG - 1) / (1 + CRIT_RATE * (CRIT_DMG - 1))
 PAEON = 1 + 0.03 * 0.25 / (1 + DH_RATE * 0.25)
 VOICE = 1 + 0.20 * 0.25 / (1 + DH_RATE * 0.25)
 SONGS = {"The Wanderer's Minuet": "WM", "Mage's Ballad": "MB", "Army's Paeon": "AP"}
-ALIAS = {"the Wanderer's Minuet": "The Wanderer's Minuet"}      # PENDING: the logs' spelling
+ALIAS = {"the Wanderer's Minuet": "The Wanderer's Minuet"}      # the logs spell it with a capital T
 CODA = {"WM": 1, "MB": 2, "AP": 4}
 SWITCH = 15.0                                   # the search may sing over a song with less than this left
 CDS = {"The Wanderer's Minuet": (120, 1), "Mage's Ballad": (120, 1), "Army's Paeon": (120, 1),
@@ -75,7 +78,7 @@ GCDS = ["Burst Shot", "Refulgent Arrow", "Caustic Bite", "Stormbite", "Iron Jaws
         "Shadowbite", "Ladonsbite"]
 OGCD_ORDER = ["Tincture", "The Wanderer's Minuet", "Mage's Ballad", "Army's Paeon", "Raging Strikes", "Battle Voice",
               "Radiant Finale", "Barrage", "Empyreal Arrow", "Sidewinder", "Pitch Perfect", "Bloodletter"]
-SPEED = 0.996                                   # skill speed factor: a 2.49 s GCD (PENDING: our Bards' median)
+SPEED = 0.996                                   # skill speed factor: a 2.49 s GCD (our Bards: 2.45-2.50)
 HASTE_STATUSES = ("Army's Paeon", "Army's Muse")    # calibrate.gcd_of leaves GCDs under these out
 LOG = False                                     # a replay of a log: Refulgent Arrow whenever the log fires it
 
@@ -418,6 +421,7 @@ RATE = 200                                            # potency per second, to c
 # at width 3,000 the settings spread 0.5% over the phase (0.7% at 1,000), and the best is 0.3% higher
 HEURISTICS = [(r, 1.0, 0.0) for r in (180, 200, 220, 240)]
 WIDTH = 3000
+SWEEP_WIDTH = 6000                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: +0.42%
 MOVE_WEIGHT = 0.0
 
 
@@ -480,7 +484,9 @@ def force_ogcd(s, fight, name, t):
     name = ALIAS.get(name, name)
     if name == "Pitch Perfect" and singing(s, t, "WM"): s.rep = max(s.rep, 1)
     if name == "Radiant Finale": s.coda = s.coda or 1
-    if cd_name(name) in CDS: s.cds[cd_name(name)] = (1, None)
+    if cd_name(name) in CDS:                        # one charge, the recharge still running (Bloodletter has three)
+        rec, mx = CDS[cd_name(name)]
+        s.cds[cd_name(name)] = (1, charges(s, cd_name(name), t)[1] or (None if mx == 1 else t + rec))
     return do_ogcd(s, fight, name, policy=False) or s
 
 
@@ -501,14 +507,14 @@ def cast_label(s, name, t):
 
 def own_factor(p, h):
     """The part of a logged hit's FFLogs multiplier that is the player's own (Raging Strikes, their Radiant Finale and
-    Mage's Ballad): FFLogs counts every damage-up on the hit, so dividing it out takes these away too. PENDING: check
-    the status ids (Raging Strikes 125, Mage's Ballad 2217, Radiant Finale 2722) in the logs."""
+    Mage's Ballad): FFLogs counts every damage-up on the hit, so dividing it out takes these away too. Status ids from
+    the logs: Raging Strikes 125, Mage's Ballad 2217, Radiant Finale 2964 (its other status, 2722, is never on a hit)."""
     b = h.get("buffs") or ""
     m = RAGING if "1000125." in b else 1.0
     n = p["names"]
     own = [(x["t"], ALIAS.get(n[str(x["abilityGameID"])], n[str(x["abilityGameID"])])) for x in p["casts"] if x["type"] == "cast"]
     if "1002217." in b and any(a == "Mage's Ballad" and 0 <= h["t"] - t < SONG_S + 1 for t, a in own): m *= BALLAD
-    if "1002722." in b:
+    if "1002964." in b:
         rf = [t for t, a in own if a == "Radiant Finale" and 0 <= h["t"] - t < BUFF_S + 1]
         if rf:                                      # the Coda: distinct songs sung since the Radiant Finale before
             before = max((t for t, a in own if a == "Radiant Finale" and t < rf[-1]), default=-math.inf)

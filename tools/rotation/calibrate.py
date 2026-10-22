@@ -175,7 +175,8 @@ def model_hits(p, until, keep, hit=False):
         name = n[str(x["abilityGameID"])]
         if name in J.GCDS or name in J.OGCDS:
             lab = J.label(J.at(s, fight, x["t"]), fight, name, x["t"])
-            h = [(v, y) for ht, v, y in plain.get(name, []) if 0 <= ht - x["t"] < 1.5]
+            late = max(1.5, getattr(J, "DELAY", {}).get(name, 0) + 0.5)     # Monk's Demolish lands 1.6 s after
+            h = [(v, y) for ht, v, y in plain.get(name, []) if 0 <= ht - x["t"] < late]
             if h and lab: out.append((name, lab[0], h[0][0], lab[1]) + ((h[0][1],) if hit else ()))
         if name in J.GCDS:
             s.t = s.gcd = x["t"]

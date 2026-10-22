@@ -484,6 +484,7 @@ VALUE = dict(mana=7, imbalance=3, chain_r=310, chain_z=490, chain_3=660, chain_f
 RATE = 220                                            # potency per second, to compare states at slightly different times
 HEURISTICS = [(r, v, 0.0) for r, v in [(200, 1.0), (220, 1.0), (245, 1.0), (220, 0.5), (220, 1.5)]]
 WIDTH = 1000
+SWEEP_WIDTH = 1000                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: +0.08% (in half the time)
 MOVE_WEIGHT = 0.0
 FAR = True                                            # p12s.fight: out of reach at the plan's far spots
 CHAIN = {"r": "chain_r", "z": "chain_z", "f": "chain_f", "s": "chain_s"}
@@ -541,7 +542,9 @@ def force(s, fight, name, start):
 
 def force_ogcd(s, fight, name, t):
     s = s.copy()
-    if cd_name(name) in CDS: s.cds[cd_name(name)] = (1, None)
+    if cd_name(name) in CDS:                        # one charge, the recharge still running (Acceleration has two)
+        rec, mx = CDS[cd_name(name)]
+        s.cds[cd_name(name)] = (1, charges(s, cd_name(name), t)[1] or (None if mx == 1 else t + rec))
     return do_ogcd(s, fight, name, policy=False) or s
 
 

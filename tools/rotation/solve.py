@@ -2,11 +2,12 @@
 
     python tools/rotation/solve.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam] [--gcd 2.32] [--until 449] [--slot R1] [--var para2=debuff]
                                    [--party AST,SCH,DRG,DNC] [--still] [--move 30-36] [--pot] [--carry] [--width 1000]
-                                   [--compare]
+                                   [--layers time|gcd] [--no-polish] [--compare]
 
 Damage is in potency (Xenoglossy 890, Communio 1,100), multiplied by the raid buffs active when each hit lands. By default there are none:
 it is the job's own potency, whatever party it plays in. The fight is P12S P1's fixed timeline (p12s.py): Athena can't
-be hit during Palladion, and the player has to run for each mechanic as our strategy places them. --compare replays every
+be hit during Palladion, and the player has to run for each mechanic as our strategy places them. The search's best
+rotation is then polished by local search (polish.py; --no-polish skips it). --compare replays every
 clear's logged rotation under the same buffs and downtime (their own movement, not ours).
 """
 import argparse, collections, dataclasses, json, statistics as st, sys, time
@@ -14,7 +15,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
-import engine, p12s                              # noqa: E402
+import engine, p12s, polish                      # noqa: E402
 from engine import Move                          # noqa: E402
 from jobs import blm, brd, drg, mnk, rdm, rpr, sam, vpr    # noqa: E402
 
@@ -96,8 +97,11 @@ def main():
     ap.add_argument("--move", default="", help="extra windows (s) in which nothing may be hard-cast, e.g. 30-36,42-44")
     ap.add_argument("--pot", action="store_true", help="allow one tincture")
     ap.add_argument("--carry", action="store_true", help="also value resources still held at the end")
-    ap.add_argument("--width", type=int, default=None, help="beam width: states kept per step, per heuristic setting "
-                    "(default: the job's, 1,000 for BLM and RDM, 3,000 for RPR, MNK, BRD, DRG, VPR and SAM)")
+    ap.add_argument("--width", type=int, default=None, help="search width per heuristic setting: states kept per GCD's "
+                    "worth of time (default: the job's SWEEP_WIDTH, or WIDTH with --layers gcd)")
+    ap.add_argument("--layers", default="time", choices=["time", "gcd"], help="compare states at the same time (engine.sweep, "
+                    "default) or after the same number of GCDs (engine.beam, the search before 2026-10-22)")
+    ap.add_argument("--no-polish", action="store_true", help="skip the local search on the search's best rotation (polish.py)")
     ap.add_argument("--compare", action="store_true", help="replay the clears' logged rotations under the same buffs")
     a = ap.parse_args()
     job, jobname = JOBS[a.job]
@@ -114,9 +118,14 @@ def main():
                           else " (the plan's far spots: no melee action without Manafication)"))
     t0 = time.time()
     params = {"CRIT": a.crit} if a.crit is not None and hasattr(job, "CRIT") else None
-    best, setting, scores = engine.search(a.job, fight, width=a.width, speed=job.SPEED, params=params)
+    best, setting, scores = engine.search(a.job, fight, width=a.width, speed=job.SPEED, params=params, layers=a.layers)
     print(f"searched in {time.time() - t0:.0f} s under {len(scores)} heuristic settings; best {setting[0]}/s, values x{setting[1]}, running x{setting[2]} "
           f"(spread {min(v for _, v in scores):,.0f}-{max(v for _, v in scores):,.0f})")
+    if not a.no_polish:
+        t0, before = time.time(), job.final(best, fight)
+        best, passes = polish.polish(a.job, fight, best, setting, job.SPEED, params=params)
+        print(f"polished in {time.time() - t0:.0f} s over {passes} passes: {before:,.0f} -> {job.final(best, fight):,.0f} "
+              f"({job.final(best, fight) / before - 1:+.2%})")
     show(best, job, fight)
     if a.compare:
         import calibrate, logs

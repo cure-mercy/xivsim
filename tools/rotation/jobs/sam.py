@@ -540,6 +540,7 @@ RATE = 250                                            # potency per second, to c
 # and the DoT's timing before Palladion), at 1.2-1.5 1-3% (the beam holds Sen and Kenki)
 HEURISTICS = [(r, v, 0.0) for r in (210, 230, 250) for v in (0.8, 1.0)]
 WIDTH = 3000
+SWEEP_WIDTH = 7500                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: +0.30%
 MOVE_WEIGHT = 0.0
 END_TAPER = 15.0                                      # held resources fade over the window's last seconds
 

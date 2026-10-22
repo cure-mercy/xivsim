@@ -336,6 +336,8 @@ def expand(s, fight):
 
 VALUE = dict(mp=0.06, poly=600, paradox=250, fs=200, th=150, triple=150, hearts=60)
 RATE = 220                                            # potency per second, to compare states at slightly different times
+SWEEP_WIDTH = 1000                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: -0.13% (0.25 s layers: -0.02%)
+SWEEP_STEP = 0.25                                     # its layers' length, s: at 0.5 s the beam's run time finds 0.11% less
 
 
 def held(s):
