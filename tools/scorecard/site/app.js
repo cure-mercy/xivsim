@@ -1242,6 +1242,22 @@ const ROT_CHALLENGES = {
     ["Out of reach", "The red bands: 2.5 s on end somewhere in the band from 2:53 to Paradeigma III's tethers, and 1.2 s before Palladion. Fill them with Harpe, Harvest Moon or Communio, which reach from anywhere.", ["away"]],
     ["Hard casts", "Communio, Harpe and Soulsow can't go during a Movement band's run."],
     ["Cost", "About 1.3% against standing still, mostly the order the rotation has to bend into around the fixed spots."]]],
+  Monk: ["Nothing a Monk deals damage with reaches past the melee, so the fight's fixed spots and stretches out of reach are what it pays for.", [
+    ["Spot fixed", "Paradeigma I–III and Superchain I pin you to a spot, the four orange bands (77 s in all); six True Norths keep Snap Punch's flank and Demolish's rear there.", ["pinned"]],
+    ["Out of reach", "The red bands: 2.5 s on end somewhere in the band from 2:53 to Paradeigma III's tethers, 1.2 s before Palladion. Only the meditations (1 s recast), Form Shift and Enlightenment work from there: step out right after Phantom Rush and meditate twice.", ["away"]],
+    ["Burst", "Brotherhood at 0:01, 2:02 and 4:03 with Riddle of Fire, which comes back every minute; eight Perfect Balances by Palladion turn into Elixir Field, Rising Phoenix and Phantom Rush."],
+    ["Crit rate", "Chakra comes from critical hits, so each GCD is searched at our players' crit rates: five points more crit gives The Forbidden Chakra more often, about 0.5–0.8% more potency."],
+    ["Six-Sided Star", "Only at the timeline's right edge, as Athena leaves (4:40): anywhere else it about ties the rotation.", [[278.4, 281.6]]],
+    ["GCD", "Skill Speed buys less than it costs: expected DPS at 2.45 s comes out about 0.7% above 2.40 s at a like crit rate."],
+    ["Cost", "About 1.3% against standing still in M1 and 1.8% in M2 (the two within the optimizer's noise): the fixed spots' True Norths and the stretches out of reach."]]],
+  Bard: ["Every action is instant and reaches 25 y, so our runs cost a Bard nothing; what P1 asks is to keep the songs turning and the burst on the Minuet.", [
+    ["Movement", "R1, R2 and standing still play the same rotation: no Movement band needs anything from it."],
+    ["Songs", "The Wanderer's Minuet every two minutes (0:01, 2:01–2:05 and 4:03–4:06), with Raging Strikes, Battle Voice and Barrage (into Refulgent Arrow) on each. Mage's Ballad and Army's Paeon fill the minute between in either order: the searches at different GCDs pick each, within the optimizer's noise.", [[0, 18.0], [121.7, 139.7], [243.5, 261.5]]],
+    ["Radiant Finale", "Where it goes barely changes your own damage, so the searches put it anywhere: with the Minuet at 2.45 s, in the Ballad or the Paeon at 2.49 and 2.50 s. The optimizer counts your own damage only, and what Radiant Finale gives the rest of the party isn't in it: in a party, put it with Battle Voice, as at 2.45 s."],
+    ["Apex Arrow", "At 80 Soul Voice or more, then Blast Arrow right after: five of each by Palladion. Stormbite and Caustic Bite go out once in the opener; Iron Jaws keeps them up from then on."],
+    ["Palladion", "The third Minuet burst (from 4:03–4:06) ends before Athena leaves at the timeline's right edge (4:41).", [[243.5, 281.6]]],
+    ["GCD", "Skill Speed buys about what it costs: expected DPS at 2.45, 2.49 and 2.50 s comes out within 0.4%, the optimizer's noise."],
+    ["Cost", "Nothing against standing still."]]],
   Dragoon: ["Positionals and its DoT are what the mechanics squeeze.", [
     ["Spot fixed", "Paradeigma I–III and Superchain I pin you to a spot, the four orange bands (77 s in all); the optimizer spends five or six True Norths there to keep the combo's positionals.", ["pinned"]],
     ["Chaotic Spring and Power Surge", "Both have to be kept up through those bands; the rotation alternates the two combos to do it."],
@@ -1278,6 +1294,15 @@ const ROT_CHALLENGES = {
     ["Palladion", "Put the last Reassemble on a tool just before Athena leaves at the timeline's right edge (4:41); heat and battery keep through the downtime.", [[261.4, 281.6]]],
     ["GCD", "Skill Speed buys about what it costs: expected DPS at 2.41, 2.45 and 2.49 s comes out within 0.2%."],
     ["Cost", "Nothing against standing still."]]],
+  Ninja: ["Ninjutsu and Phantom Kamaitachi reach 20 y and nothing is a hard cast, so our runs cost a Ninja almost nothing; what P1 asks is to keep the mudra charges turning and the burst inside Trick Attack.", [
+    ["Opener", "Make Ten, Chi and Jin before the pull and open on Suiton: its Shadow Walker goes straight into Trick Attack, then Dokumori, Ten Chi Jin (Fuma Shuriken, Raiton, Suiton, then Meisui into Bhavacakra), Raiton, Bunshin and Kassatsu into Hyosho Ranryu, all inside Trick Attack's 15 s.", [[0, 16.5]]],
+    ["Mudras", "Two charges, one back every 20 s: never let both sit full. Each Raiton gives a Raiju Ready; spend it on Fleeting Raiju before the next combo weaponskill, which ends it. Suiton goes in the 20 s before each Trick Attack, for its Shadow Walker."],
+    ["Spot fixed", "Paradeigma I–III and Superchain I pin you to a spot, the four orange bands (77 s in all); six True Norths cover Aeolian Edge, Armor Crush and Trick Attack's rear there.", ["pinned"]],
+    ["Out of reach", "The red bands: 2.5 s on end somewhere in the band from 2:53 to Paradeigma III's tethers, 1.2 s before Palladion. Mudras and their ninjutsu (2.5–3 s without a melee action) or Phantom Kamaitachi fill them.", ["away"]],
+    ["Palladion", "The two-minute burst at 4:06–4:20 (Dokumori, Trick Attack, Kassatsu, Ten Chi Jin) lands just before Athena leaves at the timeline's right edge (4:41); end on a Raiton and its Raiju.", [[246.0, 281.6]]],
+    ["GCD", "Skill Speed buys less than it costs: expected DPS at 2.50 s comes out about 2% above 2.41 s."],
+    ["Expected DPS", "None of our players plays Ninja, so it converts at the four Ninjas of the benchmark clears since patch 7.3, whose damage per potency differs by up to 40% between them: read it as a rough figure. No player page links here yet."],
+    ["Cost", "About 0.1% against standing still, within the optimizer's noise."]]],
 };
 // the job's points against its fight: [[key, from, to]] for the timeline to draw hidden, one key per point
 function challengeFocus(job, f) {
@@ -1305,6 +1330,9 @@ function rotChallenges(job, f) {
 }
 
 // a job whose conversion came from the scorecard's cached logs while FFLogs was down (dps.py --offline)
+// whose conversion a job's expected DPS is: our players', or the benchmark clears' for a job none of ours plays (dps.py)
+const convWho = (job, n, code) => { const r = (DATA.rotations || {})[job] || {}, s = n > 1 ? "s" : "";
+  return r.converted_from === "clears" ? `the ${n} ${code} player${s} of the benchmark clears since ${r.converted_since} (none of our players plays ${jobName(job)}: their gear may convert differently)` : `our ${n} ${code} player${s}`; };
 const offlineNote = job => ((DATA.rotations || {})[job] || {}).offline ? " Converted from the scorecard's cached logs while FFLogs was down: they have no crit or direct-hit flags and no record of others' buffs on a hit, so hits under raid buffs are left out and crits are read from each player's damage. On Black Mage, where both are available, this reads 0–3% higher than the full logs." : "";
 const ROT_ABOUT = "The highest-damage rotation the optimizer (tools/rotation) finds for P12S P1 from the pull until Palladion takes Athena away (4:41), without anyone's raid buffs, with the runs our strategy needs at their worst for the role: the Paradeigma I slot with the most running (R1 or R2 for ranged, M1 or M2 for melee) and each mechanic's variant with the most, so it holds whichever the player is given. Expected DPS converts its potency at our players' damage per potency and crit / direct-hit gain on the job (the median), each player moved to the rotation's GCD first: the Spell or Skill Speed for a faster GCD comes out of the same gear budget as critical hit, direct hit and determination, so a faster GCD converts lower; a player's own ceiling, the best over 0:00–2:00 (the scorecard's window, a search of its own) at their own conversion, is on their page. It is the best for the player's own damage; a party's buff windows may favour holding a resource a little longer.";
 
@@ -1424,7 +1452,7 @@ function rotationsPage() {
     el("thead", {}, el("tr", {}, ["Job", "GCDs", "Fastest", "Slowest", "Best expected DPS", "Our players"].map((h, i) => el("th", { class: i ? "num" : null }, h)))),
     el("tbody", {}, jobs.map(j => { const xs = Object.values(rotsOf(j)), g = xs.map(x => x.gcd);
       return linkRow([jobName(j), String(xs.length), `${Math.min(...g).toFixed(2)} s`, `${Math.max(...g).toFixed(2)} s`,
-        num(Math.max(...xs.map(x => x.dps))), String(xs[0].conv_players)], rotHref(j)); })))));
+        num(Math.max(...xs.map(x => x.dps))), all[j].converted_from === "clears" ? "none" : String(xs[0].conv_players)], rotHref(j)); })))));
 }
 
 function rotationJobPage(code) {
@@ -1433,7 +1461,7 @@ function rotationJobPage(code) {
   crumbs([["Raid days", "#/"], ["Rotations", "#/rotations"], [code, null]]);
   const app = document.getElementById("app"), keys = Object.keys(rs).sort((a, c) => rs[a].gcd - rs[c].gcd || (rs[a].crit || 0) - (rs[c].crit || 0));
   const best = Math.max(...keys.map(k => rs[k].dps)), crit = keys.some(k => rs[k].crit != null), n = rs[keys[0]].conv_players;
-  app.append(heading("h1", `${jobName(job)} rotations`, `${ROT_ABOUT} Here: ${keys.length} GCD${keys.length > 1 ? "s" : ""}${crit ? " and crit rates (the job's resources come from crits)" : ""}, 0:00–${mmss(rs[keys[0]].window)}, Paradeigma I slot ${(fightOf(job) || {}).slot || "–"}; expected DPS is the median of our ${n} ${code} player${n > 1 ? "s" : ""}, each moved to the GCD (a faster GCD costs ${speedStat(job)} out of their other substats, about ${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per 0.01 s).${offlineNote(job)}`),
+  app.append(heading("h1", `${jobName(job)} rotations`, `${ROT_ABOUT} Here: ${keys.length} GCD${keys.length > 1 ? "s" : ""}${crit ? " and crit rates (the job's resources come from crits)" : ""}, 0:00–${mmss(rs[keys[0]].window)}, Paradeigma I slot ${(fightOf(job) || {}).slot || "–"}; expected DPS is the median of ${convWho(job, n, code)}, each moved to the GCD (a faster GCD costs ${speedStat(job)} out of their other substats, about ${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per 0.01 s).${offlineNote(job)}`),
     rotChallenges(job, fightOf(job)));
   if (fightOf(job)) app.append(fightCard(fightOf(job), null, challengeFocus(job, fightOf(job))));
   app.append(el("div", { class: "table-wrap" }, el("table", {},
@@ -1459,10 +1487,10 @@ function rotationPage(code, key) {
   const waste = Object.entries(x.waste || {}), f = fightOf(job), icons = ((DATA.rotations || {})[job] || {}).icons || {};
   const plan = f ? [...new Map(f.runs.filter(w => w[6].startsWith("plan")).map(w => [w[4], w[6].replace("plan, ", "")])).entries()] : [];
   app.append(heading("h1", `${jobName(job)} at ${rotLabel(x)}`, ROT_ABOUT),
-    el("p", { class: "lede" }, `0:00–${mmss(x.window)}, no raid buffs${x.crit != null ? `, ${pct(x.crit)} critical-hit rate (the chakra it opens)` : ""}, with our strategy's runs${plan.length ? ` (${plan.map(([m, v]) => `${shortMech(m)} ${v}`).join(", ")})` : ""}. ${x.players ? `${x.players} of our players ${x.players > 1 ? "play" : "plays"} at this GCD; their pages link here.` : "Searched as an extra GCD: none of our players is at it."}`));
+    el("p", { class: "lede" }, `0:00–${mmss(x.window)}, no raid buffs${x.crit != null ? `, ${pct(x.crit)} critical-hit rate (the chakra it opens)` : ""}, with our strategy's runs${plan.length ? ` (${plan.map(([m, v]) => `${shortMech(m)} ${v}`).join(", ")})` : ""}. ${x.players ? `${x.players} of our players ${x.players > 1 ? "play" : "plays"} at this GCD; their pages link here.` : (DATA.rotations[job] || {}).converted_from === "clears" ? `None of our players plays ${jobName(job)}: searched at the GCDs of the benchmark clears' ${code}s and extra ones.` : "Searched as an extra GCD: none of our players is at it."}`));
   if (f) app.append(fightCard(f, rot));
   app.append(tiles([
-    [el("span", {}, "Expected DPS", help(`The median of our ${x.conv_players} ${code} player${x.conv_players > 1 ? "s" : ""} (their damage per potency and crit / direct-hit gain), each moved to this ${x.gcd.toFixed(2)} s GCD: the ${speedStat(job)} that takes comes out of their critical hit, direct hit or determination, or goes back into them, about ${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per potency per 0.01 s (level-90 formulas; our Black Mages' gear shows the same). ${num(x.dps_lo)}–${num(x.dps_hi)} across them.${offlineNote(job)}`)), num(x.dps)],
+    [el("span", {}, "Expected DPS", help(`The median of ${convWho(job, x.conv_players, code)} (their damage per potency and crit / direct-hit gain), each moved to this ${x.gcd.toFixed(2)} s GCD: the ${speedStat(job)} that takes comes out of their critical hit, direct hit or determination, or goes back into them, about ${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per potency per 0.01 s (level-90 formulas; our Black Mages' gear shows the same). ${num(x.dps_lo)}–${num(x.dps_hi)} across them.${offlineNote(job)}`)), num(x.dps)],
     ["Potency", num(x.potency), `${num(x.potency / x.window, 1)} per second`],
     [el("span", {}, "Ceiling 0:00–2:00", help("DPS of the best rotation over 0:00–2:00 alone (the scorecard's window, behind players' ceilings), converted the same way.")), num(x.ceiling_2min)],
     ["GCDs", String(nG), `with ${rot.length - nG} oGCDs · ${nRun} while running`],

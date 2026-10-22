@@ -20,6 +20,8 @@
 7. Machinist: heat and Hypercharge, Barrel Stabilizer, Blazing Shot's recast and cuts, Wildfire's count, the queen's
    battery, downtime and redeploy, the pre-pull Reassemble and Drill's skill-speed recast on hand-made states; then
    quick searches for R1 and R2 replayed as for the Bard.
+8. Ninja: mudra charges, Kassatsu, Ten Chi Jin, Raiju Ready, Bunshin, Meisui, Trick Attack's window, Kazematoi and
+   mudras while Athena is away on hand-made states; then the melee searches of 3.
 Exits non-zero on any failure.
 """
 import dataclasses, itertools, re, sys
@@ -29,7 +31,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import engine, p12s                              # noqa: E402
 from engine import Fight, Move, SLIDE            # noqa: E402
-from jobs import blm, brd, drg, mch, mnk, pct, rdm, rpr, sam, vpr    # noqa: E402
+from jobs import blm, brd, drg, mch, mnk, nin, pct, rdm, rpr, sam, vpr    # noqa: E402
 
 HARM = {"Fire III", "Fire IV", "Despair", "Paradox", "Blizzard III", "Blizzard IV", "Thunder III", "Xenoglossy"}
 HARM |= (set(rpr.GCDS) - {"Soulsow"}) | rpr.AVATAR | {"Gluttony", "Lemure's Slice"}
@@ -41,6 +43,7 @@ HARM |= set(vpr.POTENCY)
 HARM |= set(sam.POTENCY)
 HARM |= set(pct.POTENCY)
 HARM |= set(mch.POTENCY) | {"Wildfire"}
+HARM |= set(nin.POTENCY)
 fails = []
 
 
@@ -122,7 +125,7 @@ def gaps(state, fight, job=rpr):
     return bad
 
 
-def melee_searches(job=rpr, gcd=2.49, width=200):
+def melee_searches(job=rpr, gcd=2.49, width=200, control=True):
     print(f"\n{job.LOG_NAME} searches (width {width}) replayed")
     job.SPEED = gcd / engine.BASE_GCD
     alt = {m: [v for v in vs if v != p12s.DEFAULT_VAR[m]] for m, vs in p12s.PLAN.items() if m in p12s.DEFAULT_VAR}
@@ -134,6 +137,7 @@ def melee_searches(job=rpr, gcd=2.49, width=200):
         label = f"{slot}" + "".join(f", {v}" for v in var.values())
         expect(not short and not away and not bad, f"{label}: {len(f.away)} away windows, {hard} hard casts, "
                                                    f"{s.dmg:,.0f} potency" + "".join(f"\n          {x}" for x in short + away + bad))
+    if not control: return                      # (the Ninja's is nin_control)
     still = engine.beam(job, p12s.fight("M1", still=True), width=width)
     bad = gaps(still, p12s.fight("M1"), job)
     expect(bool(bad), f"control: the standing-still rotation breaks {len(bad)} of the M1 away windows")
@@ -411,6 +415,66 @@ def mch_searches(width=200):
                                                            + "".join(f"\n          {x}" for x in away))
 
 
+def nin_cases():
+    print("\nNinja: mudras, Ten Chi Jin, Raiju, Bunshin, Shadow Walker, debuffs")
+    f = Fight(until=200)
+    s = nin.State.initial(f)
+    expect(nin.charges(s, "Mudra", 0.0) == (1, nin.PREPULL + 20), "the pull opens with one mudra charge used before it")
+    s = nin.expand(s, f)[0]; s.auto_next = 1e9         # no auto-attacks in the damage differences below
+    expect(s.history()[-1][1] == "Suiton" and s.sw_until > 0, "the search opens on the pre-pull Suiton: Shadow Walker")
+    r = nin.chain(s, f, ("Ten", "Chi", "Raiton"))
+    expect(nin.charges(r, "Mudra", r.t)[0] == 0 and abs(r.gcd - s.gcd - 2.5) < 1e-9 and r.raiju == 1,
+           "Raiton: a charge, two 0.5 s mudras and a 1.5 s ninjutsu, a Raiju Ready")
+    expect(nin.do_gcd(r, f, "Ten") is None, "no mudra without a charge")
+    k = nin.do_ogcd(r, f, "Kassatsu")
+    h = nin.chain(k, f, ("Ten", "Jin", "Hyosho Ranryu"))
+    expect(h is not None and nin.charges(h, "Mudra", h.t)[0] == 0 and abs(h.dmg - r.dmg - 1300 * 1.3) < 1e-6,
+           "Kassatsu: mudras without a charge, Hyosho Ranryu x1.3")
+    w = nin.do_gcd(h, f, "Spinning Edge")
+    expect(w.raiju == 0 and w.waste[2] == 1, "a melee weaponskill ends Raiju Ready")
+    t = nin.do_ogcd(nin.do_gcd(h, f, "Spinning Edge"), f, "Ten Chi Jin")
+    expect(nin.do_gcd(t, f, "Gust Slash") is None, "only ninjutsu under Ten Chi Jin")
+    t3 = nin.chain(t, f, nin.TCJ_ORDER)
+    gaps = [b[0] - a[0] for a, b in zip(t3.history()[-3:], t3.history()[-2:])]
+    expect(all(abs(x - 1.0) < 0.011 for x in gaps) and abs(t3.gcd - t3.history()[-1][0] - 1.5) < 0.011 and t3.sw_until > t3.t and t3.raiju == 1,
+           "Ten Chi Jin: Fuma, Raiton, Suiton 1.0 s apart, 1.5 s after the last")
+    m = nin.do_ogcd(t3, f, "Meisui", policy=False)
+    expect(m.ninki == t3.ninki + 50 and m.sw_until < 0 and nin.do_ogcd(m, f, "Trick Attack") is None,
+           "Meisui spends Shadow Walker for 50 Ninki: no Trick Attack after it")
+    b = nin.do_ogcd(m, f, "Bunshin")
+    d0 = b.dmg; g = nin.do_gcd(b, f, "Fleeting Raiju")
+    expect(g.bun == 4 and abs(g.dmg - d0 - 560 - nin.SHADOW) < 1e-6 and g.ninki == b.ninki + 10,
+           "Bunshin: Fleeting Raiju's shadow copies it (148) for 5 more Ninki")
+    p = nin.do_gcd(g, f, "Phantom Kamaitachi")
+    expect(p.bun == 4 and p.pk_until < 0, "Phantom Kamaitachi takes no Bunshin stack")
+    q = nin.State.initial(f); q.first = False; q.t = q.gcd = 10.0; q.sw_until = 20.0; q.auto_next = 1e9
+    a = nin.do_ogcd(q, f, "Trick Attack")
+    expect(abs(nin.mult(a, f, 10.8) - 1.10) < 1e-9 and nin.mult(a, f, 10.7) == 1.0 and nin.mult(a, f, 25.9) == 1.0,
+           "Trick Attack: +10% on hits executed from its own landing (10.8 s) for 15 s")
+    c = nin.State.initial(f); c.first = False; c.t = c.gcd = 10.0; c.auto_next = 1e9
+    c = nin.chain(c, f, ("Spinning Edge", "Gust Slash", "Armor Crush", "Spinning Edge", "Gust Slash"))
+    d0 = c.dmg; c = nin.do_gcd(c, f, "Aeolian Edge")
+    expect(c.kaz == 1 and abs(c.dmg - d0 - 480) < 1e-6, "Armor Crush gives two Kazematoi; Aeolian Edge spends one for +100")
+    dn = Fight(until=60, untargetable=[(20, 30)])
+    z = nin.State.initial(dn); z.first = False; z.t = z.gcd = 21.0; z.seq = (); z.cds["Mudra"] = (2, None)
+    out = [nin.chain(w, dn, ("Ten", "Chi", "Jin", "Suiton")) for w in nin.expand(z, dn)]
+    expect(any(o is not None and o.history()[-1][0] == 30.0 for o in out), "mudras while Athena is away: Suiton as she returns")
+
+
+def nin_control(width=200):
+    """A Ninja's mudras and ninjutsu leave 2.5-4 s without a melee action, so a standing-still rotation can fit the
+    away windows by chance (the melee control above finds it breaks none); against the same windows twice as long, it
+    has to break some, and the M1 search must not."""
+    nin.SPEED = 0.984
+    f = p12s.fight("M1")
+    f2 = dataclasses.replace(f, away=[dataclasses.replace(w, need=2 * w.need) for w in f.away])
+    still = engine.beam(nin, p12s.fight("M1", still=True), width=width)
+    s2 = engine.beam(nin, f2, width=width)
+    bad, bad2 = gaps(still, f2, nin), gaps(s2, f2, nin)
+    expect(bool(bad) and not bad2, f"control: against M1's away windows at twice their length the standing-still rotation"
+                                   f" breaks {len(bad)}, the search for them {len(bad2)} ({s2.dmg:,.0f} potency)")
+
+
 if __name__ == "__main__":
     stand_cases()
     searches()
@@ -428,5 +492,8 @@ if __name__ == "__main__":
     pct_searches()
     mch_cases()
     mch_searches()
+    nin_cases()
+    melee_searches(nin, 2.46, control=False)
+    nin_control()
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED"))
     sys.exit(1 if fails else 0)

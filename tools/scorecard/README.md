@@ -170,8 +170,8 @@ at the group's average player DPS (party DPS / 8). The scorecard also splits eac
 
 ### Rotation ceiling
 
-For jobs the rotation optimizer covers on the site (`tools/rotation`: Black Mage, Reaper, Dragoon, Red Mage, Viper,
-Samurai, Pictomancer and Machinist so far; Monk and Bard have models not yet checked against logs), the rDPS on clean pulls chart
+For jobs the rotation optimizer covers on the site (`tools/rotation`: Black Mage, Reaper, Monk, Bard, Dragoon, Red Mage,
+Viper, Samurai, Pictomancer and Machinist so far), the rDPS on clean pulls chart
 marks each pull with a ceiling: the best rotation without raid buffs at the player's GCD over 0:00-2:00, with the runs
 our strategy needs at their worst for the role (the Paradeigma I slot with the most running, R1 or M2, and each mechanic's
 variant with the most), converted to
@@ -201,7 +201,9 @@ converts the potency at our players' damage per potency and crit / direct-hit ga
 player moved to the rotation's GCD first: Spell or Skill Speed comes out of the same gear budget as critical hit, direct
 hit and determination, so a faster GCD costs about 0.4% damage per potency per 0.01 s (level-90 formulas; our Black
 Mages' gear falls 0.38% per 0.01 s). The range is the same over those players. Monk's rotations also depend
-on the crit rate (its chakra), so its are per GCD and crit rate. To refresh them, run
+on the crit rate (its chakra), so its are per GCD and crit rate. A job none of our players plays (Ninja) gets its
+rotations too, at the GCDs of the benchmark clears' players on it since the job's `CONVERT_SINCE`, and expected DPS
+converts at theirs; the pages say so, and no player page links there. To refresh them, run
 `python tools/rotation/dps.py --job blm --site` (and `--job rpr`, `--job drg`, ...; `--offline` converts from the acts
 caches when FFLogs is down, and the pages say so; `--gcds 2.30,2.40` adds GCDs none of our players has), then `build_site.py --reanalyse` (the rotations themselves are picked up by any `build_site.py` run).
 
