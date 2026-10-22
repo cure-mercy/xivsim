@@ -418,8 +418,8 @@ def expand(s, fight):
 # Burst Shots; a Coda 2% of 20 s; Barrage two more Refulgent Arrows; Blast Arrow Ready its arrow over a Burst Shot.
 VALUE = dict(wm=120, mb=65, ap=30, sv=6, coda=80, barrage=520, blast=480)
 RATE = 200                                            # potency per second, to compare states at slightly different times
-# at width 3,000 the settings spread 0.5% over the phase (0.7% at 1,000), and the best is 0.3% higher
-HEURISTICS = [(r, 1.0, 0.0) for r in (180, 200, 220, 240)]
+# tune.py (2026-10-22, sweep): (200, 1.0) stays the best over the phase; values at 0.8-0.95 come close
+HEURISTICS = [(200, 1.0, 0.0), (220, 0.9, 0.0), (265, 0.95, 0.0), (225, 0.8, 0.0)]
 WIDTH = 3000
 SWEEP_WIDTH = 6000                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: +0.42%
 MOVE_WEIGHT = 0.0

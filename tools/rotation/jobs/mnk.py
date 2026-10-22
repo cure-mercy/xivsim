@@ -416,7 +416,9 @@ def expand(s, fight):
 # Phantom Rush deals over the Blitz that opens it; a Perfect Balance stack a beast chakra to come.
 VALUE = dict(chakra=70, opo=170, raptor=170, coeurl=130, beast=180, nadi=150, pb=150, formless=60)
 RATE = 220                                            # potency per second, to compare states at slightly different times
-HEURISTICS = [(r, 1.0, 0.0) for r in (200, 220, 240, 270)]   # 180-240 agree within 0.01%; 270-300 0.4% lower
+# tune.py (2026-10-22, sweep): VALUE at 0.25-0.6 times is best in M1 (+0.37%), 1.0 in the 0-281 s window, so both;
+# +0.11% in M2, the site's slot, which it wasn't tuned on
+HEURISTICS = [(165, 0.25, 0.0), (225, 0.6, 0.0), (165, 0.3, 0.0), (200, 1.0, 0.0)]
 WIDTH = 3000
 SWEEP_WIDTH = 7500                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: +0.22%
 MOVE_WEIGHT = 0.0

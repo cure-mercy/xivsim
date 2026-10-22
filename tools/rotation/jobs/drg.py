@@ -423,7 +423,8 @@ def expand(s, fight):
 VALUE = dict(combo_1=140, combo_v=300, combo_d=110, combo_h=160, combo_c=160, combo_f=170, df=150, focus=200, dr=380,
              nr=720, ls=150, ept=150, ps=20, lc=22, lotd=35, bl=12)
 RATE = 220                                            # potency per second, to compare states at slightly different times
-HEURISTICS = [(r, 1.0, 0.0) for r in (200, 220, 245, 270)]
+# tune.py (2026-10-22, sweep): VALUE at 1.7-2.35 times beats 1.0 by 0.58% over the phase; RATE hardly matters
+HEURISTICS = [(195, 1.7, 0.0), (190, 1.7, 0.0), (180, 2.35, 0.0), (185, 1.95, 0.0)]
 WIDTH = 3000
 SWEEP_WIDTH = 15000                                   # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: level (a beam this wide: -0.06%)
 MOVE_WEIGHT = 0.0

@@ -536,9 +536,9 @@ VALUE = dict(kenki=10, sen=290, med=185, tsubame=340, ogi=1530, kn=675, combo_1=
              meikyo=280, fug=35, fuka=30, ee=160, ten=100)
 RATE = 250                                            # potency per second, to compare states at slightly different times:
                                                       # the filler's own (a combo with its Kenki and autos) is ~245
-# the search: at width 3,000 these land within ~0.15% of each other over the phase; values at 0.5 lose 1.5% (a Kaeshi
-# and the DoT's timing before Palladion), at 1.2-1.5 1-3% (the beam holds Sen and Kenki)
-HEURISTICS = [(r, v, 0.0) for r in (210, 230, 250) for v in (0.8, 1.0)]
+# the search: values at 0.5 lose 1.5% (a Kaeshi and the DoT's timing before Palladion), at 1.2-1.5 1-3% (the beam
+# holds Sen and Kenki); tune.py (2026-10-22, sweep): 0.8-0.85 beats 1.0 by up to 1.7%, +0.09% over the old grid
+HEURISTICS = [(185, 0.85, 0.0), (250, 0.8, 0.0), (235, 0.8, 0.0), (230, 0.8, 0.0)]
 WIDTH = 3000
 SWEEP_WIDTH = 7500                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: +0.30%
 MOVE_WEIGHT = 0.0

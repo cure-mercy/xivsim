@@ -482,7 +482,8 @@ def expand(s, fight):
 VALUE = dict(mana=7, imbalance=3, chain_r=310, chain_z=490, chain_3=660, chain_f=500, chain_s=290, ms=230, dc=60,
              acc=50, swift=50, proc=20, emb=15)
 RATE = 220                                            # potency per second, to compare states at slightly different times
-HEURISTICS = [(r, v, 0.0) for r, v in [(200, 1.0), (220, 1.0), (245, 1.0), (220, 0.5), (220, 1.5)]]
+# tune.py (2026-10-22, sweep): VALUE at 1.15-1.5 times, +0.13% over the phase in R1 (level in R2); 0.5 loses 2%
+HEURISTICS = [(185, 1.5, 0.0), (200, 1.15, 0.0), (230, 1.15, 0.0), (185, 1.15, 0.0)]
 WIDTH = 1000
 SWEEP_WIDTH = 1000                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: +0.08% (in half the time)
 MOVE_WEIGHT = 0.0

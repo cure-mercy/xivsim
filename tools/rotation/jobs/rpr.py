@@ -379,8 +379,8 @@ def expand(s, fight):
 # converts into: 50 Shroud an Enshroud (five stacks and the Communio), 50 Soul an avatar attack, a Gibbet and 10 Shroud.
 VALUE = dict(soul=10, shroud=16, reaver=300, lemure=190, void=100, soulsow=250, ideal=800, sacrifice=700, dd=12, enh=60)
 RATE = 220                                            # potency per second, to compare states at slightly different times
-# the search: at width 3,000 every setting lands within 0.02% (at 1,000 they spread 3%), so a few settings are enough
-HEURISTICS = [(r, 1.0, 0.0) for r in (200, 220, 245, 270)]
+# tune.py (2026-10-22, sweep): VALUE at 0.5-0.55 times beats 1.0 by 0.51% over the phase; RATE 225-255 all alike
+HEURISTICS = [(255, 0.5, 0.0), (225, 0.5, 0.0), (230, 0.55, 0.0), (235, 0.55, 0.0)]
 WIDTH = 3000
 SWEEP_WIDTH = 3000                                    # engine.sweep (layers by time), against the beam at WIDTH, taking no longer: -0.04%
 MOVE_WEIGHT = 0.0                                     # melee movement is a different problem (time out of range): not yet
