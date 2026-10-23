@@ -82,11 +82,31 @@ def icons(job, names):
             try: paths[key] = _icon_path(n, abbr)
             except Exception: continue   # XIVAPI down: try again next time
         if not paths[key]: continue
-        f = ICONS / (paths[key].rsplit("/", 1)[-1].replace(".tex", ".png"))
-        if not f.exists():
-            try:
-                with urllib.request.urlopen(urllib.request.Request(ASSET.format(paths[key]), headers=UA), timeout=60) as r: f.write_bytes(r.read())
-            except Exception: continue
-        out[n] = "data:image/png;base64," + base64.b64encode(f.read_bytes()).decode()
+        uri = _asset(paths[key])
+        if uri: out[n] = uri
     pf.write_text(json.dumps(paths, indent=1))
     return out
+
+
+def _asset(path):
+    """A game texture as a PNG data URI, the image cached in .cache/icons/; None if XIVAPI can't be reached."""
+    f = ICONS / (path.rsplit("/", 1)[-1].replace(".tex", ".png"))
+    if not f.exists():
+        try:
+            with urllib.request.urlopen(urllib.request.Request(ASSET.format(path), headers=UA), timeout=60) as r: f.write_bytes(r.read())
+        except Exception: return None
+    return "data:image/png;base64," + base64.b64encode(f.read_bytes()).decode()
+
+
+# the jobs' ClassJob rows; the game's job icon (the role-coloured frame of the party list) is icon 062100 + row
+CLASSJOB = {"PLD": 19, "MNK": 20, "WAR": 21, "DRG": 22, "BRD": 23, "WHM": 24, "BLM": 25, "SMN": 27, "SCH": 28, "NIN": 30,
+            "MCH": 31, "DRK": 32, "AST": 33, "SAM": 34, "RDM": 35, "GNB": 37, "DNC": 38, "RPR": 39, "SGE": 40, "VPR": 41,
+            "PCT": 42}
+
+
+def job_icon(job):
+    """The job's icon as a PNG data URI (job as in the logs, e.g. "BlackMage"); None for an unknown job or no XIVAPI."""
+    row = CLASSJOB.get(ABBR.get(job, job))
+    if not row: return None
+    ICONS.mkdir(parents=True, exist_ok=True)
+    return _asset(f"ui/icon/062000/{62100 + row:06d}_hr1.tex")

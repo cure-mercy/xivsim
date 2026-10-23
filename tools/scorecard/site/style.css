@@ -87,6 +87,19 @@ tr.moving td{ background: var(--series-wash); }
   .rot-seg-label{ flex: none; padding-top: 0; }
   .rot-seg-label span{ display: inline; margin-left: 6px; }
 }
+/* the rotations overview's job chart: our pulls as a box, the ceiling as a tick, the clears' players as dots */
+.chart .box-mid{ fill: var(--series); }
+.chart .box-med{ stroke: var(--surface); stroke-width: 2; }
+.chart .box-whisker{ stroke: var(--series); stroke-width: 1.5; }
+.chart .box-out{ fill: var(--series); stroke: var(--surface); stroke-width: 1.5; }
+.chart .clear-dot{ fill: var(--muted); stroke: var(--surface); stroke-width: 2; }
+.chart .ceil-tick{ stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
+.chart .ceil-band, .ceil-band-key{ fill: var(--ink); background: var(--ink); opacity: 0.09; }
+.chart .hit.link{ cursor: pointer; }
+.chart .hit.link:hover, .chart .hit.link:focus-visible{ fill: var(--surface-2); }
+/* job icons: in the rotations table's Job column, and larger before a job page's title */
+.job-icon{ width: 24px; height: 24px; margin: -4px 8px -4px 0; vertical-align: middle; }   /* inline: the name keeps the row's baseline */
+h1 .job-icon.big{ width: 40px; height: 40px; margin: -4px 10px -2px 0; }
 .theme{ font: inherit; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
 
 .page{ max-width: 1240px; margin: 0 auto; padding: 20px 16px 64px; }
@@ -160,9 +173,20 @@ td.wrap{ white-space: normal; min-width: 260px; }
       border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 6px 24px rgba(0,0,0,0.25); max-width: 340px; }
 .tip .t-title{ color: var(--ink-2); margin-bottom: 4px; }
 .tip .t-row{ display: flex; gap: 8px; align-items: baseline; }
-.tip .t-row b{ font-weight: 650; }
+.tip .t-row b{ font-weight: 650; white-space: nowrap; flex: none; }   /* the number stays whole; the label wraps */
 .tip .t-row span{ color: var(--ink-2); }
-.tip .t-key{ width: 12px; height: 2px; background: var(--series); align-self: center; }
+.tip .t-key{ width: 12px; height: 2px; background: var(--series); align-self: center; flex: none; }
+/* keys drawn like the job chart's marks, in a 14 px slot, level with the row's first line */
+.tip .t-key[class*=" k-"]{ width: 14px; height: 10px; align-self: flex-start; margin-top: 4px; background: none; }
+.tip .t-key.k-box{ background: var(--series); border-radius: 2px; }
+.tip .t-key.k-median{ background: linear-gradient(90deg, var(--series) 6px, var(--surface) 6px 8px, var(--series) 8px); border-radius: 2px; }
+.tip .t-key.k-whisker{ border-left: 1.5px solid var(--series); border-right: 1.5px solid var(--series);
+                       background: linear-gradient(var(--series), var(--series)) center / 100% 1.5px no-repeat; }
+.tip .t-key.k-out{ background: radial-gradient(circle, var(--series) 3.5px, transparent 4px); }
+.tip .t-key.k-ceil{ background: linear-gradient(var(--ink), var(--ink)) center / 2px 100% no-repeat; height: 14px; margin-top: 2px; }
+.tip .t-key.k-band{ background: color-mix(in srgb, var(--ink) 9%, transparent); border-radius: 2px; height: 12px; margin-top: 3px; }
+.tip .t-key.k-clear{ background: radial-gradient(circle, var(--muted) 3.5px, transparent 4px); }
+/* k-none: an empty slot, for a line that breaks down the one above it */
 
 /* passphrase screen */
 .unlock{ display: grid; gap: 8px; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }

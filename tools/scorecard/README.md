@@ -96,7 +96,7 @@ appears (the page only asks when `data.json` is missing and `data.enc.json` is t
 | Raid days | Tiles: pulls, best pull, furthest seen (the longest pull, the mechanic it reached, its day, group and pull), latest day, mistakes per pull; the burndown; trends across days (how far pulls got, pulls clean through each mechanic, mistakes per pull and per minute, damage lost to mistakes, party DPS against the clears) and a table of days |
 | Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group (rows named by mechanic, see below) |
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
-| Rotations | The optimizer's rotations (`#/rotations`, linked in the header): a table of the jobs it covers; a job's GCDs with each rotation's potency, potency per second and expected DPS, under what P1 asks of the job with our strategy (`ROT_CHALLENGES` in `site/app.js`, from the optimizer's findings: update it when a job's rotation or our strategy changes) and the fight timeline without a rotation, on which hovering or tapping a point marks the stretches it is about; a GCD's fight timeline (mechanics and the runs our strategy needs), rotation, casts per skill and resources wasted (see Rotation ceiling) |
+| Rotations | The optimizer's rotations (`#/rotations`, linked in the header): a chart of our players' clean-pull rDPS per job against the ceiling and the clears' players, and a table of the jobs it covers, both grouped by role (melee, physical ranged, magical ranged) with job icons; a job's GCDs with each rotation's potency, potency per second and expected DPS, under what P1 asks of the job with our strategy (`ROT_CHALLENGES` in `site/app.js`, from the optimizer's findings: update it when a job's rotation or our strategy changes) and the fight timeline without a rotation, on which hovering or tapping a point marks the stretches it is about; a GCD's fight timeline (mechanics and the runs our strategy needs), rotation, casts per skill and resources wasted (see Rotation ceiling) |
 | Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull, with the rotation ceiling for jobs the optimizer covers and how far their pulls are from it, linking to its rotation (see below); every mistake with its pull and time; the player across raid days (mistakes per pull and per minute in pulls) |
 
 The player page's "What their mistakes cost" card (boss HP lost to deaths they caused, by cause) is hidden for now: set `SHOW_MISTAKE_COST` in `site/app.js` to `true` to bring it back.
@@ -170,19 +170,43 @@ at the group's average player DPS (party DPS / 8). The scorecard also splits eac
 
 ### Rotation ceiling
 
-For jobs the rotation optimizer covers on the site (`tools/rotation`: Black Mage, Reaper, Monk, Bard, Dragoon, Red Mage,
-Viper, Samurai, Pictomancer and Machinist so far), the rDPS on clean pulls chart
+For jobs the rotation optimizer covers on the site (`tools/rotation`: every DPS job so far), the rDPS on clean pulls chart
 marks each pull with a ceiling: the best rotation without raid buffs at the player's GCD over 0:00-2:00, with the runs
 our strategy needs at their worst for the role (the Paradeigma I slot with the most running, R1 or M2, and each mechanic's
 variant with the most), converted to
 their DPS (their damage per potency and crit / direct-hit gain from their own hits), the same for every pull, plus what
 that pull's raid buffs added to the other players' damage (FFLogs' rDPS given: a Reaper's Arcane Circle), which rDPS
 credits to them. The table view splits the two. The player page's "vs optimized rotation" card, under Damage, gives their
-median clean pull's share of the ceiling (and the gap in DPS), their best pull's and the ceiling itself, and links to the
-rotation at their GCD.
+median clean pull's share of the ceiling (and the gap in DPS), their best pull's and the ceiling itself (in rDPS, the
+median over their pulls, split into its nDPS and the buffs' credit), and links to the rotation at their GCD.
+
+**Which FFLogs metric is which.** FFLogs' fields relate exactly (checked on every player of the cached clears):
+nDPS = raw damage − what others' buffs added to it (`totalRDPSTaken`); rDPS = nDPS + what the player's own buffs and
+debuffs added to others' damage (`totalRDPSGiven`); aDPS = raw − only the single-target buffs received (Dance Partner,
+cards); cDPS = aDPS + the credit given. A player's own buffs on themselves count as their damage in all four. On the site:
+our players' pulls and the clears are rDPS, with tinctures taken out of both (ours: `fetch_pots` / `pot_gain`, the clears'
+way); the optimizer's ceiling and the rotation pages' expected DPS are nDPS (no one's buffs, no credit given), labelled so;
+the ceiling becomes rDPS on player pages by adding each pull's `given`, and the best rotation's expected rDPS (Rotations
+table and chart, below) adds the job's credit up to Palladion. Opener damage and damage by phase are nDPS.
 
 The rotations live on their own pages, `#/rotations` (the Rotations link in the header): the jobs the optimizer covers,
-then a job's GCDs (every GCD it was searched at: our players' and any extra), then one GCD's rotation, with its potency,
+grouped by role and ordered by expected rDPS: each job's best rotation (by expected nDPS) with its expected nDPS to
+Palladion plus what the job's raid buffs give the others over that stretch, which is our players' median 0:00-2:00 credit
+(the clears' `given` for a job none of ours plays) times the job's `given_ratio` in `benchmark.json` (the clears' credit
+rate up to Palladion over their 0:00-2:00 rate: three bursts against one and steady buffs like Dance Partner, from the
+clear players who used their raid buff in each burst as the optimized rotations do; `given_ratio_all` for a job without
+clears). A job's page has the same column for each GCD, the credit being the job's, and says how it was made. The
+table also gives the 0:00-2:00 ceiling in rDPS: the best of the job's rotations' own 0:00-2:00 searches (`ceiling_2min`,
+at the median conversion) plus our players' median 0:00-2:00 credit, no scaling needed.
+Above the table, a chart, all of it over 0:00-2:00: a box over our players' clean rDPS (whiskers to 1.5 times the box's
+width), a tick at that 0:00-2:00 ceiling, a band behind it spanning the same ceiling at the weakest to the strongest
+player's conversion (our players' own ceilings; for a job none of ours plays, the clears' conversions the rotation lists
+as `dps_lo` / `dps_hi`), and a dot per clear player (`rdps_each`, each one's mean over their kills). Not the rotation
+to Palladion: it holds resources for after the downtime, and its stretch has three bursts against 0:00-2:00's one and
+pre-pull preparation, so it sits 7% under (Pictomancer) to 3% over (Dragoon) the 0:00-2:00 ceiling. A ceiling is an
+expected value (average crits, direct hits and procs), so single pulls beat it on luck: our best pulls reach 0.99-1.085 of
+their own ceiling, medians 0.87-0.98. Summoner's top clear sits ~3% over the band, whose top is our stronger Summoner's
+conversion (our two convert 21% apart): better gear than ours. Then a job's GCDs (every GCD it was searched at: our players' and any extra), then one GCD's rotation, with its potency,
 casts per skill and any resources wasted. These rotations run from the pull until Palladion takes Athena away (4:41),
 with expected DPS over that stretch; each also gives the 0:00-2:00 ceiling at the same GCD, a search of its own over the
 scorecard's window, which is what players' ceilings use. The rotation is drawn compactly in the game's action icons, a line for each
@@ -389,7 +413,10 @@ lost to deaths) and the group, day and player pages say so; mistakes, deaths and
 out, tincture damage is removed, and players who died are skipped. Each job's value is the average over
 distinct players, over every clear without The Echo (29 clears; an earlier split into peer
 and fast clears was dropped: without The Echo the faster ones were only 6:54-7:08 and within 1% in party DPS). It covers 0:00–2:00 (rDPS,
-nDPS, uptime) and every phase of the fight (nDPS, uptime; only phases a kill lived through, so Superchain IIB
+nDPS, the rDPS their buffs gave others, uptime, and each player's rDPS), the buffs' credit up to Palladion against
+0:00-2:00 per job (`given_ratio`, over every clear, The Echo included since it changes both alike, and only players who
+used their raid buff in each 2-minute burst: about half the clears' Reapers hold the second Arcane Circle to 2:56-3:12,
+leaving two before Palladion) and every phase of the fight (nDPS, uptime; only phases a kill lived through, so Superchain IIB
 comes from the slower clears alone).
 
 It also holds the boss HP checkpoints. For each mechanic, a line is fitted through every benchmark kill: the

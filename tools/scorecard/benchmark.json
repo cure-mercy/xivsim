@@ -1,5 +1,5 @@
 {
- "built": "2026-10-19",
+ "built": "2026-10-23",
  "pools": {
   "clears": {
    "kills": 29,
@@ -17,144 +17,310 @@
     "Reaper": {
      "rdps": 11904,
      "ndps": 11339,
+     "given": 565,
      "uptime": 98.48,
      "players": 3,
-     "echo_corrected": true
+     "echo_corrected": true,
+     "rdps_each": [
+      11554,
+      11745,
+      12412
+     ],
+     "given_ratio": 1.193,
+     "given_ratio_n": 4
     },
     "Dancer": {
      "rdps": 11840,
      "ndps": 9597,
+     "given": 2242,
      "uptime": 97.5,
      "players": 8,
-     "echo_corrected": false
+     "echo_corrected": false,
+     "rdps_each": [
+      11171,
+      11363,
+      11816,
+      11892,
+      11919,
+      11953,
+      12066,
+      12538
+     ],
+     "given_ratio": 1.124,
+     "given_ratio_n": 33
     },
     "Sage": {
      "rdps": 7360,
      "ndps": 7360,
+     "given": 0,
      "uptime": 97.51,
      "players": 3,
-     "echo_corrected": true
+     "echo_corrected": true,
+     "rdps_each": [
+      7094,
+      7324,
+      7664
+     ]
     },
     "Astrologian": {
      "rdps": 7467,
      "ndps": 5893,
+     "given": 1574,
      "uptime": 97.39,
      "players": 6,
-     "echo_corrected": false
+     "echo_corrected": false,
+     "rdps_each": [
+      6912,
+      7017,
+      7579,
+      7677,
+      7779,
+      7840
+     ],
+     "given_ratio": 1.202,
+     "given_ratio_n": 30
     },
     "Paladin": {
      "rdps": 8395,
      "ndps": 8395,
+     "given": 0,
      "uptime": 98.54,
      "players": 5,
-     "echo_corrected": false
+     "echo_corrected": false,
+     "rdps_each": [
+      7578,
+      8359,
+      8496,
+      8512,
+      9029
+     ]
     },
     "BlackMage": {
      "rdps": 13402,
      "ndps": 13402,
+     "given": 0,
      "uptime": 97.09,
      "players": 5,
-     "echo_corrected": false
+     "echo_corrected": false,
+     "rdps_each": [
+      12827,
+      12857,
+      13222,
+      14009,
+      14094
+     ]
     },
     "Warrior": {
      "rdps": 8438,
      "ndps": 8438,
+     "given": 0,
      "uptime": 97.54,
      "players": 6,
-     "echo_corrected": false
+     "echo_corrected": false,
+     "rdps_each": [
+      7823,
+      8004,
+      8436,
+      8621,
+      8730,
+      9014
+     ]
     },
     "Ninja": {
      "rdps": 12874,
      "ndps": 11932,
+     "given": 942,
      "uptime": 98.11,
      "players": 5,
-     "echo_corrected": false
+     "echo_corrected": false,
+     "rdps_each": [
+      11903,
+      12250,
+      13004,
+      13235,
+      13978
+     ],
+     "given_ratio": 1.194,
+     "given_ratio_n": 8
     },
     "DarkKnight": {
      "rdps": 7695,
      "ndps": 7695,
+     "given": 0,
      "uptime": 98.03,
      "players": 6,
-     "echo_corrected": false
+     "echo_corrected": false,
+     "rdps_each": [
+      7108,
+      7487,
+      7566,
+      7829,
+      7989,
+      8188
+     ]
     },
     "Scholar": {
      "rdps": 7429,
      "ndps": 6307,
+     "given": 1121,
      "uptime": 98.07,
      "players": 7,
-     "echo_corrected": false
+     "echo_corrected": false,
+     "rdps_each": [
+      6375,
+      6942,
+      7412,
+      7472,
+      7484,
+      8045,
+      8270
+     ],
+     "given_ratio": 1.156,
+     "given_ratio_n": 27
     },
     "Samurai": {
      "rdps": 13143,
      "ndps": 13143,
+     "given": 0,
      "uptime": 97.74,
      "players": 3,
-     "echo_corrected": true
+     "echo_corrected": true,
+     "rdps_each": [
+      12931,
+      13126,
+      13371
+     ]
     },
     "Dragoon": {
      "rdps": 13196,
      "ndps": 12199,
+     "given": 998,
      "uptime": 98.16,
      "players": 3,
-     "echo_corrected": true
+     "echo_corrected": true,
+     "rdps_each": [
+      12993,
+      13115,
+      13481
+     ],
+     "given_ratio": 1.216,
+     "given_ratio_n": 11
     },
     "Pictomancer": {
      "rdps": 13009,
      "ndps": 12075,
+     "given": 934,
      "uptime": 97.61,
      "players": 2,
-     "echo_corrected": true
+     "echo_corrected": true,
+     "rdps_each": [
+      12955,
+      13063
+     ],
+     "given_ratio": 1.18,
+     "given_ratio_n": 3
     },
     "WhiteMage": {
      "rdps": 6510,
      "ndps": 6510,
+     "given": 0,
      "uptime": 96.08,
      "players": 3,
-     "echo_corrected": true
+     "echo_corrected": true,
+     "rdps_each": [
+      6253,
+      6451,
+      6827
+     ]
     },
     "Monk": {
      "rdps": 13482,
      "ndps": 12562,
+     "given": 921,
      "uptime": 97.73,
      "players": 5,
-     "echo_corrected": false
+     "echo_corrected": false,
+     "rdps_each": [
+      13000,
+      13488,
+      13497,
+      13608,
+      13819
+     ],
+     "given_ratio": 1.132,
+     "given_ratio_n": 16
     },
     "Summoner": {
      "rdps": 12786,
      "ndps": 11885,
+     "given": 902,
      "uptime": 97.8,
      "players": 3,
-     "echo_corrected": true
+     "echo_corrected": true,
+     "rdps_each": [
+      12399,
+      12651,
+      13309
+     ],
+     "given_ratio": 1.148,
+     "given_ratio_n": 11
     },
     "RedMage": {
      "rdps": 11318,
      "ndps": 10453,
+     "given": 864,
      "uptime": 97.65,
      "players": 3,
-     "echo_corrected": true
+     "echo_corrected": true,
+     "rdps_each": [
+      10512,
+      11718,
+      11723
+     ],
+     "given_ratio": 1.167,
+     "given_ratio_n": 18
     },
     "Viper": {
      "rdps": 12024,
      "ndps": 12024,
+     "given": 0,
      "uptime": 97.81,
      "players": 3,
-     "echo_corrected": false
+     "echo_corrected": false,
+     "rdps_each": [
+      10838,
+      12589,
+      12644
+     ]
     },
     "Gunbreaker": {
      "rdps": 8024,
      "ndps": 8024,
+     "given": 0,
      "uptime": 97.85,
      "players": 3,
-     "echo_corrected": true
+     "echo_corrected": true,
+     "rdps_each": [
+      7581,
+      8109,
+      8383
+     ]
     },
     "Machinist": {
      "rdps": 11537,
      "ndps": 11537,
+     "given": 0,
      "uptime": 98.4,
      "players": 2,
-     "echo_corrected": true
+     "echo_corrected": true,
+     "rdps_each": [
+      10654,
+      12419
+     ]
     }
-   }
+   },
+   "given_until": 284.0,
+   "given_ratio_all": 1.157
   }
  },
  "method": "Savage P1 (Athena) clears from FFLogs, level 90, no level-92+ abilities, logger main stat 3400-3560 (capped gear). rDPS/nDPS over 0:00-2:00 with pots stripped (+10.57% DPS/healer, +10.42% tank for the Medicated window); deaths before 2:00 excluded. Job values are averages of distinct players over all clears. Kills with The Echo (+20% damage) count for casts and timing only, not for damage, HP or kill time, except that a job with fewer than three other players also gets its Echo clears, damage divided by 1.2.",

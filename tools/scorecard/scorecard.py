@@ -14,6 +14,10 @@ from classifier import Pull, classify, infer_light_parties
 HERE = Path(__file__).resolve().parent
 P1, SAVAGE, DD = 91, 101, 1002911
 WINDOW = 120                     # seconds of damage measured from the pull, on pulls clean that long
+# a tincture's share of the damage done under it (Medicated: +10.57% for DPS and healers, +10.42% for tanks), taken out
+# of rDPS: neither the clears' (build_benchmark.py) nor the rotation ceiling has one
+POT = {"tank": 0.1042 / 1.1042, "dps": 0.1057 / 1.1057}
+POT_RATE_S = 38                  # the damage rate a tincture multiplies: the player's over 0:00-0:38, as for the clears
 CACHED_ONLY = False              # build_site --cached: don't fetch parts a cached report lacks
 ROLES = ["Tank", "Healer", "Melee", "Ranged", "Caster"]
 ROLE = {"Paladin": "Tank", "Warrior": "Tank", "DarkKnight": "Tank", "Gunbreaker": "Tank", "WhiteMage": "Healer", "Scholar": "Healer",
@@ -127,13 +131,15 @@ def ceilings():
 
 def rotations():
     """The optimized rotations behind the ceilings, {job: {fight, rotations: {key: {gcd, crit, potency, dps, ...,
-    rotation}}, icons: {action: data URI}}}, one per GCD, as tools/rotation/dps.py --site saved them; empty when it
-    hasn't been run."""
+    rotation}}, icons: {action: data URI}, job_icon, role}}, one per GCD, as tools/rotation/dps.py --site saved them;
+    empty when it hasn't been run."""
     f = HERE.parent / "rotation" / ".cache" / "rotations.json"
     out = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
     import gamedata
-    for job, v in out.items():   # each job's action icons, for the compact rotation
+    for job, v in out.items():   # each job's action icons, for the compact rotation, its job icon and role
         v["icons"] = gamedata.icons(job, {r[1] for x in v["rotations"].values() for r in x["rotation"]})
+        v["job_icon"] = gamedata.job_icon(job)
+        v["role"] = ROLE.get(job, "Melee")
     return out
 
 
@@ -145,6 +151,34 @@ def fetch_echo(data):
     data["echo_pulls"] = [f["id"] for f in fs if any(s < f["endTime"] and e > f["startTime"] for s, e in bands)]
 
 
+def fetch_pots(data):
+    """Tinctures (Medicated) running during 0:00-2:00 of the clean pulls, with the player's damage over 0:00-0:38 of that
+    pull: {fight id: {name: [seconds under it, damage 0:00-0:38]}} (see pot_gain)."""
+    fs = [f for f in data["fights"] if str(f["id"]) in data["tables"]]
+    out = {}
+    if fs:   # one Buffs table over the report, from 30 s before the first pull (a pre-pull tincture lasts into it)
+        t = fflogs.tables(data["code"], [(fs[0]["startTime"] - 30000, fs[-1]["endTime"])], "Buffs", extra=",abilityID:1000049")[0]
+        bands = collections.defaultdict(list)
+        for a in t.get("auras", []): bands[a["name"]] += [(b["startTime"], b["endTime"]) for b in a.get("bands", [])]
+        for f in fs:
+            s, e = f["startTime"], f["startTime"] + WINDOW * 1000
+            for name, bs in bands.items():
+                under = sum(max(0, min(b1, e) - max(b0, s)) for b0, b1 in bs) / 1000
+                if under > 0: out.setdefault(str(f["id"]), {})[name] = [under, 0]
+        need = [f for f in fs if str(f["id"]) in out]
+        for f, t38 in zip(need, fflogs.tables(data["code"], [(f["startTime"], f["startTime"] + POT_RATE_S * 1000) for f in need])):
+            for y in t38["entries"]:
+                if y["name"] in out[str(f["id"])]: out[str(f["id"])][y["name"]][1] = y["total"]
+    data["pots"] = out
+
+
+def pot_gain(data, fid, y):
+    """DPS over 0:00-2:00 a tincture added to this table row, as build_benchmark.py reckons the clears': the seconds under
+    it at the player's 0:00-0:38 damage rate, times the tincture's share."""
+    under, dmg = data.get("pots", {}).get(fid, {}).get(y["name"], (0, 0))
+    return under * dmg / POT_RATE_S * POT["tank" if ROLE.get(y["job"]) == "Tank" else "dps"] / WINDOW
+
+
 def fetch(code, refresh, bench):
     cf = fflogs.CACHE / f"report_{code}.json"
     if cf.exists() and not refresh:
@@ -152,7 +186,8 @@ def fetch(code, refresh, bench):
         for key, fill, what in (("hp", lambda: fetch_hp(data, bench), "boss HP at the checkpoints"), ("wtables", lambda: fetch_windows(data), "damage per phase"),
                                 ("otables", lambda: fetch_opener(data), "opener damage"), ("echo_pulls", lambda: fetch_echo(data), "the Echo check"),
                                 ("tables_given", lambda: fetch_tables(data, [f for f in data["fights"] if str(f["id"]) in data["tables"]]),
-                                 "the rDPS raid buffs gave others")):
+                                 "the rDPS raid buffs gave others"),
+                                ("pots", lambda: fetch_pots(data), "tinctures")):
             if key not in data:   # reports cached before this part existed
                 if CACHED_ONLY: print(f"  {code}: no {what} in the cache, left out (--cached)", file=sys.stderr); continue
                 print(f"  {code}: fetching {what}", file=sys.stderr); fill(); cf.write_text(json.dumps(data))
@@ -177,6 +212,7 @@ def fetch(code, refresh, bench):
     fetch_windows(data)
     fetch_opener(data)
     fetch_echo(data)
+    fetch_pots(data)
     fflogs.CACHE.mkdir(exist_ok=True); cf.write_text(json.dumps(data))
     return data
 
@@ -245,7 +281,10 @@ def downtime(p, res, end):
 
 def analyse(group, data, bench):
     echo = {str(i) for i in data.get("echo_pulls", [])}           # pulls with The Echo: no damage figures from them
-    data = dict(data, tables={k: v for k, v in data["tables"].items() if k not in echo},
+    # 0:00-2:00 damage with tinctures taken out (rDPS and the party's total), like the clears' it is compared with
+    tables = {k: [dict(y, rdps=y["rdps"] - g, total=y["total"] - g * WINDOW) for y in v for g in [pot_gain(data, k, y)]]
+              for k, v in data["tables"].items()}
+    data = dict(data, tables={k: v for k, v in tables.items() if k not in echo},
                 wtables={k: v for k, v in data.get("wtables", {}).items() if k not in echo},
                 otables={k: v for k, v in data.get("otables", {}).items() if k not in echo},
                 hp={k: v for k, v in data.get("hp", {}).items() if k not in echo})
