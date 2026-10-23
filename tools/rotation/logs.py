@@ -135,6 +135,38 @@ def ours_offline(job, own=lambda p, h: 1.0):
     return out
 
 
+CUT = {"Damage Down", "Weakness", "Brink of Death"}   # a player's own state that lowers their hits: their pull ends there
+
+
+def ours_more(job, own=lambda p, h: 1.0, until=120):
+    """Our players' other pulls on the job, the ones not clean through 2:00, from the acts caches (from_acts, so without
+    crit flags: dps.flag_hits sets them), each cut at the player's own first death or Damage Down and at `until`: more
+    hits for measuring their crit / direct-hit gain than the clean pulls alone. Pulls with The Echo are left out."""
+    reports = json.loads(SITE.read_text())["reports"]
+    out = []
+    for r in reports.values():
+        rep = json.loads((fflogs.CACHE / f"report_{r['code']}.json").read_text())
+        fights, echo = rep["fights"], {str(i) for i in rep.get("echo_pulls", [])}
+        pulls = json.loads((ACTS / f"acts_{r['code']}.json").read_text(encoding="utf-8"))
+        for p in r["players"]:
+            if p["job"] != job: continue
+            clean = {c["n"] for c in p.get("clean_pulls") or []}
+            for d in p.get("pull_detail") or []:
+                fid = str(fights[d["n"] - 1]["id"])
+                if d["n"] in clean or fid in echo or fid not in pulls: continue
+                a = pulls[fid]
+                pid = next((k for k, (nm, j) in a["players"].items() if nm == p["name"] and j == job), None)
+                if pid is None: continue
+                N = a["names"]
+                hurt = [t for t, q, s, ch in a["auras"] if str(q) == pid and ch == 1 and N.get(str(s)) in CUT]
+                cut = min([until, d["dur"]] + ([d["died"]["t"]] if d.get("died") else []) + hurt)
+                if cut < 20: continue
+                x = from_acts(a, pid, r["code"], int(fid), own)
+                x["hits"] = [h for h in x["hits"] if h["t"] < cut]
+                if x["casts"] and x["hits"]: out.append(dict(x, group=r["group"], day=r["day"], n=d["n"], cut=cut))
+    return out
+
+
 if __name__ == "__main__":
     logs = clears(sys.argv[1] if len(sys.argv) > 1 else "BlackMage")
     print(f"{len(logs)} player logs:", ", ".join(f"{p['name']} ({len(p['casts'])} casts)" for p in logs))

@@ -7,7 +7,9 @@ Per player, from their clean pulls (alive through 2:00):
   damage per potency   their plain hits (no crit, no direct hit), external buffs divided out, over the model potency
   crit / direct hit    their average hit over their plain hit, action by action (weighted by hits): over all hits
                        for the replay check (the log's hits carry others' crit buffs), and over the hits under no
-                       crit or direct-hit raid buff for the ceiling (rDPS credits those buffs to their givers)
+                       crit or direct-hit raid buff for the ceiling (rDPS credits those buffs to their givers), there
+                       pooled with their other pulls up to their own first death or Damage Down (logs.ours_more, the
+                       acts caches: about three times the hits; on the same pulls they agree within ~0.2% on average)
   DoT ticks            FFLogs reports ticks without crit or direct-hit flags; they count at the player's average tick
   sure crits           hits that always crit (Monk's Bootshine in opo-opo form) count at their own average over the
                        model potency; those a buff makes sure (Dragoon's Life Surge) the model counts at their
@@ -228,9 +230,11 @@ def ceiling(job, gcd, width, crit=None, until=WINDOW):
     return _ceiling[key]
 
 
-def player_rows(job, pulls, width):
-    by = collections.defaultdict(list)
+def player_rows(job, pulls, width, more=()):
+    """`more`: the players' other pulls (logs.ours_more, flagged), pooled into the ceiling's crit / direct-hit gain."""
+    by, extra = collections.defaultdict(list), collections.defaultdict(list)
     for p in pulls: by[p["name"]].append(p)
+    for p in more: extra[p["name"]].append(p)
     rows = []
     for name, ps in sorted(by.items()):
         hits = [h for p in ps for h in calibrate.plain_hits(p, WINDOW + 5)]
@@ -238,7 +242,7 @@ def player_rows(job, pulls, width):
         k = st.median(v / m for _, _, v, m in hits)
         crit, dh = rates(ps)
         skip, sure = getattr(job, "AUTO_CRIT", ()), no_sure(job)
-        e, e0, et = crit_gain(ps, skip=skip, sure=sure), crit_gain(ps, unbuffed=True, skip=skip, sure=sure), tick_gain(ps)
+        e, e0, et = crit_gain(ps, skip=skip, sure=sure), crit_gain(ps + extra[name], unbuffed=True, skip=skip, sure=sure), tick_gain(ps)
         ec, ec0 = sure_gain(job, ps, k), sure_gain(job, ps, k, unbuffed=True)
         own = natural_crit(ps, skip, sure) if hasattr(job, "CRIT") else None
         gcd = st.median(g for g in (calibrate.gcd_of(p) for p in ps) if g)
@@ -374,7 +378,8 @@ def main():
     job, jobname = JOBS[a.job]
     calibrate.use(a.job)
     pulls = flag_hits(job, logs.ours_offline(jobname, getattr(job, "own_factor", lambda p, h: 1.0))) if a.offline else logs.ours(jobname)
-    rows = player_rows(job, pulls, a.width)
+    more = flag_hits(job, logs.ours_more(jobname, getattr(job, "own_factor", lambda p, h: 1.0)))   # for the crit / DH gain
+    rows = player_rows(job, pulls, a.width, more)
     show(rows, f"Our players on {jobname}, clean pulls, 0:00-2:00 (DPS)")
     print("  gain / unbuf: average hit over plain hit, all hits / hits under no crit or direct-hit raid buff;\n"
           "  rDPS/best: scorecard median / best of the clean pulls; replay: their casts through the model, at gain;\n"
