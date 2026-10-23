@@ -42,13 +42,23 @@ def player_log(code, fight, job):
     return out
 
 
+ECHO = 1.20   # The Echo: +20% damage dealt (build_benchmark.py's ECHO)
+
+
 def clears(job):
-    """Every player log of the job across the benchmark's clears."""
+    """Every player log of the job across the benchmark's clears. A kill with The Echo has its hits' damage divided by
+    ECHO (and `echo` set), so damage per potency compares across clears: one Ninja's Echo kill had put the clears'
+    conversions 40% apart instead of 15%."""
     kills = json.loads(BENCH.read_text())["kills"]
     out = []
     for k in kills:
         acts = json.loads((fflogs.CACHE / "benchmark" / f"acts_{k['code']}_{k['fight']}.json").read_text())
-        if any(v[1] == job for v in acts["players"].values()): out += [dict(p, dur=k["dur"]) for p in player_log(k["code"], k["fight"], job) if p["casts"]]
+        if not any(v[1] == job for v in acts["players"].values()): continue
+        for p in player_log(k["code"], k["fight"], job):
+            if not p["casts"]: continue
+            if k.get("echo"):
+                p = dict(p, echo=True, hits=[dict(h, amount=h["amount"] / ECHO) if "amount" in h else h for h in p["hits"]])
+            out.append(dict(p, dur=k["dur"]))
     return out
 
 

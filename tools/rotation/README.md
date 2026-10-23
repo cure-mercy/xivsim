@@ -385,8 +385,10 @@ Hyosho Ranryus, four Ten Chi Jins, five Bunshins and 27 Bhavacakras. Settings fr
 values x1.0 tie, x0.5 is 0.4% lower); the sweep holds within 0.5% from width 1,000 to 8,000 and beats the beam by
 1.5-3%. The clears' rotations, replayed standing still over 0:00-365 s, deal 94-98% of the best (a pull with a death
 79%). A search takes ~50 s. With no Ninja in our groups, `dps.py --site` puts the rotations on the scorecard site at the
-clears' Ninjas' GCDs since 7.3 (`CONVERT_SINCE`), converted to DPS at those four players (whose damage per potency
-differs by up to 40%); no player page links there.
+clears' Ninjas' GCDs since 7.3 (`CONVERT_SINCE`), converted to DPS at those four players (damage per potency: three
+within 2%, one 13% lower, likely gear: the benchmark checks only the logging player's); no player page links there.
+`logs.clears` divides an Echo kill's damage by 1.2: one of the four played with The Echo, which had shown as a 40% spread
+and put the site's ceiling band for Ninja far above every other job's.
 
 ## Summoner
 

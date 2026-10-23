@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import acts, fflogs
-from scorecard import ROLE, ROLES, P1, SAVAGE, WINDOWS
+from scorecard import POT, ROLE, ROLES, P1, SAVAGE, WINDOWS
 
 HERE = Path(__file__).resolve().parent
 CACHE = fflogs.CACHE / "benchmark"
@@ -36,7 +36,6 @@ CHECKPOINTS = [("Paradeigma II", 55.4), ("Superchain I", 112.4), ("Paradeigma II
 INVULN = {"Hallowed Ground", "Holmgang", "Living Dead", "Superbolide"}
 ECHO, THIN = 1.20, 3          # The Echo: a flat +20% damage; a job with fewer clear players than THIN without it also gets
                                # its Echo clears, their damage divided by ECHO (marked echo_corrected)
-POT = {"tank": 0.1042 / 1.1042, "dps": 0.1057 / 1.1057}
 LEVEL92 = ["High Thunder", "High Thunder II", "Flare Star", "Solar Bahamut", "Sunflare", "Lux Solaris", "Necrotize", "Vice of Thorns",
            "Grand Impact", "Prefulgence", "Star Prism", "Rainbow Drip", "Ouroboros", "Leaping Opo", "Rising Raptor", "Pouncing Coeurl",
            "Fire's Reply", "Wind's Reply", "Elixir Burst", "Rise of the Dragon", "Lance Barrage", "Spiral Blow", "Starcross", "Kunai's Bane",
@@ -120,7 +119,8 @@ def eligible(k):
 
 
 def kill_players(k):
-    """Per player in one kill: pot-stripped rDPS / nDPS over 0:00-2:00 and uptime; players dead before 2:00 left out."""
+    """Per player in one kill: pot-stripped rDPS / nDPS over 0:00-2:00, the rDPS their buffs gave others, and uptime;
+    players dead before 2:00 left out."""
     def get():
         f = fflogs.gql('query($c:String!){reportData{report(code:$c){fights(fightIDs:[%d]){startTime endTime}}}}' % k["fight"],
                        {"c": k["code"]})["reportData"]["report"]["fights"][0]
@@ -143,7 +143,8 @@ def kill_players(k):
         gain = overlap * o38[y["name"]]["total"] / 38 * POT[kind] / 120
         party += y["total"] / 120 - gain
         if y["name"] not in dead:
-            out.append(dict(name=y["name"], job=y["type"], rdps=y["totalRDPS"] / 120 - gain, ndps=y["totalNDPS"] / 120 - gain, uptime=y["activeTime"] / 1200))
+            out.append(dict(name=y["name"], job=y["type"], rdps=y["totalRDPS"] / 120 - gain, ndps=y["totalNDPS"] / 120 - gain,
+                            given=y.get("totalRDPSGiven", 0) / 120, uptime=y["activeTime"] / 1200))
     return out, party
 
 
@@ -175,8 +176,8 @@ def checkpoints(kills):
 
 
 def kill_phases(k):
-    """Per player and phase window of one kill: pot-stripped nDPS and GCD uptime. Only phases the kill lived through,
-    and only players alive through the whole phase."""
+    """Per player and phase window of one kill: pot-stripped nDPS, the rDPS their buffs gave others, and GCD uptime.
+    Only phases the kill lived through, and only players alive through the whole phase."""
     def get():
         f = fflogs.gql('query($c:String!){reportData{report(code:$c){fights(fightIDs:[%d]){startTime endTime}}}}' % k["fight"],
                        {"c": k["code"]})["reportData"]["report"]["fights"][0]
@@ -201,7 +202,39 @@ def kill_phases(k):
             kind = "tank" if ROLE[y["type"]] == "Tank" else "dps"
             overlap = sum(max(0, min(e, w["b"]) - max(s, w["a"])) for s, e in bands[y["name"]])
             gain = overlap * (y["total"] / span) * POT[kind] / span
-            out.append(dict(window=w["name"], name=y["name"], job=y["type"], ndps=y["totalNDPS"] / span - gain, uptime=y["activeTime"] / (10 * span)))
+            out.append(dict(window=w["name"], name=y["name"], job=y["type"], ndps=y["totalNDPS"] / span - gain,
+                            given=y.get("totalRDPSGiven", 0) / span, uptime=y["activeTime"] / (10 * span)))
+    return out
+
+
+GIVEN_UNTIL = 284.0   # the end of the phase window Palladion falls in: nobody deals damage after Athena leaves (4:41.65)
+GIVEN_BURSTS = [(-10, 40), (100, 160), (220, GIVEN_UNTIL)]   # the 2-minute bursts before it, as the optimizer plays them
+
+
+def given_ratios(kills):
+    """Per job: the rDPS its raid buffs gave others from the pull to GIVEN_UNTIL, as a rate over that stretch, over
+    the rate in 0:00-2:00 (one burst against three, and steady buffs like Dance Partner), the median over clear
+    players alive through both. The site scales our players' 0:00-2:00 credit by it for the optimized rotations'
+    expected rDPS, which run to Palladion. The Echo changes both alike, so its clears count too. Only players who used
+    their raid buff in each of GIVEN_BURSTS count, as the optimized rotations do: about half the clears' Reapers hold
+    the second Arcane Circle to 2:56-3:12, leaving two before Palladion (all of them: 0.74 instead of ~1.2).
+    "*": the median over every player, for a job without clears."""
+    first = [(n, a, b) for n, a, b in WINDOWS if b <= GIVEN_UNTIL]
+    per = collections.defaultdict(list)
+    for k in kills:
+        g120 = {(p["name"], p["job"]): p["given"] for p in kill_players(k)[0]}
+        a = kill_acts(k)
+        uses = collections.defaultdict(list)
+        for when, _, job, src in acts.buff_uses(a): uses[(a["players"][str(src)][0], job)].append(when)
+        held = {key for key, ts in uses.items() if not all(any(lo <= x < hi for x in ts) for lo, hi in GIVEN_BURSTS)}
+        by = collections.defaultdict(dict)
+        for x in kill_phases(k): by[(x["name"], x["job"])][x["window"]] = x
+        for key, w in by.items():
+            if g120.get(key, 0) > 0 and key not in held and all(n in w for n, _, _ in first):
+                per[key[1]].append(sum(w[n]["given"] * (b - a) for n, a, b in first) / GIVEN_UNTIL / g120[key])
+    out = {j: (round(st.median(v), 3), len(v)) for j, v in per.items()}
+    every = [r for v in per.values() for r in v]
+    if every: out["*"] = (round(st.median(every), 3), len(every))
     return out
 
 
@@ -282,7 +315,7 @@ def echo_fill(jobs, echo_per, fields):
     corrected = set()
     for (n, j), v in echo_per.items():
         if len(jobs.get(j, [])) >= THIN: continue
-        jobs[j].append({m: st.mean(x[m] for x in v) / (ECHO if m in ("rdps", "ndps") else 1) for m in fields})
+        jobs[j].append({m: st.mean(x[m] for x in v) / (ECHO if m in ("rdps", "ndps", "given") else 1) for m in fields})
         corrected.add(j)
     return corrected
 
@@ -342,22 +375,29 @@ def build(kills):
             if party: ratios.append(party / (boss / k["dur"]))     # 0:00-2:00 party DPS over the whole fight's average
             for p in ps: per[(p["name"], p["job"])].append(p)
         jobs = collections.defaultdict(list)
-        for (n, j), v in per.items(): jobs[j].append({m: st.mean(x[m] for x in v) for m in ("rdps", "ndps", "uptime")})
+        for (n, j), v in per.items(): jobs[j].append({m: st.mean(x[m] for x in v) for m in ("rdps", "ndps", "given", "uptime")})
         roles = collections.defaultdict(list)
         for j, v in jobs.items(): roles[ROLE[j]] += [x["uptime"] for x in v]
         eper = collections.defaultdict(list)
         for k in echo_kills:
             for p in kill_players(k)[0]: eper[(p["name"], p["job"])].append(p)
-        corrected = echo_fill(jobs, eper, ("rdps", "ndps", "uptime"))
+        corrected = echo_fill(jobs, eper, ("rdps", "ndps", "given", "uptime"))
         res["pools"][pool] = dict(kills=len(ks), kill_median_s=round(st.median(k["dur"] for k in ks)) if ks else None,
                                   party_dps_median=round(st.median(parties)) if parties else None,
                                   # 0:00-2:00 party DPS that is on pace to kill at enrage, if the rest goes like a clear
                                   party_dps_min=round(st.median(ratios) * boss / ENRAGE_S) if ratios else None,
                                   role_uptime={r: round(st.mean(v), 2) for r, v in roles.items()},
                                   jobs={j: dict(rdps=round(st.mean(x["rdps"] for x in v)), ndps=round(st.mean(x["ndps"] for x in v)),
-                                                uptime=round(st.mean(x["uptime"] for x in v), 2), players=len(v), echo_corrected=j in corrected)
+                                                given=round(st.mean(x["given"] for x in v)),   # rDPS - nDPS: what their buffs gave others
+                                                uptime=round(st.mean(x["uptime"] for x in v), 2), players=len(v), echo_corrected=j in corrected,
+                                                rdps_each=sorted(round(x["rdps"]) for x in v))   # each player's, for the site's job chart
                                         for j, v in jobs.items()})
     res["windows"] = phases(kills, echo_kills)
+    ratios = given_ratios(kills + echo_kills)
+    res["pools"]["clears"]["given_until"] = GIVEN_UNTIL
+    if "*" in ratios: res["pools"]["clears"]["given_ratio_all"] = ratios["*"][0]
+    for j, v in res["pools"]["clears"]["jobs"].items():
+        if j in ratios: v["given_ratio"], v["given_ratio_n"] = ratios[j]
     return res
 
 
