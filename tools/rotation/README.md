@@ -544,7 +544,14 @@ optimum, scored and shown until Palladion (`ROT_UNTIL`, 4:41), its runs placed i
 bars (`placed_runs`). A rotation's expected DPS is the median of our players' conversions (for a job none of them plays, the benchmark
 clears' players since the job's `CONVERT_SINCE`), each moved to its GCD first:
 the speed points a faster GCD takes come out of crit, direct hit or determination (`SPEED_PTS`, `STAT_PT`: ~0.40%
-damage per potency per 0.01 s), so GCDs from 2.18 s to 2.45 s come out within 0.7% for a Black Mage.
+damage per potency per 0.01 s), so GCDs from 2.18 s to 2.45 s come out within 0.7% for a Black Mage. Moved to one
+GCD that way, our seven Black Mages' conversions span 3.4% instead of 10.5%: the price holds even 0.2 s away. A full
+stat model per player isn't possible: FFLogs logs stats (CombatantInfo) only for the player who uploaded.
+
+The ceiling's crit / direct-hit gain (`e0`, hits under no crit or direct-hit buff) pools the clean pulls' full logs with
+each player's other pulls up to their own first death or Damage Down (`logs.ours_more`, the acts caches, `flag_hits`):
+about three times the hits. On the same clean pulls the two sources agree within ~0.2% on average, but a player with
+few clean pulls swung by up to 6% on luck alone (one Viper's 2 pulls read a 54% direct-hit rate).
 
 `--offline` converts from the acts caches when FFLogs is down (`logs.ours_offline`): no crit flags, so `flag_hits`
 reads crit and direct hit from each hit's size against its plain level (x1.12, 1.37, 1.73); hits under others' raid

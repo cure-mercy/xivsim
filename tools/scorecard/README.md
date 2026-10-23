@@ -199,9 +199,10 @@ clears). A job's page has the same column for each GCD, the credit being the job
 table also gives the 0:00-2:00 ceiling in rDPS: the best of the job's rotations' own 0:00-2:00 searches (`ceiling_2min`,
 at the median conversion) plus our players' median 0:00-2:00 credit, no scaling needed.
 Above the table, a chart, all of it over 0:00-2:00: a box over our players' clean rDPS (whiskers to 1.5 times the box's
-width), a tick at that 0:00-2:00 ceiling, a band behind it spanning the same ceiling at the weakest to the strongest
-player's conversion (our players' own ceilings; for a job none of ours plays, the clears' conversions the rotation lists
-as `dps_lo` / `dps_hi`), and a dot per clear player (`rdps_each`, each one's mean over their kills). Not the rotation
+width), a tick at that 0:00-2:00 ceiling, a band behind it spanning the same ceiling from the weakest to the strongest
+player's gear at its GCD (each player's own ceiling over the median's at their GCD, which carries over to the tick's
+since the median is moved at the same substat price; only players with 5+ clean pulls, `BAND_PULLS`; for a job none of
+ours plays, the clears' conversions the rotation lists as `dps_lo` / `dps_hi`), and a dot per clear player (`rdps_each`, each one's mean over their kills). Not the rotation
 to Palladion: it holds resources for after the downtime, and its stretch has three bursts against 0:00-2:00's one and
 pre-pull preparation, so it sits 7% under (Pictomancer) to 3% over (Dragoon) the 0:00-2:00 ceiling. A ceiling is an
 expected value (average crits, direct hits and procs), so single pulls beat it on luck: our best pulls reach 0.99-1.085 of
