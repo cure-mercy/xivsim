@@ -354,15 +354,22 @@ def site_rotation(job, s, until=ROT_UNTIL):
     return out
 
 
-def rotations(job, rows, width, extra=(), ours=None):
+def _spec(g):
+    """A --gcds entry as (GCD, hasted GCD or None)."""
+    return (g, None) if isinstance(g, (int, float)) else (g[0], g[1] if len(g) > 1 else None)
+
+
+def rotations(job, rows, width, extra=(), ours=None, bis=()):
     """The site's optimized rotations for a job, {fight: timeline, rotations: {key: ...}}: at every GCD (and crit rate)
     searched for our players' ceilings, plus the extra GCDs (at the job's default crit rate), the best whole-phase
     rotation up to ROT_UNTIL, with its expected DPS there at the median of our players' conversions and their range, and the 0:00-2:00
     ceiling's at the median. Each player is moved to the rotation's GCD first (SPEED_PTS, STAT_PT): a faster GCD costs
     them damage per potency, so GCDs compare at what a player would have there. `ours`: the players counted as playing
-    at each GCD, when `rows` (the conversions) are someone else's (the clears', for a job none of ours plays)."""
-    for g in extra:   # a GCD, or (GCD, hasted GCD) where the tier holds two (Samurai's 2.48 s: 2.15 or 2.16 s under Fuka)
-        g, h = (g, None) if isinstance(g, (int, float)) else (g[0], g[1] if len(g) > 1 else None)
+    at each GCD, when `rows` (the conversions) are someone else's (the clears', for a job none of ours plays). `bis`:
+    more GCDs, searched as the extra ones, that are there for the gear model's best-in-slot sets (tools/gear): their
+    rotations are marked `bis_gcd`, so a later run can drop them once no set is at that GCD (scratch/gear/rerun_all.py)."""
+    for g in [*extra, *bis]:   # a GCD, or (GCD, hasted GCD) where the tier holds two (Samurai's 2.48 s: 2.15 or 2.16 s under Fuka)
+        g, h = _spec(g)
         ceiling(job, g, width, getattr(job, "CRIT", None), speed=calibrate.speed_for(job, round(g, 2), h) if h else None)
     def conv(s, r, gcd, w=ROT_UNTIL):
         """The rotation in a player's DPS, the player moved to its GCD: the speed points that takes come out of their
@@ -383,6 +390,8 @@ def rotations(job, rows, width, extra=(), ours=None):
                         dps_hi=round(max(each)), players=sum(r["key"] == key for r in (rows if ours is None else ours)),
                         conv_players=len(rows),
                         waste={w: round(n, 1) for w, n in zip(job.WASTE, s.waste) if n}, rotation=rot)
+        at = lambda gs: any(abs(gcd - g) < 0.005 and (h is None or hl is None or abs(hl - h) < 0.005) for g, h in map(_spec, gs))
+        if at(bis) and not at(extra): out[key]["bis_gcd"] = True     # an extra asked for on its own stays
     return dict(fight=timeline(job), rotations=out, speed_cost=round(100 * STAT_PT * SPEED_PTS * 0.01, 2))
 
 
@@ -406,6 +415,8 @@ def main():
                     f"({SITE_FILE.name}, {ROT_FILE.name})")
     ap.add_argument("--gcds", help="with --site: also optimize at these GCDs (comma-separated), for the site's rotation pages; "
                     "GCD/hasted (2.48/2.15) picks the hasted GCD under Fuka, Swiftscaled or Ley Lines where the tier holds two")
+    ap.add_argument("--bis-gcds", help="with --site: as --gcds, for the gear model's best-in-slot sets: marked so a later run "
+                    "can drop them once no set is at that GCD (scratch/gear/rerun_all.py)")
     ap.add_argument("--offline", action="store_true", help="our players' logs from the scorecard's acts caches, not FFLogs "
                     "(logs.ours_offline, flag_hits): for when FFLogs is down; 'logged' then misses the hits left out")
     ap.add_argument("--no-polish", action="store_true", help="skip the local search on each search's best rotation (polish.py)")
@@ -434,8 +445,8 @@ def main():
             days = {(k["code"], k["fight"]): k["day"] for k in json.loads(logs.BENCH.read_text())["kills"]}
             conv = player_rows(job, [p for p in logs.clears(jobname) if days[(p["code"], p["fight"])] >= since], a.width)
             show(conv, f"None of our players on {jobname}: the site converts at the benchmark clears' since {since} (DPS)")
-        extra = [tuple(float(v) for v in g.split("/")) for g in a.gcds.split(",")] if a.gcds else ()
-        mine = rotations(job, conv, a.width, extra, ours=rows)
+        gcds = lambda arg: [tuple(float(v) for v in g.split("/")) for g in arg.split(",")] if arg else ()
+        mine = rotations(job, conv, a.width, gcds(a.gcds), ours=rows, bis=gcds(a.bis_gcds))
         if conv is not rows:                              # the site says whose conversion it is
             mine.update(converted_from="clears", converted_since=since)
         if a.offline: mine["offline"] = True              # the site says its DPS comes from the acts caches
