@@ -100,7 +100,8 @@ class Fight:
 
 class SlotState:
     """Base of a job's State (__slots__ only): gives it a `copy` of one straight-line assignment per slot, with the
-    dicts named in DICTS copied too (the getattr / setattr loop it replaces took a fifth of a search)."""
+    dicts named in DICTS copied too (the getattr / setattr loop it replaces took a fifth of a search), and its history:
+    a chain of (t, action, note) entries."""
     __slots__ = ()
     DICTS = ("cds",)
 
@@ -110,6 +111,14 @@ class SlotState:
         ns = {"new": cls.__new__, "cls": cls}
         exec(f"def copy(s):\n    c = new(cls){body}\n    return c", ns)
         cls.copy = ns["copy"]
+
+    def log(self, t, action, note=""):
+        self.hist = (self.hist, (round(t, 2), action, note))
+
+    def history(self):
+        out, h = [], self.hist
+        while h: h, e = h; out.append(e)
+        return out[::-1]
 
 
 def cd_key(cds):

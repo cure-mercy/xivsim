@@ -138,21 +138,14 @@ class State(SlotState):
         return s
 
     def key(self):
-        r = lambda x: round(x, 1)
-        left = lambda u: r(max(u - self.t, 0))
-        return (r(self.t), r(self.gcd), left(self.combo_until), self.sym, self.flow, left(self.fsym_until),
-                left(self.fflow_until), self.feathers, self.three, left(self.four_until), round(self.esprit),
-                left(self.sf_until), left(self.tf_until), left(self.dev_until), left(self.star_until),
-                left(self.ffin_until), self.dance, self.steps, self.pot_at is None,
+        return (round(self.t, 1), round(self.gcd, 1), round(max(self.combo_until - self.t, 0), 1), self.sym, self.flow,
+                round(max(self.fsym_until - self.t, 0), 1), round(max(self.fflow_until - self.t, 0), 1), self.feathers,
+                self.three, round(max(self.four_until - self.t, 0), 1), round(self.esprit),
+                round(max(self.sf_until - self.t, 0), 1), round(max(self.tf_until - self.t, 0), 1),
+                round(max(self.dev_until - self.t, 0), 1), round(max(self.star_until - self.t, 0), 1),
+                round(max(self.ffin_until - self.t, 0), 1), self.dance, self.steps, self.pot_at is None,
                 cd_key(self.cds))
 
-    def log(self, t, action, note=""):
-        self.hist = (self.hist, (round(t, 2), action, note))
-
-    def history(self):
-        out, h = [], self.hist
-        while h: h, e = h; out.append(e)
-        return out[::-1]
 
 
 WASTE = ("Esprit overcapped", "feathers overcapped", "Silken procs overwritten or lapsed", "Fan Dance III / IV lost",
@@ -190,8 +183,11 @@ def party(s, fight, a, b):
     """The party's expected Esprit over [a, b]: the partner's while Standard Finish is up, everyone's in the Technical
     Finish window, only while Athena can be hit."""
     if b <= a: return 0.0
-    pts = sorted({a, b} | {x for x in (s.sf_until, s.tf_from, s.tf_until) if a < x < b}
-                 | {x for lo, hi in fight.untargetable for x in (lo, hi) if a < x < b})
+    inner = [x for x in (s.sf_until, s.tf_from, s.tf_until) if a < x < b]
+    for lo, hi in fight.untargetable:
+        if a < lo < b: inner.append(lo)
+        if a < hi < b: inner.append(hi)
+    pts = sorted({a, b, *inner}) if inner else (a, b)  # most spans hold no change of rate
     v = 0.0
     for x, y in zip(pts, pts[1:]):
         m = (x + y) / 2
@@ -219,6 +215,7 @@ def advance(s, fight, to):
 
 def charges(s, name, at):
     n, nxt = s.cds[name]
+    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
     rec, mx = CDS[name]
     while n < mx and nxt is not None and nxt <= at:
         n += 1; nxt = nxt + rec if n < mx else None

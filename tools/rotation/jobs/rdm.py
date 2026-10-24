@@ -115,22 +115,13 @@ class State(SlotState):
         return s
 
     def key(self):
-        r = lambda x: round(x, 1)
-        left = lambda u: r(max(u - self.t, 0))
-        return (r(self.t), r(self.gcd), round(self.black / 3), round(self.white / 3), self.stacks,
-                self.combo if self.combo_until > self.t else None, self.dc > self.t, self.accel > self.t, self.swift > self.t,
-                self.ms if self.ms_until > self.t else 0, self.mana_until > self.t, left(self.emb_until),
-                round(self.vf * 4), round(self.vs * 4), self.pot_at is None,
-                cd_key(self.cds),
-                self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai, tuple(k for i, k in self.dashed if i == self.mvi))
+        return (round(self.t, 1), round(self.gcd, 1), round(self.black / 3), round(self.white / 3), self.stacks,
+                self.combo if self.combo_until > self.t else None, self.dc > self.t, self.accel > self.t,
+                self.swift > self.t, self.ms if self.ms_until > self.t else 0, self.mana_until > self.t,
+                round(max(self.emb_until - self.t, 0), 1), round(self.vf * 4), round(self.vs * 4), self.pot_at is None,
+                cd_key(self.cds), self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai,
+                tuple(k for i, k in self.dashed if i == self.mvi))
 
-    def log(self, t, action, note=""):
-        self.hist = (self.hist, (round(t, 2), action, note))
-
-    def history(self):
-        out, h = [], self.hist
-        while h: h, e = h; out.append(e)
-        return out[::-1]
 
 
 WASTE = ("mana overcapped", "procs lost (granted again while up, or lapsed)", "Dualcast dropped")
@@ -153,6 +144,7 @@ def advance(s, fight, to):
 def charges(s, name, at):
     if name not in CDS: return 1, None              # Sprint
     n, nxt = s.cds[name]
+    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
     rec, mx = CDS[name]
     while n < mx and nxt is not None and nxt <= at:
         n += 1; nxt = nxt + rec if n < mx else None

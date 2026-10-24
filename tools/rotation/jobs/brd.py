@@ -77,10 +77,11 @@ CRIT_RATE, CRIT_DMG, DH_RATE = 0.25, 1.60, 0.36
 
 def derive():
     """The songs' and Battle Voice's worth from the rates (engine.configure calls it again after setting them)."""
-    global MINUET, PAEON, VOICE
+    global MINUET, PAEON, VOICE, SONG_MULT
     MINUET = 1 + 0.02 * (CRIT_DMG - 1) / (1 + CRIT_RATE * (CRIT_DMG - 1))
     PAEON = 1 + 0.03 * 0.25 / (1 + DH_RATE * 0.25)
     VOICE = 1 + 0.20 * 0.25 / (1 + DH_RATE * 0.25)
+    SONG_MULT = {"WM": MINUET, "MB": BALLAD, "AP": PAEON}
 
 
 derive()
@@ -123,22 +124,16 @@ class State(SlotState):
         return s
 
     def key(self):
-        r = lambda x: round(x, 1)
-        left = lambda u: r(max(u - self.t, 0))
-        dot = lambda d: round(max(d[0] + DOT_S - self.t, 0)) if d else None
-        return (r(self.t), r(self.gcd), self.song if self.song_until > self.t else None, left(self.song_until),
-                round(self.rep * 5) / 5, round(self.sv / 5), self.coda, round(self.ethos * 5) / 5 if self.ethos_until > self.t else 0,
-                left(self.muse_until), left(self.rs_until), left(self.bv_until), left(self.rf_until),
-                left(self.barrage_until), left(self.blast_until), dot(self.caustic), dot(self.storm), self.pot_at is None,
+        return (round(self.t, 1), round(self.gcd, 1), self.song if self.song_until > self.t else None,
+                round(max(self.song_until - self.t, 0), 1), round(self.rep * 5) / 5, round(self.sv / 5), self.coda,
+                round(self.ethos * 5) / 5 if self.ethos_until > self.t else 0,
+                round(max(self.muse_until - self.t, 0), 1), round(max(self.rs_until - self.t, 0), 1),
+                round(max(self.bv_until - self.t, 0), 1), round(max(self.rf_until - self.t, 0), 1),
+                round(max(self.barrage_until - self.t, 0), 1), round(max(self.blast_until - self.t, 0), 1),
+                (round(max(self.caustic[0] + DOT_S - self.t, 0)) if self.caustic else None),
+                (round(max(self.storm[0] + DOT_S - self.t, 0)) if self.storm else None), self.pot_at is None,
                 cd_key(self.cds))
 
-    def log(self, t, action, note=""):
-        self.hist = (self.hist, (round(t, 2), action, note))
-
-    def history(self):
-        out, h = [], self.hist
-        while h: h, e = h; out.append(e)
-        return out[::-1]
 
 
 WASTE = ("Repertoire overcapped", "Soul Voice overcapped", "Pitch Perfect stacks dropped")
@@ -159,7 +154,7 @@ def mult(s, fight, at):
     Battle Voice (the last three at their expected worth)."""
     m = fight.mult(at, s.pot_at) * (RAGING if s.rs_until > at else 1) * (s.rf if s.rf_until > at else 1)
     m *= VOICE if s.bv_until > at else 1
-    if singing(s, at): m *= {"WM": MINUET, "MB": BALLAD, "AP": PAEON}[s.song]
+    if singing(s, at): m *= SONG_MULT[s.song]
     return m
 
 
@@ -216,6 +211,7 @@ def advance(s, fight, to):
 
 def charges(s, name, at):
     n, nxt = s.cds[name]
+    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
     rec, mx = CDS[name]
     while n < mx and nxt is not None and nxt <= at:
         n += 1; nxt = nxt + rec if n < mx else None

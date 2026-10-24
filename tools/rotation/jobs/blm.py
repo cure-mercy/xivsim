@@ -67,19 +67,12 @@ class State(SlotState):
         return s
 
     def key(self):
-        r = lambda x: round(x, 1)
-        return (r(self.t), r(self.gcd), self.el, self.hearts, self.mp // 400, self.poly, self.paradox, self.fs > self.t, self.th > self.t,
-                self.triple if self.triple_until > self.t else 0, self.swift > self.t, r(max(self.ll - self.t, 0)), self.pot_at is None,
-                cd_key(self.cds), r(self.dot[0]) if self.dot else None,
-                self.mvi, r(self.acc), self.spot == self.ll_spot, r(min(self.t - self.free, 6)))
+        return (round(self.t, 1), round(self.gcd, 1), self.el, self.hearts, self.mp // 400, self.poly, self.paradox,
+                self.fs > self.t, self.th > self.t, self.triple if self.triple_until > self.t else 0,
+                self.swift > self.t, round(max(self.ll - self.t, 0), 1), self.pot_at is None, cd_key(self.cds),
+                round(self.dot[0], 1) if self.dot else None, self.mvi, round(self.acc, 1), self.spot == self.ll_spot,
+                round(min(self.t - self.free, 6), 1))
 
-    def log(self, t, action, note=""):
-        self.hist = (self.hist, (round(t, 2), action, note))
-
-    def history(self):
-        out, h = [], self.hist
-        while h: h, e = h; out.append(e)
-        return out[::-1]
 
 
 WASTE = ("Polyglot overcapped", "Firestarter overwritten", "Thunderhead overwritten", "Paradox overwritten")
@@ -107,6 +100,7 @@ def advance(s, to):
 
 def charges(s, name, at):
     n, nxt = s.cds[name]
+    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
     rec, mx = CDS[name]
     while n < mx and nxt is not None and nxt <= at:
         n += 1; nxt = nxt + rec if n < mx else None
@@ -324,13 +318,16 @@ def expand(s, fight):
                 if c is None: break
             if c is None: continue
             any_gcd = False
+            now = max(c.t, c.gcd)
+            # do_gcd's first steps (advance, settle: idempotent) once for all the GCDs, then only the legal ones tried
+            b = c.copy(); advance(b, now); settle(b, fight, now)
             for g in GCDS:
-                n = do_gcd(c, fight, g)
-                if n is None: continue
                 if combo and ("Swiftcast" in combo or "Triplecast" in combo) and g not in CAST: continue   # only spend instants on casts
+                if not gcd_legal(b, g, now): continue
+                n = do_gcd(b, fight, g)
+                if n is None: continue
                 any_gcd = True
                 out.append(n)
-            now = max(c.t, c.gcd)
             down = not fight.targetable(now)
             if not combo and (not any_gcd or down):                # nothing castable (running), or the boss is away
                 w = c.copy(); w.t = w.gcd = fight.back_up(now) if down else now + 0.5
