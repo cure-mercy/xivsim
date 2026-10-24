@@ -1,6 +1,7 @@
 /* P12S progress site: raid days -> groups -> players, drawn from data.json (written by build_site.py).
    Routes: #/  ·  #/day/<date>  ·  #/day/<date>/<group>  ·  #/day/<date>/<group>/<player>
            #/rotations  ·  #/rotations/<job>  ·  #/rotations/<job>/<gcd>   (the optimizer's rotations, tools/rotation)
+           #/gear  ·  #/gear/<job>   (the best-in-slot sets, tools/gear)
    Every name in the data is inserted with textContent, never as HTML. */
 "use strict";
 
@@ -1239,7 +1240,7 @@ const ROT_CHALLENGES = {
     ["Paradeigma I", "R1 runs to the wall end of the bait line (3.1 s from 0:27), then swaps 28 y through the middle (4.7 s in the 5.3 s band from 0:37). Save instants for the swap: Paradox, with Xenoglossy or a Firestarter Fire III.", [[27.3, 42.9]]],
     ["Ley Lines", "Nearly every Movement band takes you out of it: run as late as the band allows, then Between the Lines back."],
     ["Superchain I", "Five 7–15 y runs in 28 s from 1:58: slidecasts and instants cover them.", [[118.3, 146.6]]],
-    ["Cost", "~0.2% against standing still."]]],
+    ["Cost", "~1% against standing still (R1; 0.9% in R2)."]]],
   Reaper: ["Few casts to protect: the cost is positionals and reach.", [
     ["Spot fixed", "Paradeigma I–III and Superchain I fix your spot (orange bands, 77 s): both True North charges go here, for Gibbet and Gallows.", ["pinned"]],
     ["Out of reach", "2.5 s on end between 2:53 and Paradeigma III's tethers, and 1.2 s before Palladion: Harpe, Harvest Moon or Communio fill them.", ["away"]],
@@ -1253,18 +1254,18 @@ const ROT_CHALLENGES = {
     ["GCD", "2.45 s comes out ~0.7% above 2.40 s at a like crit rate."],
     ["Cost", "~1.3% (M1) to 1.8% (M2) against standing still, within noise of each other."]]],
   Bard: ["All instant at 25 y: R1, R2 and standing still play the same rotation.", [
-    ["Songs", "The Minuet every two minutes (0:01, 2:01–2:05, 4:03–4:06) with Raging Strikes, Battle Voice and Barrage. Ballad and Paeon fill the minute between in either order, a near-tie.", [[0, 18.0], [121.7, 139.7], [243.5, 261.5]]],
+    ["Songs", "The Minuet every two minutes (0:01, 2:01–2:06, 4:01–4:06) with Raging Strikes, Battle Voice and Barrage. Ballad and Paeon fill the minute between in either order, a near-tie.", [[0, 18.0], [120.8, 143.9], [241.1, 264.2]]],
     ["Radiant Finale", "Barely moves your own damage, so the searches place it anywhere; its party share isn't in the optimizer, so in a party put it with Battle Voice (as at 2.45 s)."],
-    ["Palladion", "The third Minuet burst (4:03) ends before Athena leaves (4:41).", [[243.5, 281.6]]],
-    ["GCD", "2.45, 2.49 and 2.50 s come out within 0.4%, the optimizer's noise."]]],
+    ["Palladion", "The third Minuet burst (4:01–4:06) ends before Athena leaves (4:41).", [[241.1, 281.6]]],
+    ["GCD", "2.50 s comes out ~0.6% above 2.49 s and ~1.6% above 2.45 s."]]],
   Dragoon: ["Positionals are what the mechanics squeeze.", [
-    ["Spot fixed", "Paradeigma I–III and Superchain I fix your spot (orange bands, 77 s): four to six True Norths (by GCD) keep the combo's positionals, with Chaotic Spring and Power Surge kept up through them.", ["pinned"]],
+    ["Spot fixed", "Paradeigma I–III and Superchain I fix your spot (orange bands, 77 s): five or six True Norths (by GCD) keep the combo's positionals, with Chaotic Spring and Power Surge kept up through them.", ["pinned"]],
     ["Out of reach", "2.5 s on end between 2:53 and Paradeigma III's tethers, and 1.2 s before Palladion: Elusive Jump into an Enhanced Piercing Talon fills them.", ["away"]],
-    ["Cost", "~0.9% against standing still."]]],
+    ["Cost", "~0.6% against standing still."]]],
   RedMage: ["Paradeigma I is the hard part: a far spot and a long run while the opener's cooldowns are still away.", [
-    ["Paradeigma I", "R1 runs to the wall end, 18.3 y from Athena's centre and out of melee reach (red, 0:37), then swaps 28 y (4.7 s in the 5.3 s band from 0:37.6). Swiftcast, Acceleration and Manafication are all on cooldown: run on Enchanted Reprise (two at 2.45 s, one at 2.49 s) or Corps-a-corps.", [[27.3, 42.9]]],
+    ["Paradeigma I", "R1 runs to the wall end, 18.3 y from Athena's centre and out of melee reach (red, 0:37), then swaps 28 y (4.7 s in the 5.3 s band from 0:37.6). Swiftcast, Acceleration and Manafication are all on cooldown: run on Enchanted Reprise (two at 2.45 and 2.49 s) or Corps-a-corps.", [[27.3, 42.9]]],
     ["Corps-a-corps", "From the wall right after the bait (0:37.6) it saves ~1.3 s of the swap, room for a hard cast, if a charge is back: at 2.23 s one is, just in time (0:37.7); at 2.45–2.49 s the opener's two uses come out ahead.", [[37.6, 42.9]]],
-    ["R2", "Crosses the middle first, so Displacement comes too late to save a hard cast: ~1.3% against R1's 0.5% (the timeline shows R1)."],
+    ["R2", "Crosses the middle first, and Displacement can't save a hard cast on the way (a backstep has to land on the platform: the edge is a drop): ~0.6% against standing still; R1 is within noise of it (the timeline shows R1)."],
     ["Superchain I", "The spread's Heavensflame corner is 21.5 y out (red, 2:25): finish the melee combo first and land Verholy, Scorch and Resolution on the way.", [[143.5, 147.9]]]]],
   Viper: ["The melee job the fight costs least: ~0.4% against standing still.", [
     ["Spot fixed", "Paradeigma I–III and Superchain I fix your spot (orange bands, 77 s): five or six True Norths cover the finishers' positionals.", ["pinned"]],
@@ -1274,7 +1275,7 @@ const ROT_CHALLENGES = {
     ["Spot fixed", "Paradeigma I–III and Superchain I fix your spot (orange bands, 77 s): True North takes Gekko's and Kasha's positionals.", ["pinned"]],
     ["Out of reach", "2.5 s on end between 2:53 and Paradeigma III's tethers, and 1.2 s before Palladion, worth ~0.5%: Enpi under Yaten fills them; Iaijutsu, Ogi Namikiri and Shoha may still land a little farther out.", ["away"]],
     ["Palladion", "Let Higanbana run out before Athena leaves (4:41) rather than refresh it into the 44 s downtime.", [[261.4, 281.6]]],
-    ["Cost", "~0.7% against standing still."]]],
+    ["Cost", "~0.8% against standing still."]]],
   Pictomancer: ["Short casts and many instants make our runs cheap; P1 costs Inspiration in Superchain I and motif time.", [
     ["Paradeigma I", "R1 runs to the wall end (3.1 s from 0:27), then swaps 28 y (4.7 s in the 5.3 s band from 0:37.6). Use the second Striking Muse's hammers and Holy in White: paint the hammer just before (Swiftcast on Hammer Motif at 2.31 and 2.49 s) so all three land in the bands.", [[27.3, 42.9]]],
     ["Smudge", "In the swap (0:38–0:39): it covers 15 y, room for a hard cast before the band ends.", [[37.6, 42.9]]],
@@ -1288,15 +1289,15 @@ const ROT_CHALLENGES = {
     ["Queen", "~24 potency per battery point, whenever she goes: send her at 50+ before overcapping, but not in the last 17 s before Palladion. The last one goes ~4:00–4:08; hold the 50 that builds after it for Athena's return.", [[264.2, 281.6]]],
     ["Palladion", "The last Reassemble goes on a tool just before Athena leaves (4:41).", [[261.4, 281.6]]],
     ["GCD", "2.41, 2.45 and 2.49 s come out within 0.2%."]]],
-  Ninja: ["Nothing is a hard cast and ninjutsu reach 20 y: our runs cost ~0.1%, noise. Keep the mudras turning and the burst inside Trick Attack.", [
+  Ninja: ["Nothing is a hard cast and ninjutsu reach 20 y: our runs cost ~0.4%, about the optimizer's noise. Keep the mudras turning and the burst inside Trick Attack.", [
     ["Opener", "Suiton at the pull, Trick Attack and Dokumori; Ten Chi Jin, Bunshin and Kassatsu into Hyosho Ranryu follow in an order that varies by GCD (near-ties), all inside Trick Attack.", [[0, 16.5]]],
-    ["Spot fixed", "Paradeigma I–III and Superchain I fix your spot (orange bands, 77 s): four to six True Norths (by GCD) for Aeolian Edge, Armor Crush and Trick Attack.", ["pinned"]],
+    ["Spot fixed", "Paradeigma I–III and Superchain I fix your spot (orange bands, 77 s): five or six True Norths (by GCD) for Aeolian Edge, Armor Crush and Trick Attack.", ["pinned"]],
     ["Out of reach", "2.5 s on end between 2:53 and Paradeigma III's tethers, and 1.2 s before Palladion: mudras and their ninjutsu, or Phantom Kamaitachi, fill them.", ["away"]],
     ["Palladion", "The last burst (4:03–4:15) lands well before Athena leaves (4:41); end on a Raiton, and its Raiju where it fits.", [[243.0, 281.6]]],
     ["GCD", "2.50 s comes out ~2% above 2.41 s."],
     ["Expected DPS", "None of ours plays Ninja: converted at the four clear Ninjas since 7.3 (three within 2%, one 13% lower, likely gear; one Echo kill divided by 1.2)."]]],
-  Summoner: ["Ruin III slidecasts and the rest is instant: our runs cost ~0.2% in R1 (noise), nothing in R2. Spend every Arcanum between demi-summons and fit the last cycle before Palladion.", [
-    ["Demi-summons", "Spell Speed shortens their 60 s (58.8 s at 2.45, 57 s at 2.31): five by Palladion."],
+  Summoner: ["Ruin III slidecasts and the rest is instant: our runs cost next to nothing (0.05%, noise). Spend every Arcanum between demi-summons and fit the last cycle before Palladion.", [
+    ["Demi-summons", "Spell Speed shortens their 60 s (58.8 s at 2.45, 55.4 s at 2.31): five by Palladion."],
     ["Primals", "Titan, Ifrit and Garuda in any order (a near-tie); summon the next only once the last one's Rites and Favor are spent."],
     ["Crimson Cyclone", "It rushes you to Athena: keep Ifrit's Favor out of Paradeigma I–III and Superchain I, where our raidplan fixes your spot.", [[27.3, 42.9], [67.6, 82.7], [118.3, 146.6], [207.2, 225.3]]],
     ["Swiftcast", "On a Ruby Rite, Slipstream or Ruin III: no Movement band needs it."],
@@ -1461,14 +1462,14 @@ function rotationsPage() {
   app.append(heading("h1", "Optimized rotations", ROT_ABOUT),
     el("p", { class: "lede" }, "The optimizer's best rotation per job, at our players' GCDs and a few more, grouped by role, highest expected rDPS first."));
   if (!jobs.length) return app.append(el("p", { class: "empty" }, "No optimized rotations yet: run tools/rotation/dps.py --job <job> --site, then build_site.py."));
-  const head = ["Job", "GCDs", "Fastest", "Slowest", "Best expected nDPS", "Best expected rDPS", "Ceiling 0:00–2:00 (rDPS)", "Our players"], rows = [];
+  const head = ["Job", "GCDs", "Fastest", "Slowest", "Best-in-slot GCD", "Best expected nDPS", "Best expected rDPS", "Ceiling 0:00–2:00 (rDPS)", "Our players"], rows = [];
   for (const role of ROLES) {   // the role's jobs, highest expected rDPS first
     const js = jobs.filter(j => (all[j].role || "Melee") === role);
     if (!js.length) continue;
     rows.push(el("tr", { class: "role" }, el("td", { colspan: head.length }, ROT_ROLES[role] || role)));
     for (const j of js) { const xs = Object.values(rotsOf(j)), g = xs.map(x => x.gcd);
       rows.push(linkRow([[jobIcon(j), jobName(j)], String(xs.length), `${Math.min(...g).toFixed(2)} s`, `${Math.max(...g).toFixed(2)} s`,
-        num(best(j)), num(rdps[j]), num(ceilingRdps(j).value), all[j].converted_from === "clears" ? "none" : String(xs[0].conv_players)], rotHref(j))); }
+        gearOf(j) ? `${gearOf(j).sets[0].stats.base_gcd.toFixed(2)} s` : "–", num(best(j)), num(rdps[j]), num(ceilingRdps(j).value), all[j].converted_from === "clears" ? "none" : String(xs[0].conv_players)], rotHref(j))); }
   }
   app.append(jobsCard(jobs), el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: i ? "num" : null }, h)))), el("tbody", {}, rows))));
@@ -1497,12 +1498,13 @@ function rdpsNote(job) {
     : `${jobName(job)} gives no raid buffs, so its expected rDPS is its nDPS.`);
 }
 
-// the job's 0:00-2:00 ceiling as rDPS, the window our pulls and the clears' cover: the best of its rotations' own
-// 0:00-2:00 searches (nDPS at the median conversion) plus our players' median 0:00-2:00 credit (the clears' for a job
-// none of ours plays). The band: the same rotation from the weakest to the strongest player's gear, at its GCD: each
-// player's own ceiling against the median's at their GCD (the median moved there at the substat price, so the share
-// carries over to the tick's GCD), for players with BAND_PULLS clean pulls or more (fewer leave their crit gain to
-// luck); for a job none of ours plays, the clears' conversions the rotation lists (dps_lo / dps_hi, to Palladion)
+// the job's 0:00-2:00 ceiling as rDPS, the window our pulls and the clears' cover, plus our players' median 0:00-2:00
+// credit for buffs given (the clears' for a job none of ours plays). With the gear model's result (tools/gear/ceiling.py,
+// DATA.rotations[job].bis): the rotation for 0:00-2:00 with the best-in-slot set at its best GCD (gear and rotation
+// optimized together), nDPS; the band one standard deviation either side from crit and direct-hit luck alone. Without
+// it, the older ceiling: the best of the rotations' own 0:00-2:00 searches at the median conversion, the band the same
+// rotation from the weakest to the strongest player's gear (each player's own ceiling against the median's at their
+// GCD, for players with BAND_PULLS clean pulls or more; for a job none of ours plays, the clears' dps_lo / dps_hi)
 const BAND_PULLS = 5;
 function ceilingRdps(job) {
   const all = rotsOf(job), rs = Object.values(all), x = rs.reduce((a, r) => r.ceiling_2min > a.ceiling_2min ? r : a);
@@ -1515,7 +1517,10 @@ function ceilingRdps(job) {
     }
   }
   const credit = given.length ? median(given) : c.given || 0, from = given.length ? "ours" : "clears";
-  const steady = [...own.values()].filter(o => o.n >= BAND_PULLS), use = steady.length ? steady : [...own.values()];
+  const b = (DATA.rotations[job] || {}).bis;
+  if (b) return { value: b.ceiling + credit, ndps: b.ceiling, credit, from, gcd: b.gcd, crit: null, bis: b,
+    lo: b.ceiling - b.sd + credit, hi: b.ceiling + b.sd + credit, bandFrom: "crit and direct-hit luck, one standard deviation" };
+  const steady =[...own.values()].filter(o => o.n >= BAND_PULLS), use = steady.length ? steady : [...own.values()];
   const ends = use.length ? use.map(o => x.ceiling_2min * o.ceiling / all[o.key].ceiling_2min)
     : [x.ceiling_2min * x.dps_lo / x.dps, x.ceiling_2min * x.dps_hi / x.dps];
   return { value: x.ceiling_2min + credit, ndps: x.ceiling_2min, credit, from, gcd: x.gcd, crit: x.crit,
@@ -1559,10 +1564,12 @@ function jobsCard(jobs) {
     ...(r.box ? [[num(r.box.med), "our median", "k-median"], [`${num(r.box.q1)}–${num(r.box.q3)}`, "middle half of our pulls", "k-box"],
       [`${num(r.s[0])}–${num(r.s[r.s.length - 1])}`, `all ${r.n} clean pulls, ${r.players} player${r.players > 1 ? "s" : ""}`, "k-whisker"]]
       : [r.n ? [`${r.n} pull${r.n > 1 ? "s" : ""}`, "of ours: too few for a box", "k-out"] : ["–", "none of our players plays it", "k-none"]]),
-    [num(r.top.value), `ceiling 0:00–2:00 (${r.top.gcd.toFixed(2)} s GCD${r.top.crit != null ? `, ${pct(r.top.crit)} crit` : ""}, median conversion)`, "k-ceil"],
+    [num(r.top.value), r.top.bis ? `ceiling 0:00–2:00 (best-in-slot gear at its best GCD, ${r.top.gcd.toFixed(2)} s${r.top.bis.hasted != null ? `, ${r.top.bis.hasted.toFixed(2)} s hasted` : ""})`
+      : `ceiling 0:00–2:00 (${r.top.gcd.toFixed(2)} s GCD${r.top.crit != null ? `, ${pct(r.top.crit)} crit` : ""}, median conversion)`, "k-ceil"],
     ...(r.top.credit ? [[num(r.top.ndps), "of it nDPS", "k-none"], [`+${num(r.top.credit)}`, `buffs given: ${r.top.from === "ours" ? "our" : "the clears'"} median over 0:00–2:00`, "k-none"]] : []),
     ...(r.box ? [[pct(r.box.med / r.top.value), "of it at our median", "k-none"]] : []),
-    [`${num(r.top.lo)}–${num(r.top.hi)}`, `ceiling across ${r.top.bandFrom}`, "k-band"],
+    r.top.bis ? [`±${num(r.top.bis.sd)}`, `${pct(r.top.bis.sd / r.top.bis.ceiling)}: ${r.top.bandFrom}`, "k-band"]
+      : [`${num(r.top.lo)}–${num(r.top.hi)}`, `ceiling across ${r.top.bandFrom}`, "k-band"],
     ...(r.clears.length ? [[num(r.clearsMean), `clears' mean, ${r.clears.length} player${r.clears.length > 1 ? "s" : ""}: ${r.clears.map(v => kfmt(v)).join(" · ")}`, "k-clear"]] : [["–", "no clears of this job in the benchmark", "k-clear"]])];
   const draw = width => {
     const vals = rows.flatMap(r => [...(r.box ? [r.box.lo, r.box.hi] : r.s), r.top.value, r.top.lo, r.top.hi, ...r.clears]);
@@ -1601,16 +1608,22 @@ function jobsCard(jobs) {
     }
     return svg;
   };
-  const table = () => tableOf(["Job", "Our median", "Middle half", "Clean pulls", "Ceiling 0:00–2:00", "Across gear", "Our median of it", "Clears' mean", "Clears' players"],
+  const anyBis = rows.some(r => r.top.bis), oldBand = rows.filter(r => !r.top.bis).map(r => jobName(r.job));
+  const table = () => tableOf(["Job", "Our median", "Middle half", "Clean pulls", "Ceiling 0:00–2:00", anyBis ? "Band" : "Across gear", "Our median of it", "Clears' mean", "Clears' players"],
     lanes.filter(l => !l.head).map(r => [jobName(r.job), r.box ? num(r.box.med) : "–", r.box ? `${num(r.box.q1)}–${num(r.box.q3)}` : "–",
-      `${r.n} (${r.players} player${r.players === 1 ? "" : "s"})`, num(r.top.value), `${num(r.top.lo)}–${num(r.top.hi)}`, r.box ? pct(r.box.med / r.top.value) : "–",
+      `${r.n} (${r.players} player${r.players === 1 ? "" : "s"})`, num(r.top.value),
+      r.top.bis ? `±${num(r.top.bis.sd)} (luck)` : `${num(r.top.lo)}–${num(r.top.hi)} (gear)`, r.box ? pct(r.box.med / r.top.value) : "–",
       r.clearsMean != null ? num(r.clearsMean) : "–", String(r.clears.length)]));
   const legend = [
     el("span", {}, el("i", { style: "width:16px;height:10px;border-radius:2px;background:var(--series)" }), "our players' clean pulls: middle half, median, whiskers"),
-    el("span", {}, el("i", { style: "width:2px;height:14px;background:var(--ink)" }), "ceiling 0:00–2:00"),
-    el("span", {}, el("i", { class: "ceil-band-key", style: "width:16px;height:12px;border-radius:2px" }), "ceiling across players' gear"),
+    el("span", {}, el("i", { style: "width:2px;height:14px;background:var(--ink)" }), anyBis ? "ceiling 0:00–2:00, best-in-slot gear" : "ceiling 0:00–2:00"),
+    el("span", {}, el("i", { class: "ceil-band-key", style: "width:16px;height:12px;border-radius:2px" }), anyBis ? "± one standard deviation of crit and direct-hit luck" : "ceiling across players' gear"),
     el("span", {}, el("i", { style: "width:8px;height:8px;border-radius:50%;background:var(--muted)" }), "clears' players")];
-  return card("Our players against the ceiling and the clears", info("All rDPS over 0:00–2:00, tinctures removed. Box: our players' clean pulls (no death or Damage Down before 2:00, no Echo): middle half, median, whiskers to 1.5 times the box's width, outliers as dots (one far off the scale is only in the tooltip). Tick: the ceiling, the optimizer's best rotation for 0:00–2:00 at our players' median conversion and best GCD, plus our median credit for buffs given. Band: that ceiling across our players' gear (5+ clean pulls each), moved to its GCD; for a job none of ours plays, the clears' gear. The ceiling is an expected value: a lucky pull beats it by a few percent, more with random procs (Dancer, Red Mage). Grey dots: the benchmark clears' players, each one's mean. Within a role, jobs go by our median; click one for its rotations."),
+  const about = anyBis
+    ? "Tick: the ceiling, the optimizer's best rotation for 0:00–2:00 with best-in-slot gear, materia and food at the GCD where gear and rotation together do best (the fight's sync: level 90, level-100 gear synced to item level 660), nDPS, plus our median credit for buffs given. Band: one standard deviation either side from crit and direct-hit luck alone, at that set's rates: about two pulls in three land inside it if played perfectly (random procs, Dancer's and Red Mage's, spread them further)."
+      + (oldBand.length ? ` Not yet computed for ${oldBand.join(", ")}: there, the older ceiling at our players' median conversion, its band across our players' gear.` : "")
+    : "Tick: the ceiling, the optimizer's best rotation for 0:00–2:00 at our players' median conversion and best GCD, plus our median credit for buffs given. Band: that ceiling across our players' gear (5+ clean pulls each), moved to its GCD; for a job none of ours plays, the clears' gear. The ceiling is an expected value: a lucky pull beats it by a few percent, more with random procs (Dancer, Red Mage).";
+  return card("Our players against the ceiling and the clears", info(`All rDPS over 0:00–2:00, tinctures removed. Box: our players' clean pulls (no death or Damage Down before 2:00, no Echo): middle half, median, whiskers to 1.5 times the box's width, outliers as dots (one far off the scale is only in the tooltip). ${about} Grey dots: the benchmark clears' players, each one's mean. Within a role, jobs go by our median; click one for its rotations.`),
     draw, table, legend);
 }
 
@@ -1623,11 +1636,12 @@ function rotationJobPage(code) {
   app.append(heading("h1", [jobIcon(job, "job-icon big"), `${jobName(job)} rotations`], `${ROT_ABOUT} Here: ${keys.length} GCD${keys.length > 1 ? "s" : ""}${crit ? " and crit rates" : ""}, Paradeigma I slot ${(fightOf(job) || {}).slot || "–"}, converted at ${convWho(job, n, code)} (${speedStat(job)} costs ~${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per 0.01 s of GCD).${offlineNote(job)}`),
     rotChallenges(job, fightOf(job)));
   if (fightOf(job)) app.append(fightCard(fightOf(job), null, challengeFocus(job, fightOf(job))));
+  if (gearOf(job)) app.append(gearCard(job), el("p", { class: "note" }, el("a", { href: gearHref(job) }, "Its DPS by GCD tier, and every job's gear →")));
   app.append(el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, ["GCD", ...(crit ? ["Crit"] : []), `Potency 0:00–${mmss(rs[keys[0]].window)}`, "Potency/s", "Expected nDPS", "Expected rDPS", "vs best", "Ceiling 0:00–2:00 (nDPS)", "Our players at it"]
       .map((h, i) => el("th", { class: i ? "num" : null }, h)))),
     el("tbody", {}, keys.map(k => { const x = rs[k];
-      return linkRow([`${x.gcd.toFixed(2)} s`, ...(crit ? [x.crit != null ? pct(x.crit) : "–"] : []), num(x.potency), num(x.potency / x.window, 1),
+      return linkRow([[`${x.gcd.toFixed(2)} s`, bisAt(job, x) ? el("span", { class: "tag", title: "the best-in-slot set's GCD" }, "BiS") : null], ...(crit ? [x.crit != null ? pct(x.crit) : "–"] : []), num(x.potency), num(x.potency / x.window, 1),
         num(x.dps), num(expectedRdps(job, x).value), x.dps === best ? "best" : signed(x.dps / best - 1, 1), num(x.ceiling_2min), String(x.players)], rotHref(job, k)); })))),
     rdpsNote(job));
 }
@@ -1648,6 +1662,7 @@ function rotationPage(code, key) {
   const plan = f ? [...new Map(f.runs.filter(w => w[6].startsWith("plan")).map(w => [w[4], w[6].replace("plan, ", "")])).entries()] : [];
   app.append(heading("h1", `${jobName(job)} at ${rotLabel(x)}`, ROT_ABOUT),
     el("p", { class: "lede" }, `0:00–${mmss(x.window)}, no raid buffs${x.crit != null ? `, ${pct(x.crit)} crit` : ""}, our strategy's runs${plan.length ? ` (${plan.map(([m, v]) => `${shortMech(m)} ${v}`).join(", ")})` : ""}. ${x.players ? `${x.players} of our players ${x.players > 1 ? "play" : "plays"} at this GCD.` : (DATA.rotations[job] || {}).converted_from === "clears" ? `At a GCD of the clears' ${code}s.` : "An extra GCD: none of our players is at it."}`));
+  if (bisAt(job, x)) app.append(el("p", { class: "note" }, "The best-in-slot set's GCD: ", el("a", { href: gearHref(job) }, "its gear →")));
   if (f) app.append(fightCard(f, rot));
   app.append(tiles([
     [el("span", {}, "Expected nDPS", help(`nDPS: your own damage, without others' buffs and without credit for yours. The median of ${convWho(job, x.conv_players, code)}, each moved to ${x.gcd.toFixed(2)} s (~${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per 0.01 s of ${speedStat(job)}); ${num(x.dps_lo)}–${num(x.dps_hi)} across them.${offlineNote(job)}`)), num(x.dps)],
@@ -1690,6 +1705,171 @@ function optCard(e) {
 
 const echoNote = r => r.echo ? el("p", { class: "warn" }, `The Echo was on in ${r.echo.pulls === r.echo.of ? "all" : `${r.echo.pulls} of`} ${r.echo.of} pulls (+20% damage, HP and healing). Their damage figures are left out: rDPS against clearers, damage by phase, opener damage, party DPS and boss HP checkpoints. Mistakes, deaths and rotation checks still count.`) : "";   // "" appends nothing (null would print "null")
 
+// ---------- best-in-slot gear (tools/gear/sheets.py, from bis.py --combined): the Gear pages and the rotations' job pages ----------
+// a set is drawn like the game's character window: weapon and armour on the left, accessories on the right, one line
+// per item (name, item level, materia, substats), its stats and food under it; hover an item for the full detail
+const gearOf = job => ((DATA.gear || {}).jobs || {})[job];
+const gearHref = job => `#/gear${job ? `/${JOB[job] || job}` : ""}`;
+const STAT = { wd: ["WD", "Weapon damage"], crit: ["CRT", "Critical hit"], dh: ["DH", "Direct hit rate"], det: ["DET", "Determination"],
+  sks: ["SKS", "Skill speed"], sps: ["SPS", "Spell speed"], str: ["STR", "Strength"], dex: ["DEX", "Dexterity"], int: ["INT", "Intelligence"] };
+const statOf = (g, k) => STAT[k === "main" ? g.main : k === "speed" ? g.speed : k];   // [short, long]
+const SUBS = ["crit", "dh", "det", "speed"];
+const SOURCE = { SavageRaid: ["Savage", "Savage raid"], Tome: ["Tome", "Tomestone"], AugTome: ["Aug. tome", "Augmented tomestone"],
+  Crafted: ["Crafted", "Crafted"], AugCrafted: ["Aug. crafted", "Augmented crafted"], AllianceRaid: ["Alliance", "Alliance raid"],
+  Relic: ["Relic", "Relic weapon"], Dungeon: ["Dungeon", "Dungeon"], ExtremeTrial: ["Extreme", "Extreme trial"], Criterion: ["Criterion", "Criterion dungeon"] };
+const sourceOf = i => SOURCE[i.source] || [i.source, i.source];
+const DOLL = [["weapon", "head", "body", "gloves", "legs", "feet"], ["ears", "neck", "wrists", "ring"]];
+const tierLabel = (g, t) => `${t[0].toFixed(2)} s${t.length > 1 ? ` (${t[1].toFixed(2)} s under ${g.haste || "haste"})` : ""}`;
+const itemIcon = (id, cls) => { const src = ((DATA.gear || {}).icons || {})[id];   // decorative: the name is beside it
+  return src ? el("img", { class: cls, src, alt: "", draggable: "false" }) : el("span", { class: `${cls} noicon` }); };
+// a set at this rotation's GCD (and hasted GCD, where its key has one); the rotations' GCDs are before a trait's haste
+const bisAt = (job, x) => { const g = gearOf(job);
+  return !!g && g.sets.some(s => Math.abs(s.stats.base_gcd - x.gcd) < 0.005 && (x.hasted == null || s.tier.length < 2 || Math.abs(s.tier[1] - x.hasted) < 0.005)); };
+const GEAR_ABOUT = "The best gear, materia and food per job for P12S phase 1, without tinctures. The fight syncs you to level 90: level-100 gear is cut to item level 660 (every stat at the slot's cap, materia off), level-90 gear keeps its stats and materia (the 665 weapons too). A set is worth what the job's whole-phase rotation deals with it, so gear and rotation are optimized together, one GCD tier at a time (tools/gear/bis.py). Relic: Mandervillous, or the synced Phantom Occultum for jobs without a Mandervillous weapon. GCD tiers within 0.4% of the best are ties (the rotation search moves that much between runs) and get a tab each.";
+
+function matChip(g, m) {   // a materia slot: its stat's colour and short name (IX marked); dashed where the item's cap cuts it
+  if (!m) return el("span", { class: "mat empty" }, "–");
+  return el("span", { class: `mat m-${m.stat}${m.added < m.value ? " cut" : ""}` }, statOf(g, m.stat)[0] + (m.grade === 9 ? " IX" : ""));
+}
+function gearTip(g, i) {
+  const rows = [[i.synced ? `${i.ilvl} → ${g.sync}` : String(i.ilvl), `item level, ${sourceOf(i)[1]}${i.synced ? ": synced, every stat cut to the slot's cap, materia off" : ""}`]];
+  for (const k of ["wd", "main", ...SUBS]) {
+    if (!i.final[k]) continue;
+    const add = i.final[k] - (i.base[k] || 0);
+    rows.push([num(i.final[k]), statOf(g, k)[1] + (add ? i.relic ? " (custom substat)" : ` (${i.base[k] || 0} + ${add} materia)` : "")]);
+  }
+  if (i.relic) rows.push(["custom", `substats: ${i.relic.large.map(k => statOf(g, k)[1]).join(" and ")} at the cap, ${statOf(g, i.relic.small)[1]} the small one`]);
+  for (const m of i.melds) rows.push(m ? [`+${m.added}`, `${m.name}${m.added < m.value ? `: the item's cap cuts it (${m.value} otherwise)` : ""}`, `mk m-${m.stat}`] : ["–", "empty materia slot"]);
+  return rows;
+}
+function gearRow(g, i) {
+  const subs = SUBS.filter(k => i.final[k]);
+  const mats = i.synced ? [el("span", { class: "gi-off" }, "materia off")]
+    : i.relic ? [el("span", { class: "gi-off" }, `custom ${i.relic.large.map(k => statOf(g, k)[0]).join("/")} +${statOf(g, i.relic.small)[0]}`)]
+    : i.melds.map(m => matChip(g, m));
+  const row = el("div", { class: "gear-item" }, itemIcon(i.id, `gear-icon r${i.rarity}`),
+    el("div", { class: "gi-body" },
+      el("div", { class: "gi-top" }, el("span", { class: `gi-name r${i.rarity}` }, i.name),
+        el("span", { class: "gi-ilvl" }, `${i.synced ? `${i.ilvl}→${g.sync}` : i.ilvl} · ${sourceOf(i)[0]}`)),
+      el("div", { class: "gi-sub" }, el("span", { class: "gi-mats" }, mats),
+        el("span", { class: "gi-stats" }, subs.map(k => `${statOf(g, k)[0]} ${i.final[k]}`).join(" · ")))));
+  hover(row, i.name, gearTip(g, i));
+  return row;
+}
+// one set: the two columns of items, the stat line, food and materia
+function gearSetView(g, x) {
+  const col = slots => el("div", { class: "gear-col" }, slots.flatMap(s => x.items.filter(i => i.slot === s)).map(i => gearRow(g, i)));
+  const st = x.stats, stat = (label, value, sub) => el("div", { class: "gs" }, el("div", { class: "l" }, label), el("div", { class: "v" }, value), sub ? el("div", { class: "s" }, sub) : null);
+  const food = el("span", { class: "gf" }, itemIcon(x.food.id, "gf-icon"), el("b", {}, x.food.name),
+    Object.entries(x.food.gains).map(([k, v]) => `+${v.got} ${statOf(g, k)[0]}${v.got >= v.max ? " (max)" : ""}`).join(" · "));
+  hover(food, x.food.name, Object.entries(x.food.gains).map(([k, v]) => [`+${v.got}`, `${statOf(g, k)[1]}: ${v.pct}% of gear and base, up to ${v.max}`]));
+  const mats = el("span", { class: "gf" }, el("span", { class: "muted" }, "Materia"),
+    x.materia.map(m => el("span", { class: "gf-m" }, `${m.n}×`, matChip(g, { stat: m.stat, grade: m.grade, added: 1, value: 1 }))));
+  if (x.materia.length) hover(mats, "Materia", x.materia.map(m => [`${m.n}×`, m.name, `mk m-${m.stat}`]));
+  return el("div", { class: "gear-set" },
+    el("div", { class: "gear-doll" }, col(DOLL[0]), col(DOLL[1])),
+    el("div", { class: "gear-stats" },
+      stat(statOf(g, "main")[0], num(st.main)), stat("WD", num(st.wd)),
+      stat("CRT", num(st.crit), `${pct(st.crit_rate, 1)} · ×${st.crit_dmg.toFixed(3)}`), stat("DH", num(st.dh), pct(st.dh_rate, 1)),
+      stat("DET", num(st.det), `×${st.det_multi.toFixed(3)}`),
+      stat(statOf(g, "speed")[0], num(st.speed), `${st.gcd.toFixed(2)} s GCD${st.hasted != null ? ` · ${st.hasted.toFixed(2)} s ${g.haste || ""}` : st.base_gcd !== st.gcd ? ` · ${st.base_gcd.toFixed(2)} s before traits` : ""}`)),
+    el("div", { class: "gear-foot" }, food, x.materia.length ? mats : null));
+}
+// the gear card: a tab per set (ties), the set, and its table
+function gearCard(job) {
+  const g = gearOf(job);
+  if (!g) return null;
+  let cur = 0;
+  const holder = el("div", {});
+  const table = () => { const x = g.sets[cur];
+    return tableOf(["Slot", "Item", "Item level", "Source", "Materia", statOf(g, "main")[0], "WD", ...SUBS.map(k => statOf(g, k)[0])],
+      x.items.map(i => [i.slot, i.name, i.synced ? `${i.ilvl} → ${g.sync}` : String(i.ilvl), sourceOf(i)[1],
+        i.synced ? "off (synced)" : i.relic ? `custom ${i.relic.large.map(k => statOf(g, k)[0]).join("/")} +${statOf(g, i.relic.small)[0]}`
+          : i.melds.map(m => m ? `${statOf(g, m.stat)[0]} ${m.grade === 10 ? "X" : "IX"}${m.added < m.value ? ` (+${m.added})` : ""}` : "–").join(", "),
+        ...["main", "wd", ...SUBS].map(k => i.final[k] ? num(i.final[k]) : "–")]), [2, 5, 6, 7, 8, 9, 10]); };
+  const show = k => { cur = k;
+    holder.replaceChildren(el("p", { class: "summary" }, `${tierLabel(g, g.sets[k].tier)} GCD: ${k ? `${signed(g.sets[k].rel, 2)} against the best, a tie` : g.sets.length > 1 ? "the best tier searched" : "the best of the tiers searched"}.`),
+      gearSetView(g, g.sets[k]));
+    if (tabs) [...tabs.children].forEach((b, j) => { b.classList.toggle("on", j === k); b.setAttribute("aria-selected", String(j === k)); });
+    const t = holder.closest("figure") && holder.closest("figure").querySelector(".table-wrap");
+    if (t && t.firstChild) t.replaceChildren(table()); };
+  const tabs = g.sets.length > 1 ? el("div", { class: "tabs", role: "tablist", "aria-label": "Sets" }, g.sets.map((x, k) =>
+    el("button", { type: "button", role: "tab", on: { click: () => show(k) } }, `${tierLabel(g, x.tier)}${k ? ` · ${signed(x.rel, 2)}` : " · best"}`))) : null;
+  show(0);
+  const f = card("Best-in-slot gear", info(`${GEAR_ABOUT} Hover an item for its stats, materia and sync. Materia chips: the stat each meld adds (dashed: the item's cap cuts it).`),
+    () => holder, table);
+  if (tabs) f.insertBefore(tabs, f.querySelector(".chart"));   // above the set and its table alike
+  return f;
+}
+// DPS per GCD tier relative to the best set: the potency fitted over a grid of GCDs (every tier) and the tiers searched
+// on their own; whole phase, no raid buffs, the job's own constant multipliers left out (compare within the job only)
+function tierCard(job) {
+  const g = gearOf(job), best = g.sets[0].dps;
+  const pts = g.tiers.map(t => ({ t, x: t.tier[0], f: t.fitted != null ? t.fitted / best - 1 : null, s: t.searched != null ? t.searched / best - 1 : null }));
+  const draw = width => {
+    const H = 210, L = 52, R = 16, T = 30, B = 28, w = width - L - R, h = H - T - B;
+    const xs = pts.map(p => p.x), ys = pts.flatMap(p => [p.f, p.s]).filter(v => v != null);
+    const x0 = Math.min(...xs) - 0.01, x1 = Math.max(...xs) + 0.01, step = 0.005;
+    const y0 = Math.floor(Math.min(...ys, -g.tie) / step) * step, y1 = Math.max(0.001, Math.ceil(Math.max(...ys) / step) * step);
+    const X = v => L + (v - x0) / (x1 - x0) * w, Y = v => T + (y1 - v) / (y1 - y0) * h;
+    const svg = sv("svg", { viewBox: `0 0 ${width} ${H}`, role: "img", "aria-label": "DPS per GCD tier against the best set" });
+    svg.append(sv("rect", { class: "ceil-band", x: L, y: Y(0), width: w, height: Y(-g.tie) - Y(0) }));   // the ties
+    for (let v = y0; v <= y1 + 1e-9; v += step)
+      svg.append(sv("line", { class: "gridline", x1: L, x2: L + w, y1: Y(v), y2: Y(v) }), sv("text", { x: L - 6, y: Y(v) + 4, "text-anchor": "end" }, signed(v, 1)));
+    const xstep = (x1 - x0) / 0.05 > Math.max(2, w / 70) ? 0.1 : 0.05;
+    for (let v = Math.ceil(x0 / xstep) * xstep; v <= x1; v += xstep) svg.append(sv("text", { x: X(v), y: H - 8, "text-anchor": "middle" }, `${v.toFixed(2)} s`));
+    for (const p of pts) {
+      const hit = sv("circle", { class: "hit", cx: X(p.x), cy: Y(p.s ?? p.f), r: 9 });
+      hover(hit, `${tierLabel(g, p.t.tier)} GCD`, [...(p.s != null ? [[signed(p.s, 2), `searched: ${num(p.t.searched)} DPS`, "k-tier-s"]] : []),
+        ...(p.f != null ? [[signed(p.f, 2), `fitted: ${num(p.t.fitted)} DPS`, "k-tier-f"]] : [])]);
+      svg.append(hit);
+    }
+    for (const p of pts) if (p.f != null) svg.append(sv("circle", { class: "tier-f", cx: X(p.x), cy: Y(p.f), r: 4 }));
+    for (const p of pts) if (p.s != null) svg.append(sv("circle", { class: "tier-s", cx: X(p.x), cy: Y(p.s), r: 5.5 }));
+    const b = pts.find(p => p.s === 0);
+    if (b) svg.append(sv("text", { class: "lbl", x: X(b.x), y: Y(0) - 10, "text-anchor": X(b.x) > L + w - 30 ? "end" : "middle" }, "best"));
+    return svg;
+  };
+  return card("DPS by GCD tier", info("Each GCD tier's best set with its own rotation, against the best set, over the whole phase without raid buffs. Grey: the rotation's potency fitted over a grid of GCDs (every tier); blue: the tiers whose rotation was searched at their own set's GCD, speed and rates. The band: within 0.4% of the best, the search's noise, so ties. On Samurai, Viper and Black Mage a GCD can come with two hasted GCDs (hover for both)."),
+    draw, () => tableOf(["GCD", "Fitted DPS", "Searched DPS", "Against the best"], pts.map(p => [tierLabel(g, p.t.tier),
+      p.t.fitted != null ? num(p.t.fitted) : "–", p.t.searched != null ? num(p.t.searched) : "–", signed(p.s ?? p.f, 2)])),
+    [el("span", {}, el("i", { style: "width:8px;height:8px;border-radius:50%;background:var(--muted)" }), "fitted"),
+     el("span", {}, el("i", { style: "width:10px;height:10px;border-radius:50%;background:var(--series)" }), "searched"),
+     el("span", {}, el("i", { class: "ceil-band-key", style: "width:16px;height:10px;border-radius:2px" }), `ties: within ${pct(g.tie, 1)} of the best`)]);
+}
+
+function gearPage() {
+  crumbs([["Raid days", "#/"], ["Gear", null]]);
+  const app = document.getElementById("app"), all = (DATA.gear || {}).jobs || {};
+  app.append(heading("h1", "Best-in-slot gear", GEAR_ABOUT),
+    el("p", { class: "lede" }, "Each job's best gear, materia and food for P12S P1, found together with its rotation, grouped by role. Pick a job for its set."));
+  const jobs = Object.keys(all).sort((a, c) => jobName(a).localeCompare(jobName(c)));
+  if (!jobs.length) return app.append(el("p", { class: "empty" }, "No gear sets yet: run tools/gear/bis.py --job <job> --combined, then build_site.py."));
+  const head = ["Job", "GCD", "Weapon", "Food", "Crit", "Direct hit", "Determination", "Speed", "Sets"], rows = [];
+  for (const role of ROLES) {
+    const js = jobs.filter(j => (all[j].role || "Melee") === role);
+    if (!js.length) continue;
+    rows.push(el("tr", { class: "role" }, el("td", { colspan: head.length }, ROT_ROLES[role] || role)));
+    for (const j of js) { const g = all[j], x = g.sets[0], st = x.stats, wpn = x.items.find(i => i.slot === "weapon");
+      rows.push(linkRow([[jobIcon(j), jobName(j)], tierLabel(g, x.tier), wpn ? wpn.name : "–", x.food.name,
+        `${num(st.crit)} (${pct(st.crit_rate, 1)})`, `${num(st.dh)} (${pct(st.dh_rate, 1)})`, num(st.det), `${statOf(g, "speed")[0]} ${num(st.speed)}`,
+        String(g.sets.length)], gearHref(j), 4)); }
+  }
+  app.append(el("div", { class: "table-wrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: i >= 4 ? "num" : null }, h)))), el("tbody", {}, rows))));
+}
+
+function gearJobPage(code) {
+  const job = jobOf(code), g = gearOf(job);
+  if (!g) return notFound();
+  crumbs([["Raid days", "#/"], ["Gear", gearHref()], [code, null]]);
+  const app = document.getElementById("app");
+  app.append(heading("h1", [jobIcon(job, "job-icon big"), `${jobName(job)} best-in-slot gear`], GEAR_ABOUT),
+    el("p", { class: "lede" }, `Best at ${tierLabel(g, g.sets[0].tier)} GCD${g.sets.length > 1 ? `, tied with ${g.sets.length - 1} more tier${g.sets.length > 2 ? "s" : ""}` : ""}. `,
+      rotsOf(job) ? el("a", { href: rotHref(job) }, `${jobName(job)} rotations →`) : null),
+    gearCard(job), el("div", { class: "grid wide" }, tierCard(job)));
+}
+
 function notFound() {
   crumbs([["Raid days", "#/"], ["Not found", null]]);
   document.getElementById("app").append(el("h1", {}, "Not found"), el("p", { class: "lede" }, "That day, group, player or rotation is not in the data."), el("a", { href: "#/" }, "Back to the raid days"));
@@ -1702,10 +1882,12 @@ function route(keepScroll = false) {   // keepScroll: redraw the same page in pl
   const y = scrollY;
   const app = document.getElementById("app"); app.replaceChildren();
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-  if (!DATA || (!reports().length && parts[0] !== "rotations")) { app.append(el("h1", {}, "No data yet"), el("p", { class: "lede" }, "Run build_site.py with some report links, then reload.")); return; }
+  if (!DATA || (!reports().length && parts[0] !== "rotations" && parts[0] !== "gear")) { app.append(el("h1", {}, "No data yet"), el("p", { class: "lede" }, "Run build_site.py with some report links, then reload.")); return; }
   if (parts[0] === "rotations" && parts.length === 1) rotationsPage();
   else if (parts[0] === "rotations" && parts.length === 2) rotationJobPage(parts[1]);
   else if (parts[0] === "rotations" && parts.length === 3) rotationPage(parts[1], parts[2]);
+  else if (parts[0] === "gear" && parts.length === 1) gearPage();
+  else if (parts[0] === "gear" && parts.length === 2) gearJobPage(parts[1]);
   else if (parts[0] === "day" && parts.length === 2) dayPage(parts[1]);
   else if (parts[0] === "day" && parts.length === 3) groupPage(parts[1], parts[2]);
   else if (parts[0] === "day" && parts.length === 4 && parts[3] === "pulls") pullsPage(parts[1], parts[2]);

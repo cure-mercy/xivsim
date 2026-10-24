@@ -85,9 +85,9 @@ MELEE_ACTIONS = {"Enchanted Riposte", "Enchanted Zwerchhau", "Enchanted Redouble
                  "Zwerchhau", "Redoublement", "Reprise"}     # 3 y (the enchanted three reach 25 y under Manafication)
 NEXT = {"r": "Enchanted Zwerchhau", "z": "Enchanted Redoublement", "f": "Scorch", "s": "Resolution"}
 SPEED = 1.0                                     # spell speed factor on casts and GCDs: 2.50 s, our players and the clears
-# Older kits halved a colour's gains while it led by more than 30. The logs can't tell whether that still holds
-# (players pass 30 in 22 of ~10,000 gains, legal either way) and the searched rotations never get there, so it's off.
-IMBALANCE_HALVES = False
+# A colour's gains halve while it leads by more than 30 (tested in game, 2026-10-23: rdm-in-game-tests.md, test 2; the
+# logs couldn't tell: players pass 30 in 22 of ~10,000 gains). The searched rotations never get there.
+IMBALANCE_HALVES = True
 
 
 class State:
@@ -317,8 +317,11 @@ def do_gcd(s, fight, name, ev=False):
     if name in COST:
         if name in ENCHANTED and s.ms > 0 and s.ms_until > snap: s.ms -= 1
         else: s.black -= COST[name]; s.white -= COST[name]
+    # Mana Stacks (the gauge's): each enchanted melee combo action adds one, Verflare / Verholy spend them, any other GCD
+    # clears them (oGCDs and Sprint don't), and they don't lapse (in game, 2026-10-23: test 3). A Riposte doesn't reset
+    # them: a clear's Riposte -> Zwerchhau -> Manafication -> Riposte -> Verholy is legal
     if name in ENCHANTED: s.stacks = min(3, s.stacks + 1)
-    if name in ("Verflare", "Verholy"): s.stacks = 0
+    else: s.stacks = 0
     if name in ("Enchanted Riposte", "Riposte"): s.combo, s.combo_until = "r", snap + COMBO_S
     elif name in ("Enchanted Zwerchhau", "Zwerchhau") and combo: s.combo, s.combo_until = "z", snap + COMBO_S
     elif name in ("Verflare", "Verholy"): s.combo, s.combo_until = "f", snap + COMBO_S
@@ -423,9 +426,8 @@ def candidates(c, fight, now):
     """The GCDs worth trying next. A combo or the finishers go on (their next step is all that is offered while it can
     be cast); under Dualcast only the 5 s spells (anything else wastes it); Verthunder / Veraero III otherwise only
     when Acceleration or Swiftcast makes them instant; the melee combo only whole (Magicked Swordplay or 50 of each
-    mana, no stacks left over: every logged finisher but four follows one unbroken combo), and only if its three hits
-    stay clear of the stretches out of reach; Enchanted Reprise only in a move window. Stacks a broken combo left over
-    (a replay's) are topped up with Enchanted Riposte."""
+    mana: every logged finisher but four follows one unbroken combo; any other GCD clears the stacks), and only if its three hits stay clear of the stretches out of reach;
+    Enchanted Reprise only in a move window."""
     nxt = NEXT.get(c.combo) if c.combo_until > now else None
     if nxt and gcd_legal(c, nxt, now, True) and not (needs_reach(c, nxt, now) and not reach(c, fight, now, commit=False)):
         return [nxt]
@@ -433,10 +435,9 @@ def candidates(c, fight, now):
     if c.dc > now: return ["Verthunder III", "Veraero III"]
     out = ["Jolt III"] + [g for g in ("Verfire", "Verstone") if gcd_legal(c, g, now, True)]
     if c.accel > now or c.swift > now or c.first: out += ["Verthunder III", "Veraero III"]
-    whole = c.stacks == 0 and ((c.ms == 3 and c.ms_until > now + 4) or min(c.black, c.white) >= 50 - 1e-6)
+    whole = (c.ms == 3 and c.ms_until > now + 4) or min(c.black, c.white) >= 50 - 1e-6
     clear = c.mana_until > now + 3.0 or not any(w.lo < now + 3.0 + 1e-9 and w.hi > now for w in fight.away[c.ai:])
-    if (whole and clear) or (0 < c.stacks < 3 and payable(c, "Enchanted Riposte", now)):
-        out.append("Enchanted Riposte")
+    if whole and clear: out.append("Enchanted Riposte")
     if payable(c, "Enchanted Reprise", now) and open_move(c, fight, now): out.append("Enchanted Reprise")
     return out
 

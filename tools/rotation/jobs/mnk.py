@@ -31,7 +31,7 @@ windows only True North gets it. Reach: every weaponskill and The Forbidden Chak
 meditations and Form Shift work from anywhere. See jobs/rpr.py for the away windows.
 """
 import itertools, math
-from engine import ANIM_LOCK, BASE_GCD, settle
+from engine import ANIM_LOCK, BASE_GCD, recast, settle
 
 POTENCY = {"Bootshine": (220, 420), "True Strike": (300, 500), "Snap Punch": (270, 420),      # (plain, with Fury)
            "Dragon Kick": 280, "Twin Snakes": 380, "Demolish": 320,
@@ -181,6 +181,7 @@ def hit(s, fight, at, potency, name, crit=False):
     land = at + DELAY.get(name, 0.6)
     if 0 <= land < fight.until and fight.targetable(land):
         d = potency * mult(s, fight, at)
+        if crit: d *= fight.sure(at)                        # raid crit buffs turn into damage on a sure crit
         s.dmg += d
         if crit: s.critp += d
 
@@ -271,9 +272,9 @@ def do_gcd(s, fight, name):
     if harm and (not fight.targetable(start) or fight.next_down(start) <= start): return None
     if name in MELEE_ACTIONS and not reach(s, fight, start): return None
     s.first = False
-    recast = (MEDITATION_RECAST if name in MEDITATION else SSS_RECAST * SPEED if name == "Six-Sided Star"
-              else BASE_GCD * SPEED * HASTE)
-    snap, free, nxt = start, start + ANIM_LOCK, start + recast
+    rc = (MEDITATION_RECAST if name in MEDITATION else recast(SSS_RECAST, SPEED) if name == "Six-Sided Star"
+          else recast(BASE_GCD, SPEED, HASTE))
+    snap, free, nxt = start, start + ANIM_LOCK, start + rc
     crit = False
     if harm:
         p, crit = potency(s, fight, name, snap)

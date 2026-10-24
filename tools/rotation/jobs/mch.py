@@ -64,7 +64,15 @@ OGCD_ORDER = ["Tincture", "Barrel Stabilizer", "Wildfire", "Hypercharge", "Reass
               "Gauss Round", "Ricochet"]
 AUTO_CRIT = set(TOOLS)                          # where the logs' Reassembles go: dps.py measures the sure gain on them
 CRIT_RATE, CRIT_DMG, DH_RATE, DH_DMG = 0.25, 1.60, 0.30, 1.25
-SURE_W = CRIT_DMG * DH_DMG / ((1 + CRIT_RATE * (CRIT_DMG - 1)) * (1 + DH_RATE * (DH_DMG - 1)))
+
+
+def derive():
+    """SURE_W from the rates (engine.configure calls it again after setting them: the gear model's set's own)."""
+    global SURE_W
+    SURE_W = CRIT_DMG * DH_DMG / ((1 + CRIT_RATE * (CRIT_DMG - 1)) * (1 + DH_RATE * (DH_DMG - 1)))
+
+
+derive()
 SPEED = 0.98                                    # skill speed factor: a 2.45 s GCD (our Machinists: 2.41-2.50)
 LOG_PREPULL = None                              # a replay: when the log's pre-pull Reassembled fell off (prepare)
 
@@ -251,6 +259,7 @@ def do_gcd(s, fight, name):
     t = land(s, fight, start, name)
     if t is not None:
         d = p * fight.mult(start, s.pot_at)
+        if s.ra_until > start: d *= fight.sure(start, dh=True)     # raid crit / direct-hit buffs as damage on a sure hit
         s.dmg += d
         if s.ra_until > start: s.critp += d
         wildfire(s, fight, t)

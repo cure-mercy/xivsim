@@ -98,6 +98,29 @@ def _asset(path):
     return "data:image/png;base64," + base64.b64encode(f.read_bytes()).decode()
 
 
+ITEM = "https://v2.xivapi.com/api/sheet/Item?rows={}&fields=Icon"
+
+
+def item_icons(ids):
+    """{item id: PNG data URI} for items (gear, materia, food), the game's 40 px icons (the gear cards draw them at
+    32-36 px); ids without an icon are left out. Icon paths are cached in .cache/icons/items.json."""
+    ICONS.mkdir(parents=True, exist_ok=True)
+    pf = ICONS / "items.json"
+    paths = json.loads(pf.read_text()) if pf.exists() else {}
+    want = sorted(str(i) for i in ids if str(i) not in paths)
+    for k in range(0, len(want), 100):
+        try:
+            for r in _get(ITEM.format(",".join(want[k:k + 100]))):
+                paths[str(r["row_id"])] = ((r["fields"] or {}).get("Icon") or {}).get("path")
+        except Exception: break   # XIVAPI down: try again next time
+    pf.write_text(json.dumps(paths, indent=1))
+    out = {}
+    for i in ids:
+        uri = paths.get(str(i)) and _asset(paths[str(i)])
+        if uri: out[str(i)] = uri
+    return out
+
+
 # the jobs' ClassJob rows; the game's job icon (the role-coloured frame of the party list) is icon 062100 + row
 CLASSJOB = {"PLD": 19, "MNK": 20, "WAR": 21, "DRG": 22, "BRD": 23, "WHM": 24, "BLM": 25, "SMN": 27, "SCH": 28, "NIN": 30,
             "MCH": 31, "DRK": 32, "AST": 33, "SAM": 34, "RDM": 35, "GNB": 37, "DNC": 38, "RPR": 39, "SGE": 40, "VPR": 41,

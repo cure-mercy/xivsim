@@ -6,14 +6,21 @@ clears over whole pulls: plain hits match the potencies within ~2%, cast times w
 replays as legal (calibrate.py).
 """
 import itertools, math
-from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, gcd_times, move_credit, open_move, settle, stand
+from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, gcd_times, move_credit, open_move, recast, settle, stand
 
 # Fire III and Blizzard III were raised from 280 to 290 in patch 7.2 (its notes; the job guide and the clears agree)
 POTENCY = {"Fire III": 290, "Fire IV": 300, "Despair": 350, "Paradox": 540, "Blizzard III": 290, "Blizzard IV": 300,
            "Thunder III": 120, "Xenoglossy": 890, "Umbral Soul": 0}
-# Thunder III's DoT: 50 potency for 27 s by the tooltip; ticks land for 63 relative to Xenoglossy 890 in the logs (DoTs
-# scale with spell speed and are computed differently), first tick ~1.5 s after the hit on average
-DOT_TICK, DOT_TICKS, DOT_FIRST = 63, 9, 1.5
+# A DoT tick's plain potency at base speed is its tooltip's 50 (Thunder III: 120, then 50 a tick for 27 s); dot_tick()
+# puts on the speed bonus the game gives DoTs (1 + floor(130 x (speed stat - 400) / 1900) / 1000 = 2 - SPEED). Read
+# from FFLogs' own 100% tick (T, expectedAmount), our players' and the clears' ticks deal the tooltip x0.99
+# (scratch/gear/dot_t.py, 2026-10-23).
+# The first tick lands ~1.5 s after the hit on average.
+DOT_BASE, DOT_TICKS, DOT_FIRST = 50, 9, 1.5
+
+
+def dot_tick():
+    return DOT_BASE * (2 - SPEED)
 # seconds from a spell resolving to its damage landing (animation), measured in our logs; buffs snapshot on resolution
 DELAY = {"Fire III": 1.29, "Fire IV": 1.16, "Despair": 0.49, "Paradox": 0.62, "Blizzard III": 0.89, "Blizzard IV": 1.16,
          "Thunder III": 1.02, "Xenoglossy": 0.62}
@@ -152,9 +159,9 @@ def dot(s, fight, at):
     if s.dot:
         a, m = s.dot
         lost = ticks(fight, a, since=at)
-        s.dmg -= lost * DOT_TICK * m; s.dotp -= lost * DOT_TICK * m
+        s.dmg -= lost * dot_tick() * m; s.dotp -= lost * dot_tick() * m
     m = fight.mult(at, s.pot_at)
-    gain = ticks(fight, at) * DOT_TICK * m
+    gain = ticks(fight, at) * dot_tick() * m
     s.dmg += gain; s.dotp += gain
     s.dot = (at, m)
 
@@ -166,8 +173,9 @@ def in_ll(s, at):
     return s.ll > at and s.spot == s.ll_spot
 
 
-def speed(s, at, ll=None):
-    return SPEED * (LL_SPEED if (in_ll(s, at) if ll is None else ll) else 1.0)
+def timed(s, base, at, ll=None):
+    """A cast or recast of `base` seconds after spell speed and Ley Lines' haste, as the game rounds them."""
+    return recast(base, SPEED, LL_SPEED if (in_ll(s, at) if ll is None else ll) else 1.0)
 
 
 def cast_time(s, name, at, ll=None):
@@ -177,7 +185,7 @@ def cast_time(s, name, at, ll=None):
     if name == "Fire III" and s.fs > at: return 0.0, "fs"
     if s.swift > at: return 0.0, "swift"
     if s.triple > 0 and s.triple_until > at: return 0.0, "triple"
-    c = CAST[name] * speed(s, at, ll)
+    c = timed(s, CAST[name], at, ll)
     if (name == "Fire III" and s.el == -3) or (name == "Blizzard III" and s.el == 3): c *= 0.5
     return c, None
 
@@ -225,7 +233,7 @@ def do_gcd(s, fight, name):
             ll = False; cast, used = cast_time(s, name, start, ll)
         if stand(s, fight, start, start + cast - SLIDE) is None: return None
     if harm and fight.next_down(start) <= start + max(cast - RESOLVE, 0): return None   # the boss leaves mid-cast
-    snap, free, nxt = gcd_times(start, cast, BASE_GCD * speed(s, start, ll))
+    snap, free, nxt = gcd_times(start, cast, timed(s, BASE_GCD, start, ll))
     if used == "swift": s.swift = -1.0
     elif used == "triple": s.triple -= 1
     elif used == "fs": s.fs = -1.0

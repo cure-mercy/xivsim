@@ -43,7 +43,7 @@ needs the player beside Athena (assumed: their 6-10 y ranges may reach a little 
 Out of reach, Hissatsu: Yaten buys an Enhanced Enpi.
 """
 import itertools, math
-from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, gcd_times, settle, stand
+from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, gcd_times, recast, settle, stand
 
 # level-90 potencies from the logs (see above). (out of combo, in combo) for combo actions.
 POTENCY = {"Hakaze": 200, "Jinpu": (120, 280), "Shifu": (120, 280), "Gekko": (110, 320), "Kasha": (110, 320),
@@ -53,8 +53,16 @@ POTENCY = {"Hakaze": 200, "Jinpu": (120, 280), "Shifu": (120, 280), "Gekko": (11
            "Tenka Goken": 300, "Kaeshi: Goken": 300, "Hissatsu: Kyuten": 100, "Hissatsu: Guren": 400}   # AoE: replays only
 POSITIONAL = 50
 POSITIONALS = ("Gekko", "Kasha")
-# Higanbana's DoT: ~50 a tick in the logs (48-52 per player, relative to Shinten), 60 s
-DOT, DOT_S = 50, 60.0
+# A DoT tick's plain potency at base speed is its tooltip's 45 (60 s); dot_tick() puts on the speed bonus the game
+# gives DoTs (1 + floor(130 x (speed stat - 400) / 1900) / 1000 = 2 - SPEED). Read from FFLogs' own 100% tick (T,
+# expectedAmount), our players' and the clears' ticks deal the tooltip x0.98 (scratch/gear/dot_t.py, 2026-10-23).
+DOT_BASE, DOT_S = 45, 60.0
+
+
+def dot_tick():
+    return DOT_BASE * (2 - SPEED)
+
+
 DOT_PHASE = 1.5                                 # server ticks land at DOT_PHASE + 3k seconds
 AUTO = 80                                       # auto-attacks: 80 potency (logs, scaled to Shinten)
 AUTO_DELAY, AUTO_DELAY_FUKA = 2.66, 2.32        # the logs' median spacing without and with Fuka
@@ -103,10 +111,18 @@ AUTO_CRIT = {"Midare Setsugekka", "Kaeshi: Setsugekka", "Ogi Namikiri", "Kaeshi:
 # trading it against other hits is fair; s.dmg stays plain potency and dps.py converts sure crits (critp) apart. (Not
 # named CRIT: dps.py would then search each player at their own crit rate, which only Monk's chakra needs.)
 CRIT_RATE, CRIT_DMG = 0.25, 1.60
-SURE_W = CRIT_DMG / (1 + CRIT_RATE * (CRIT_DMG - 1))
+
+
+def derive():
+    """SURE_W from the rates (engine.configure calls it again after setting them: the gear model's set's own)."""
+    global SURE_W
+    SURE_W = CRIT_DMG / (1 + CRIT_RATE * (CRIT_DMG - 1))
+
+
+derive()
 LOG_OPENER = None                               # a replay: (Meikyo stacks, until, charges) from the log (prepare)
-SPEED = 0.96                                    # skill speed factor on the GCD: 2.40 s (2.09 s under Fuka), our four
-                                                # Samurais' and the benchmark clears' median
+SPEED = 0.962                                   # skill speed factor on the GCD: 2.40 s (2.09 s under Fuka), our four
+                                                # Samurais' and the benchmark clears' median (0.960 gives 2.08 under Fuka)
 MELEE = True                                    # p12s.py gives it a melee's windows (M1 / M2)
 
 
@@ -216,6 +232,7 @@ def hit(s, fight, at, potency, name):
     land = at + DELAY.get(name, 0.6)
     if 0 <= land < fight.until and fight.targetable(land):
         d = potency * mult(s, fight, at)
+        if name in AUTO_CRIT: d *= fight.sure(at)          # raid crit buffs turn into damage on a sure crit
         s.dmg += d
         if name in AUTO_CRIT: s.critp += d
 
@@ -235,9 +252,9 @@ def apply_dot(s, fight, land, m):
     """Higanbana's DoT on the boss at `land` with multiplier m, replacing the old one (its remaining ticks are lost).
     Its damage is counted now."""
     if s.dot and s.dot[0] + DOT_S > land:
-        lost = ticks(fight, land, s.dot[0] + DOT_S) * DOT * s.dot[1]
+        lost = ticks(fight, land, s.dot[0] + DOT_S) * dot_tick() * s.dot[1]
         s.dmg -= lost; s.dotp -= lost
-    g = ticks(fight, land, land + DOT_S) * DOT * m
+    g = ticks(fight, land, land + DOT_S) * dot_tick() * m
     s.dmg += g; s.dotp += g
     s.dot = (land, m)
 
@@ -326,7 +343,7 @@ def do_gcd(s, fight, name):
     if name in MELEE_ACTIONS and not reach(s, fight, start): return None
     s.first = False
     haste = FUKA if s.fuka_until > start else 1.0     # the GCD granting Fuka isn't hasted by it
-    snap, free, nxt = gcd_times(start, cast, BASE_GCD * SPEED * haste)
+    snap, free, nxt = gcd_times(start, cast, recast(BASE_GCD, SPEED, haste))
     combo = in_combo(s, name, snap)
     m = mult(s, fight, snap)
     hit(s, fight, snap, potency(s, fight, name, snap), name)
@@ -433,7 +450,7 @@ def do_meditate(s, fight, ticks, start=None):
     s.med = min(3, s.med + ticks)
     gain(s, MEDITATE_KENKI * ticks)
     s.t = max(end, start + ANIM_LOCK)
-    s.gcd = max(s.t, start + BASE_GCD * SPEED * (FUKA if s.fuka_until > start else 1.0))
+    s.gcd = max(s.t, start + recast(BASE_GCD, SPEED, FUKA if s.fuka_until > start else 1.0))
     s.log(start, "Meditate", gauge(s, f"stand {end - start:.2f}s"))     # check.py counts it as standing
     return s
 

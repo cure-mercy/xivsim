@@ -97,6 +97,7 @@ appears (the page only asks when `data.json` is missing and `data.enc.json` is t
 | Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group (rows named by mechanic, see below) |
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
 | Rotations | The optimizer's rotations (`#/rotations`, linked in the header): a chart of our players' clean-pull rDPS per job against the ceiling and the clears' players, and a table of the jobs it covers, both grouped by role (melee, physical ranged, magical ranged) with job icons; a job's GCDs with each rotation's potency, potency per second and expected DPS, under what P1 asks of the job with our strategy (`ROT_CHALLENGES` in `site/app.js`, from the optimizer's findings: update it when a job's rotation or our strategy changes) and the fight timeline without a rotation, on which hovering or tapping a point marks the stretches it is about; a GCD's fight timeline (mechanics and the runs our strategy needs), rotation, casts per skill and resources wasted (see Rotation ceiling) |
+| Gear | The best-in-slot sets (`#/gear`, linked in the header): a table of each job's set (GCD, weapon, food, substats), and per job the set drawn like the game's character window (items with their item level, source, materia and substats; hover for the full detail; the stats, food and materia under them; a tab per tied GCD tier) and its DPS per GCD tier. The same set card sits on the job's Rotations page; a GCD that is the set's carries a BiS tag (see Best-in-slot gear) |
 | Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull, with the rotation ceiling for jobs the optimizer covers and how far their pulls are from it, linking to its rotation (see below); every mistake with its pull and time; the player across raid days (mistakes per pull and per minute in pulls) |
 
 The player page's "What their mistakes cost" card (boss HP lost to deaths they caused, by cause) is hidden for now: set `SHOW_MISTAKE_COST` in `site/app.js` to `true` to bring it back.
@@ -199,10 +200,16 @@ clears). A job's page has the same column for each GCD, the credit being the job
 table also gives the 0:00-2:00 ceiling in rDPS: the best of the job's rotations' own 0:00-2:00 searches (`ceiling_2min`,
 at the median conversion) plus our players' median 0:00-2:00 credit, no scaling needed.
 Above the table, a chart, all of it over 0:00-2:00: a box over our players' clean rDPS (whiskers to 1.5 times the box's
-width), a tick at that 0:00-2:00 ceiling, a band behind it spanning the same ceiling from the weakest to the strongest
-player's gear at its GCD (each player's own ceiling over the median's at their GCD, which carries over to the tick's
-since the median is moved at the same substat price; only players with 5+ clean pulls, `BAND_PULLS`; for a job none of
-ours plays, the clears' conversions the rotation lists as `dps_lo` / `dps_hi`), and a dot per clear player (`rdps_each`, each one's mean over their kills). Not the rotation
+width), a tick at the job's 0:00-2:00 ceiling, a band behind it, and a dot per clear player (`rdps_each`, each one's
+mean over their kills). The ceiling and band come from the gear model (`tools/gear`, `ceiling.py` writes
+`tools/gear/.cache/bis_site.json`, `scorecard.rotations()` adds it as each job's `bis`): the rotation searched for
+0:00-2:00 with the job's best-in-slot gear, materia and food at the GCD where gear and rotation together do best over
+the phase, in nDPS, plus our median credit for buffs given; the band one standard deviation either side from crit and
+direct-hit luck alone (the rotation's hits one by one, at the set's rates; Reaper: +-427 on 13,577, 3.1%). The table
+(and the Rotations table's ceiling column) give the same. A job without a `bis` entry keeps the older ceiling, the
+best of its rotations' own 0:00-2:00 searches at our players' median conversion, its band from the weakest to the
+strongest player's gear (each player's own ceiling over the median's at their GCD, players with 5+ clean pulls,
+`BAND_PULLS`; for a job none of ours plays, the clears' `dps_lo` / `dps_hi`); the chart's note names such jobs. Not the rotation
 to Palladion: it holds resources for after the downtime, and its stretch has three bursts against 0:00-2:00's one and
 pre-pull preparation, so it sits 7% under (Pictomancer) to 3% over (Dragoon) the 0:00-2:00 ceiling. A ceiling is an
 expected value (average crits, direct hits and procs), so single pulls beat it on luck: our best pulls reach 0.99-1.085 of
@@ -230,7 +237,17 @@ on the crit rate (its chakra), so its are per GCD and crit rate. A job none of o
 rotations too, at the GCDs of the benchmark clears' players on it since the job's `CONVERT_SINCE`, and expected DPS
 converts at theirs; the pages say so, and no player page links there. To refresh them, run
 `python tools/rotation/dps.py --job blm --site` (and `--job rpr`, `--job drg`, ...; `--offline` converts from the acts
-caches when FFLogs is down, and the pages say so; `--gcds 2.30,2.40` adds GCDs none of our players has), then `build_site.py --reanalyse` (the rotations themselves are picked up by any `build_site.py` run).
+caches when FFLogs is down, and the pages say so; `--gcds 2.30,2.40` adds GCDs none of our players has; `2.48/2.15` names the hasted GCD where a tier holds two, as Samurai's, Viper's and Black Mage's can), then `build_site.py --reanalyse` (the rotations themselves are picked up by any `build_site.py` run).
+
+### Best-in-slot gear
+
+The Gear pages (`#/gear`, `#/gear/<job>`) and the set card on each Rotations job page show the gear model's sets
+(`tools/gear`, `sheets.py`; `scorecard.gear()` adds them to `data.json` as `gear`, with the item, materia and food
+icons from XIVAPI, cached in `.cache/icons/`): the best searched GCD tier's set and, as tabs, the searched tiers within
+0.4% of it. A job's Rotations table tags the GCD that is a set's (the rotations' GCDs are before a trait's haste, so
+Monk's and Ninja's compare at that); the tag only shows where a rotation was searched at that GCD (`dps.py --gcds`, with the hasted GCD for Samurai and Viper;
+`scratch/gear/rerun_all.py` adds the missing ones).
+Any `build_site.py` run picks up new sets.
 
 ### Damage by phase
 

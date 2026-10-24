@@ -61,7 +61,15 @@ RITE = {"ruby": "Ruby Rite", "topaz": "Topaz Rite", "emerald": "Emerald Rite"}
 TRANCE_S, ATT_S, FR_S, SL_S, SL_MULT, SWIFT_S = 15.0, 30.0, 60.0, 20.0, 1.05, 10.0
 DEMI_HITS = (5.1, 7.3, 10.4, 13.5)              # the demi's own hits, seconds after the summon
 ENK_DELAY, ENK_OUT = 1.0, 3.0                   # Akh Morn / Revelation: after Enkindle, and not before summon + 3 s
-SLIP_TICK, SLIP_TICKS = 30, (0.0, 1.5, 4.5, 7.5, 10.5, 13.5)   # windstorm ticks after its landing (the 3 s tick's phase averaged)
+SLIP_BASE, SLIP_TICKS = 30.0, (0.0, 1.5, 4.5, 7.5, 10.5, 13.5)   # windstorm ticks after its landing (the 3 s tick's phase averaged)
+# Slipstream's tick: plain potency at base speed, its tooltip's 30, as every DoT (measured 30.2: its ground ticks are
+# ordinary hits in the logs, crit and direct-hit flags included); dot_tick() puts on the spell speed bonus (2 - SPEED)
+
+
+def dot_tick():
+    return SLIP_BASE * (2 - SPEED)
+
+
 CAST = {"Ruin III": 1.5, "Ruby Rite": 2.8, "Slipstream": 3.0}  # scaled by spell speed
 RECAST = {"Ruby Rite": 3.0, "Slipstream": 3.5}  # scaled; Emerald Rite's 1.5 s is not (FIXED)
 FIXED = {"Emerald Rite": 1.5}
@@ -367,7 +375,7 @@ def do_gcd(s, fight, name):
     elif name == "Slipstream":
         s.favor = None
         land = snap + DELAY[name]
-        for off in SLIP_TICKS: hit(s, fight, land + off, SLIP_TICK, land + off, dot=True)
+        for off in SLIP_TICKS: hit(s, fight, land + off, dot_tick(), land + off, dot=True)
     s.t, s.gcd = max(free, snap), nxt
     how = f"{cast:.2f}s cast" if cast else ("Swiftcast" if used == "swift" else "instant")
     s.log(start, name, gauge(s, how + (f" dash {saved:.2f}s" if saved else "")))

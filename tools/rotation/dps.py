@@ -10,7 +10,10 @@ Per player, from their clean pulls (alive through 2:00):
                        crit or direct-hit raid buff for the ceiling (rDPS credits those buffs to their givers), there
                        pooled with their other pulls up to their own first death or Damage Down (logs.ours_more, the
                        acts caches: about three times the hits; on the same pulls they agree within ~0.2% on average)
-  DoT ticks            FFLogs reports ticks without crit or direct-hit flags; they count at the player's average tick
+  DoT ticks            FFLogs reports ticks without crit or direct-hit flags and splits a target's combined tick
+                       between players: their sum over FFLogs' own 100% ticks (tick_gain; for the ceiling, ticks
+                       snapshotted under no crit or direct-hit raid buff); the model's tick potency is the tooltip's,
+                       with the speed bonus at the player's speed (dot_tick)
   sure crits           hits that always crit (Monk's Bootshine in opo-opo form) count at their own average over the
                        model potency; those a buff makes sure (Dragoon's Life Surge) the model counts at their
                        expected worth, and they are left out of the crit / direct-hit gain
@@ -55,12 +58,11 @@ ROT_FILE = HERE / ".cache" / "rotations.json"
 WINDOW = 120
 # Spell / Skill Speed comes out of the same substat budget as critical hit, direct hit and determination. Level-90
 # formulas (substat base 400, divisor 1900): a speed point takes 130/1900 per mille off the GCD (58.5 points per 0.01 s
-# of a 2.5 s GCD) and adds as much to DoT ticks; a point of the others is worth 0.068-0.074% damage at our players'
-# rates, and the cheapest (direct hit, determination: 0.068%) is what a meld gives up. That is 0.40% damage per potency
+# of a 2.5 s GCD) and adds as much to DoT ticks; a point of the others is worth 0.0068-0.0074% damage at our players'
+# rates, and the cheapest (direct hit, determination: 0.0068%) is what a meld gives up. That is 0.40% damage per potency
 # per 0.01 s of GCD; our Black Mages' conversions fall 0.38% per 0.01 s.
 SPEED_PTS = 1900 * 1000 / (engine.BASE_GCD * 130)   # speed points per second of GCD
 STAT_PT = 0.000068                                  # damage per point of the substat a speed point replaces
-DOT_PT = 130 / 1900 / 1000                          # DoT damage per speed point
 # raid buffs that raise crit or direct-hit rate (status ids as they appear on hits): Battle Voice, Battle Litany, Chain
 # Stratagem, Devilment, the Wanderer's Minuet, Army's Paeon
 CRIT_BUFFS = {"1000141", "1000786", "1001221", "1001825", "1002216", "1002218"}
@@ -82,8 +84,7 @@ def flag_hits(job, pulls):
     by = collections.defaultdict(list)
     for p in pulls: by[p["name"]].append(p)
     for ps in by.values():
-        gcds = [g for g in map(calibrate.gcd_of, ps) if g]
-        job.SPEED = (st.median(gcds) if gcds else engine.BASE_GCD) / engine.BASE_GCD
+        job.SPEED = player_speed(job, ps)
         groups, model = collections.defaultdict(list), {}
         for p in ps:
             for _, _, v, m, h in calibrate.model_hits(p, p["end"], lambda x: True, hit=True):
@@ -148,10 +149,27 @@ def logged_unbuffed(p, until=WINDOW, job=None):
     return sum(x["amount"] / x.get("multiplier", 1) * own(p, x) for x in p["hits"] if x["type"] == "damage" and 0 <= x["t"] < until)
 
 
-def tick_gain(pulls):
-    """The player's average DoT tick over their median tick: ticks carry whatever crits they roll, unflagged."""
-    v = [x["amount"] / x.get("multiplier", 1) for p in pulls for x in p["hits"] if x.get("tick") and x["type"] == "damage"]
-    return st.mean(v) / st.median(v) if v else 1.0
+def tick_gain(pulls, unbuffed=False):
+    """The player's DoT ticks' crit and direct-hit gain: what they dealt over their plain (100%) value. The game sends
+    one combined tick for every DoT on a target and FFLogs splits it between players by each one's simulated tick, so a
+    single tick is no roll of the player's, but the split hands out the real total: their ticks' sum over the sum of
+    FFLogs' own 100% ticks (T, `expectedAmount`, from the game's packet). Ticks the game sends as hits of their own
+    (Slipstream's ground effect) carry crit and direct-hit flags: per DoT, their sum over as many plain ones.
+    `unbuffed`: only ticks snapshotted under no crit or direct-hit raid buff. None without either (offline logs)."""
+    num = den = 0.0
+    real = collections.defaultdict(list)
+    for p in pulls:
+        for x in p["hits"]:
+            if not x.get("tick") or x["type"] != "damage" or x.get("amount", 0) <= 0: continue
+            if unbuffed and CRIT_BUFFS & set((x.get("buffs") or "").strip(".").split(".")): continue
+            if x.get("expectedAmount"): num += x["amount"]; den += x["expectedAmount"]
+            else: real[p["names"][str(x["abilityGameID"])]].append(x)
+    for xs in real.values():
+        if not any(x.get("hitType") == 2 or x.get("directHit") for x in xs): continue     # unflagged: offline
+        plain = [x["amount"] / x.get("multiplier", 1) for x in xs if x.get("hitType") == 1 and not x.get("directHit")]
+        if len(plain) < 5: continue
+        num += sum(x["amount"] / x.get("multiplier", 1) for x in xs); den += len(xs) * st.mean(plain)
+    return num / den if den else None
 
 
 def sure_gain(job, pulls, k, unbuffed=False):
@@ -206,25 +224,37 @@ def timeline(job, until=ROT_UNTIL):
                 untargetable=[[r(a), r(b)] for a, b in f.untargetable if a < until])
 
 
-def rot_key(gcd, crit=None):
-    """The site's name for an optimized rotation: its GCD, and its crit rate for a job whose resources come from crits."""
-    return f"{gcd:.2f}" + (f"-c{round(100 * crit)}" if crit is not None else "")
+def rot_key(gcd, crit=None, hasted=None):
+    """The site's name for an optimized rotation: its GCD, the GCD under the job's buff haste where the GCD's tier holds
+    two (calibrate.hasted_label: Samurai's 2.40 s is 2.08 or 2.09 s under Fuka), and its crit rate for a job whose
+    resources come from crits."""
+    return f"{gcd:.2f}" + (f"-h{hasted:.2f}" if hasted is not None else "") + (f"-c{round(100 * crit)}" if crit is not None else "")
 
 
-def ceiling(job, gcd, width, crit=None, until=WINDOW):
+def player_speed(job, ps):
+    """A player's SPEED from their pulls: their GCD (calibrate.gcd_of, median) and, for a job with a buff haste, their
+    GCD under it (hasted_gcd_of, lower median). Where the job model rounds as the game does (engine.recast) the speed
+    factor itself counts, and calibrate.speed_for picks it; elsewhere it is the GCD / 2.5 as before."""
+    gcds = [g for g in map(calibrate.gcd_of, ps) if g]
+    hz = [g for g in map(calibrate.hasted_gcd_of, ps) if g]
+    return calibrate.speed_for(job, st.median(gcds) if gcds else engine.BASE_GCD, st.median_low(hz) if hz else None)
+
+
+def ceiling(job, gcd, width, crit=None, until=WINDOW, speed=None):
     """The best unbuffed rotation over 0:00-until (2:00 for the ceilings) with our strategy's runs (site_fight) at this
-    GCD (and crit rate, for a job whose resources come from crits; cached per all three), searched with the job's own
-    settings."""
-    key = (job.__name__, round(gcd, 2), round(crit, 2) if crit is not None else None, until)
+    GCD (and crit rate, for a job whose resources come from crits) and speed factor (a player's, player_speed, where the
+    job model rounds as the game does; else the GCD's), cached per all four, searched with the job's own settings."""
+    if speed is None or not calibrate._rounded(job): speed = calibrate.speed_for(job, round(gcd, 2))
+    key = (job.__name__, round(gcd, 2), round(crit, 2) if crit is not None else None, until, round(speed, 3))
     if key not in _ceiling:
-        job.SPEED = key[1] / engine.BASE_GCD
+        job.SPEED = key[4]
         name, fight = job.__name__.split(".")[-1], site_fight(job, until)[1]
         params = {"CRIT": key[2]} if key[2] is not None else None
         s, setting, _ = engine.search(name, fight, width=width, speed=job.SPEED, params=params)
         if POLISH:
             before = job.final(s, fight)
             s, passes = polish.polish(name, fight, s, setting, job.SPEED, params=params, log=lambda m: None)
-            print(f"  {rot_key(key[1], key[2])} until {until:.0f}s: polished {before:,.0f} -> {job.final(s, fight):,.0f} "
+            print(f"  {rot_key(key[1], key[2], calibrate.hasted_label(job, key[4]))} until {until:.0f}s: polished {before:,.0f} -> {job.final(s, fight):,.0f} "
                   f"in {passes} passes", flush=True)
         _ceiling[key] = s
     return _ceiling[key]
@@ -242,22 +272,24 @@ def player_rows(job, pulls, width, more=()):
         k = st.median(v / m for _, _, v, m in hits)
         crit, dh = rates(ps)
         skip, sure = getattr(job, "AUTO_CRIT", ()), no_sure(job)
-        e, e0, et = crit_gain(ps, skip=skip, sure=sure), crit_gain(ps + extra[name], unbuffed=True, skip=skip, sure=sure), tick_gain(ps)
+        e, e0 = crit_gain(ps, skip=skip, sure=sure), crit_gain(ps + extra[name], unbuffed=True, skip=skip, sure=sure)
+        et, et0 = tick_gain(ps) or e, tick_gain(ps, unbuffed=True) or e0        # offline logs: the hits' gain
         ec, ec0 = sure_gain(job, ps, k), sure_gain(job, ps, k, unbuffed=True)
         own = natural_crit(ps, skip, sure) if hasattr(job, "CRIT") else None
-        gcd = st.median(g for g in (calibrate.gcd_of(p) for p in ps) if g)
-        job.SPEED = gcd / engine.BASE_GCD
+        speed = player_speed(job, ps)
+        gcd, job.SPEED = calibrate.gcd_at(job, speed), speed
         model, logged, sc = [], [], []
         for p in ps:
             s = calibrate.replay_fight(p, Fight(until=WINDOW))
             model.append(convert(s, k, e, et, ec))
             logged.append(logged_unbuffed(p, job=job) / WINDOW)
             if p.get("rdps"): sc.append(p["rdps"])
-        opt = ceiling(job, gcd, width, own)
-        top = convert(opt, k, e0, et, ec0)
-        rows.append(dict(name=name, pulls=len(ps), gcd=gcd, k=k, crit=crit, dh=dh, e=e, e0=e0, et=et, ec0=ec0, model=st.median(model),
+        opt = ceiling(job, gcd, width, own, speed=speed)
+        top = convert(opt, k, e0, et0, ec0)
+        rows.append(dict(name=name, pulls=len(ps), gcd=gcd, speed=speed, k=k, crit=crit, dh=dh, e=e, e0=e0, et=et, et0=et0, ec0=ec0, model=st.median(model),
                          logged=st.median(logged), rdps=st.median(sc) if sc else None, best=max(sc) if sc else None, ceiling=top,
-                         key=rot_key(round(gcd, 2), round(own, 2) if own is not None else None)))
+                         key=rot_key(round(gcd, 2), round(own, 2) if own is not None else None,
+                                     calibrate.hasted_label(job, speed))))
     return rows
 
 
@@ -288,13 +320,13 @@ def placed_runs(hist, fight):
     return sorted(out)
 
 
-def upto(job, s, fight, gcd, crit=None, until=ROT_UNTIL):
+def upto(job, s, fight, gcd, crit=None, until=ROT_UNTIL, speed=None):
     """A whole-phase rotation's state once its steps that start before `until` are done: its damage, DoT and sure-crit
     potency and waste are the window's. Exact at Palladion: Athena is away from then, so nothing cast before lands
-    later and no DoT ticks on. Replayed at the GCD (and crit rate) it was searched at."""
+    later and no DoT ticks on. Replayed at the GCD (and crit rate, speed factor) it was searched at."""
     h = s.history()
     keep = job.SPEED, getattr(job, "CRIT", None)
-    job.SPEED = gcd / engine.BASE_GCD
+    job.SPEED = speed or calibrate.speed_for(job, gcd)
     if crit is not None: job.CRIT = crit
     try:
         steps, states = polish.split(job, fight, job.State.initial(fight), h)
@@ -329,20 +361,24 @@ def rotations(job, rows, width, extra=(), ours=None):
     ceiling's at the median. Each player is moved to the rotation's GCD first (SPEED_PTS, STAT_PT): a faster GCD costs
     them damage per potency, so GCDs compare at what a player would have there. `ours`: the players counted as playing
     at each GCD, when `rows` (the conversions) are someone else's (the clears', for a job none of ours plays)."""
-    for g in extra: ceiling(job, g, width, getattr(job, "CRIT", None))
+    for g in extra:   # a GCD, or (GCD, hasted GCD) where the tier holds two (Samurai's 2.48 s: 2.15 or 2.16 s under Fuka)
+        g, h = (g, None) if isinstance(g, (int, float)) else (g[0], g[1] if len(g) > 1 else None)
+        ceiling(job, g, width, getattr(job, "CRIT", None), speed=calibrate.speed_for(job, round(g, 2), h) if h else None)
     def conv(s, r, gcd, w=ROT_UNTIL):
         """The rotation in a player's DPS, the player moved to its GCD: the speed points that takes come out of their
-        other substats (or go back into them), and DoT ticks follow the speed."""
+        other substats (or go back into them). DoT ticks follow the speed through the rotation itself, searched at its
+        GCD (the models' dot_tick)."""
         pts = SPEED_PTS * (r["gcd"] - gcd)
-        return convert(s, r["k"] * (1 - STAT_PT * pts), r["e0"], r["et"] * (1 + DOT_PT * pts), r["ec0"], w)
+        return convert(s, r["k"] * (1 - STAT_PT * pts), r["e0"], r["et0"], r["ec0"], w)
     out = {}
-    for (jn, gcd, crit, until), s2 in sorted(_ceiling.items(), key=lambda x: (x[0][1], x[0][2] or 0)):
+    for (jn, gcd, crit, until, speed), s2 in sorted(_ceiling.items(), key=lambda x: (x[0][1], x[0][4], x[0][2] or 0)):
         if jn != job.__name__ or until != WINDOW: continue
-        whole = ceiling(job, gcd, width, crit, FULL)
-        s = upto(job, whole, site_fight(job, FULL)[1], gcd, crit)
-        key, each = rot_key(gcd, crit), [conv(s, r, gcd) for r in rows]
+        whole = ceiling(job, gcd, width, crit, FULL, speed)
+        s = upto(job, whole, site_fight(job, FULL)[1], gcd, crit, speed=speed)
+        hl = calibrate.hasted_label(job, speed)
+        key, each = rot_key(gcd, crit, hl), [conv(s, r, gcd) for r in rows]
         rot = site_rotation(job, whole)
-        out[key] = dict(gcd=gcd, crit=crit, window=ROT_UNTIL, potency=round(s.dmg), dps=round(st.median(each)), dps_lo=round(min(each)),
+        out[key] = dict(gcd=gcd, **({"hasted": hl} if hl is not None else {}), crit=crit, window=ROT_UNTIL, potency=round(s.dmg), dps=round(st.median(each)), dps_lo=round(min(each)),
                         ceiling_2min=round(st.median(conv(s2, r, gcd, WINDOW) for r in rows)),
                         dps_hi=round(max(each)), players=sum(r["key"] == key for r in (rows if ours is None else ours)),
                         conv_players=len(rows),
@@ -368,7 +404,8 @@ def main():
     ap.add_argument("--width", type=int, default=None, help="search width (default: the job's SWEEP_WIDTH)")
     ap.add_argument("--site", action="store_true", help=f"save our players' ceilings and the optimized rotations for the scorecard site "
                     f"({SITE_FILE.name}, {ROT_FILE.name})")
-    ap.add_argument("--gcds", help="with --site: also optimize at these GCDs (comma-separated), for the site's rotation pages")
+    ap.add_argument("--gcds", help="with --site: also optimize at these GCDs (comma-separated), for the site's rotation pages; "
+                    "GCD/hasted (2.48/2.15) picks the hasted GCD under Fuka, Swiftscaled or Ley Lines where the tier holds two")
     ap.add_argument("--offline", action="store_true", help="our players' logs from the scorecard's acts caches, not FFLogs "
                     "(logs.ours_offline, flag_hits): for when FFLogs is down; 'logged' then misses the hits left out")
     ap.add_argument("--no-polish", action="store_true", help="skip the local search on each search's best rotation (polish.py)")
@@ -397,7 +434,8 @@ def main():
             days = {(k["code"], k["fight"]): k["day"] for k in json.loads(logs.BENCH.read_text())["kills"]}
             conv = player_rows(job, [p for p in logs.clears(jobname) if days[(p["code"], p["fight"])] >= since], a.width)
             show(conv, f"None of our players on {jobname}: the site converts at the benchmark clears' since {since} (DPS)")
-        mine = rotations(job, conv, a.width, [float(g) for g in a.gcds.split(",")] if a.gcds else (), ours=rows)
+        extra = [tuple(float(v) for v in g.split("/")) for g in a.gcds.split(",")] if a.gcds else ()
+        mine = rotations(job, conv, a.width, extra, ours=rows)
         if conv is not rows:                              # the site says whose conversion it is
             mine.update(converted_from="clears", converted_since=since)
         if a.offline: mine["offline"] = True              # the site says its DPS comes from the acts caches

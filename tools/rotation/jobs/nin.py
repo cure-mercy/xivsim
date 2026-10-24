@@ -32,7 +32,7 @@ Bhavacakra and Dokumori (8 y, taken as melee) need reach; ninjutsu, Phantom Kama
 Forked Raiju (a gap closer) is left to replays: the search doesn't rush in while the plan keeps the player away.
 """
 import itertools
-from engine import ANIM_LOCK, BASE_GCD, settle
+from engine import ANIM_LOCK, BASE_GCD, recast, settle
 
 POTENCY = {"Spinning Edge": 220, "Gust Slash": 160, "Aeolian Edge": 140, "Armor Crush": 140, "Throwing Dagger": 200,
            "Fleeting Raiju": 560, "Forked Raiju": 560, "Phantom Kamaitachi": 665, "Trick Attack": 300,
@@ -338,12 +338,12 @@ def do_gcd(s, fight, name):
             if s.raiju == 3: wasted(s, 2)
             s.raiju, s.raiju_until = min(3, (s.raiju if s.raiju_until > start else 0) + 1), start + RAIJU_S
         elif name in ("Suiton", "Huton"): s.sw_until = start + SW_S
-        recast = NINJ_RECAST
+        rc = NINJ_RECAST
         if tcj:
             s.tcj += 1
-            if s.tcj < 3: recast = TCJ_RECAST
+            if s.tcj < 3: rc = TCJ_RECAST
             else: s.tcj_until = -1.0
-        s.t, s.gcd = start + min(ANIM_LOCK, recast), start + recast
+        s.t, s.gcd = start + min(ANIM_LOCK, rc), start + rc
         s.log(start, name, gauge(s))
         return s
     # a weaponskill
@@ -369,7 +369,7 @@ def do_gcd(s, fight, name):
         s.raiju -= 1
     elif name == "Phantom Kamaitachi":
         s.pk_until = -1.0
-    s.t, s.gcd = start + ANIM_LOCK, start + BASE_GCD * HASTE * SPEED
+    s.t, s.gcd = start + ANIM_LOCK, start + recast(BASE_GCD, SPEED, HASTE)
     s.near = away_soon(s, fight, s.t)
     s.log(start, name, gauge(s))
     return s
