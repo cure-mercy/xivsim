@@ -16,7 +16,7 @@ for `need` seconds on end, somewhere in the window: no melee action may break th
 in the arena; inside an away window the search may hard-cast Harpe, or dash with Hell's Ingress for an instant one.
 """
 import itertools, math
-from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, gcd_times, settle, stand
+from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, SlotState, cd_key, gcd_times, settle, stand
 
 # level-90 potencies, from the logs (the guide's are Melee Mastery III's). Waxing / Infernal Slice: out of combo / in.
 POTENCY = {"Slice": 320, "Waxing Slice": (160, 400), "Infernal Slice": (180, 500), "Shadow of Death": 300,
@@ -48,7 +48,7 @@ SPEED = 0.996                               # skill speed factor on the GCD: 2.4
 MELEE = True                                # p12s.py gives it a melee's windows (M1 / M2)
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "combo", "combo_until", "soul", "shroud", "reaver", "reaver_until", "enh", "enh_until",
                  "renh", "renh_until", "shroud_until", "lemure", "void", "ideal_until", "soulsow", "dd_until",
                  "circle_until", "bloodsown_until", "sacrifice", "sacrifice_until", "tn_until", "harpe_until", "cds",
@@ -74,12 +74,6 @@ class State:
                                                     # whether an away window is open or close (then mlast matters)
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         left = lambda u: r(max(u - self.t, 0))
@@ -88,7 +82,7 @@ class State:
                 self.renh if self.renh_until > self.t else None, left(self.shroud_until), self.lemure, self.void,
                 self.ideal_until > self.t, self.soulsow, round(max(self.dd_until - self.t, 0) / 2.5), left(self.circle_until),
                 left(self.bloodsown_until), self.sacrifice if self.sacrifice_until > self.t else 0, left(self.tn_until),
-                self.pot_at is None, tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()),
+                self.pot_at is None, cd_key(self.cds),
                 # running banked beyond a run's need and the last melee hit away from an away window change nothing:
                 # kept coarse, so near-identical states don't crowd the beam
                 self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai, r(min(self.t - self.mlast, 4)) if self.near else None)

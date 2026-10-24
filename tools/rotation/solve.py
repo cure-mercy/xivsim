@@ -8,7 +8,8 @@ Damage is in potency (Xenoglossy 890, Communio 1,100), multiplied by the raid bu
 it is the job's own potency, whatever party it plays in. The fight is P12S P1's fixed timeline (p12s.py): Athena can't
 be hit during Palladion, and the player has to run for each mechanic as our strategy places them. The search's best
 rotation is then polished by local search (polish.py; --no-polish skips it). --compare replays every
-clear's logged rotation under the same buffs and downtime (their own movement, not ours).
+clear's logged rotation under the same buffs and downtime (their own movement, not ours), against the optimum standing
+still at that player's GCD.
 """
 import argparse, collections, dataclasses, json, statistics as st, sys, time
 from pathlib import Path
@@ -107,7 +108,7 @@ def main():
     ap.add_argument("--layers", default="time", choices=["time", "gcd"], help="compare states at the same time (engine.sweep, "
                     "default) or after the same number of GCDs (engine.beam, the search before 2026-10-22)")
     ap.add_argument("--no-polish", action="store_true", help="skip the local search on the search's best rotation (polish.py)")
-    ap.add_argument("--compare", action="store_true", help="replay the clears' logged rotations under the same buffs")
+    ap.add_argument("--compare", action="store_true", help="replay the clears' logged rotations under the same buffs, against the standing-still optimum at each one's GCD")
     a = ap.parse_args()
     job, jobname = JOBS[a.job]
     a.slot = a.slot or ("M1" if getattr(job, "MELEE", False) else "R1")
@@ -136,12 +137,35 @@ def main():
         import calibrate, logs
         calibrate.use(a.job)
         days = {(k["code"], k["fight"]): k["day"] for k in json.loads(logs.BENCH.read_text())["kills"]}
+        # a replay plays the log's own path, so it is scored against the optimum without our runs, reach or fixed
+        # spots, searched at the player's own speed (as calibrate.py replays them)
         free = dataclasses.replace(fight, moves=[], away=[], pinned=[])
-        print(f"\nclears' rotations replayed under the same buffs (0:00-{fight.until:.0f}s; own GCD speed and movement differ):")
+        speed0, ceil = job.SPEED, {}
+        if a.still: ceil[round(speed0, 4)] = best.dmg
+
+        def still_best(speed):
+            k = round(speed, 4)
+            if k not in ceil:
+                t0 = time.time()
+                s, setting, _ = engine.search(a.job, free, width=a.width, speed=speed, params=params, layers=a.layers)
+                if not a.no_polish: s, _ = polish.polish(a.job, free, s, setting, speed, params=params, log=lambda m: None)
+                ceil[k] = s.dmg
+                print(f"  standing-still optimum at GCD {calibrate.gcd_at(job, speed):.2f}: {s.dmg:,.0f} "
+                      f"({time.time() - t0:.0f} s)", flush=True)
+            return ceil[k]
+        rows = []
         for p in logs.clears(jobname):
             if days[(p["code"], p["fight"])] < job.LOGS_SINCE or p["end"] < fight.until: continue
-            s = calibrate.replay_fight(p, free)
-            print(f"  {days[(p['code'], p['fight'])]} {p['name']:<18} GCD {calibrate.gcd_of(p):.2f}  {s.dmg:9,.0f}  ({s.dmg / best.dmg:.1%} of the optimum)")
+            gcd = calibrate.gcd_of(p)
+            speed = calibrate.speed_for(job, gcd, calibrate.hasted_gcd_of(p)) if gcd else speed0
+            ref = still_best(speed)
+            job.SPEED = speed
+            rows.append((p, gcd, calibrate.replay_fight(p, free).dmg, ref))
+        job.SPEED = speed0
+        print(f"\nclears' rotations replayed under the same buffs and downtime (0:00-{fight.until:.0f}s, their own movement), "
+              f"against the standing-still optimum at their GCD:")
+        for p, gcd, dmg, ref in rows:
+            print(f"  {days[(p['code'], p['fight'])]} {p['name']:<18} GCD {gcd or 0:.2f}  {dmg:9,.0f}  ({dmg / ref:.1%} of {ref:,.0f})")
 
 
 if __name__ == "__main__":

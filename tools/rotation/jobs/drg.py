@@ -37,7 +37,7 @@ jobs/rpr.py for the away windows); Piercing Talon, the jumps and the 15 y lines 
 reach from anywhere. Out of reach the search may jump back with Elusive Jump for an Enhanced Piercing Talon (350).
 """
 import itertools, math
-from engine import ANIM_LOCK, BASE_GCD, settle
+from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, settle
 
 # level-90 potencies from the logs (see above). (out of combo, in combo) for combo actions.
 POTENCY = {"True Thrust": 230, "Raiden Thrust": 280, "Vorpal Thrust": (130, 280), "Heavens' Thrust": (100, 400),
@@ -94,7 +94,7 @@ SPEED = 0.996                                   # skill speed factor on the GCD:
 MELEE = True                                    # p12s.py gives it a melee's windows (M1 / M2)
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "combo", "combo_until", "df_until", "focus", "ps_until", "lc_from", "lc_until", "bl_from",
                  "bl_until", "lotd_until", "nr_until", "dr_until", "ls_until", "tn_until", "ept_until", "dot", "cds",
                  "auto_next", "dmg", "dotp", "waste", "pot_at", "first", "hist", "mvi", "acc", "free", "spot", "ai",
@@ -115,12 +115,6 @@ class State:
         s.ai, s.mlast, s.near = 0, -30.0, False
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         left = lambda u: r(max(u - self.t, 0))
@@ -129,7 +123,7 @@ class State:
                 left(self.lotd_until), self.nr_until > self.t, self.dr_until > self.t, self.ls_until > self.t,
                 left(self.tn_until), self.ept_until > self.t,
                 round(max(self.dot[0] + DOT_S - self.t, 0) / 2.5) if self.dot else None, self.pot_at is None,
-                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()),
+                cd_key(self.cds),
                 self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai, r(min(self.t - self.mlast, 4)) if self.near else None)
 
     def log(self, t, action, note=""):

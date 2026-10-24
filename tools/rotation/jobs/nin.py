@@ -32,7 +32,7 @@ Bhavacakra and Dokumori (8 y, taken as melee) need reach; ninjutsu, Phantom Kama
 Forked Raiju (a gap closer) is left to replays: the search doesn't rush in while the plan keeps the player away.
 """
 import itertools
-from engine import ANIM_LOCK, BASE_GCD, recast, settle
+from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, recast, settle
 
 POTENCY = {"Spinning Edge": 220, "Gust Slash": 160, "Aeolian Edge": 140, "Armor Crush": 140, "Throwing Dagger": 200,
            "Fleeting Raiju": 560, "Forked Raiju": 560, "Phantom Kamaitachi": 665, "Trick Attack": 300,
@@ -92,7 +92,7 @@ MELEE = True                                    # p12s.py gives it a melee's win
 LOG_PREPULL = None                              # a replay: when the log's unlogged pre-pull mudras began (prepare)
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "combo", "combo_until", "kaz", "ninki", "seq", "seq_until", "kass_until", "tcj", "tcj_until",
                  "sw_until", "meisui_until", "raiju", "raiju_until", "bun", "bun_until", "pk_until", "ta", "dk",
                  "tn_until", "cds", "auto_next", "dmg", "lost", "waste", "pot_at", "first", "hist", "mvi", "acc", "free",
@@ -119,12 +119,6 @@ class State:
         s.ai, s.mlast, s.near = 0, -30.0, False
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         left = lambda u: r(max(u - self.t, 0))
@@ -133,7 +127,7 @@ class State:
                 self.tcj if self.tcj_until > self.t else -1, left(self.sw_until), self.meisui_until > self.t,
                 self.raiju if self.raiju_until > self.t else 0, self.bun if self.bun_until > self.t else 0,
                 left(self.pk_until), r(max(self.ta[1] - self.t, 0)), r(max(self.dk[1] - self.t, 0)), left(self.tn_until),
-                self.pot_at is None, tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()),
+                self.pot_at is None, cd_key(self.cds),
                 self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai, r(min(self.t - self.mlast, 4)) if self.near else None)
 
     def log(self, t, action, note=""):

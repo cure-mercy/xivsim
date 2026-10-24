@@ -36,7 +36,7 @@ spans; melee actions (the 3 y weaponskills, and Death Rattle, the bites and Reaw
 Athena; Uncoiled Fury and Writhing Snap reach from anywhere.
 """
 import itertools
-from engine import ANIM_LOCK, BASE_GCD, recast, settle
+from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, recast, settle
 
 POTENCY = {"Steel Fangs": (200, 300), "Reaving Fangs": (200, 300), "Hunter's Sting": 300, "Swiftskin's Sting": 300,
            "Flanksting Strike": 340, "Flanksbane Fang": 340, "Hindsting Strike": 340, "Hindsbane Fang": 340,
@@ -83,7 +83,7 @@ SPEED = 0.998                                   # skill speed factor on the GCD:
 MELEE = True                                    # p12s.py gives it a melee's windows (M1 / M2)
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "combo", "combo_until", "honed", "honed_until", "venom", "venom_until", "tail", "coil",
                  "coil_until", "bites", "hv", "sv", "rattle", "offer", "rr_until", "tribute", "gen", "ra_until",
                  "hi_until", "ss_until", "tn_until", "cds", "auto_next", "dmg", "waste", "pot_at", "first", "hist",
@@ -109,12 +109,6 @@ class State:
         s.ai, s.mlast, s.near = 0, -30.0, False
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         left = lambda u: r(max(u - self.t, 0))
@@ -124,7 +118,7 @@ class State:
                 self.offer, self.rr_until > self.t, self.tribute if self.ra_until > self.t else 0, self.gen,
                 round(max(self.hi_until - self.t, 0) / 2.5), round(max(self.ss_until - self.t, 0) / 2.5),
                 left(self.tn_until), self.pot_at is None,
-                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()),
+                cd_key(self.cds),
                 self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai, r(min(self.t - self.mlast, 4)) if self.near else None)
 
     def log(self, t, action, note=""):

@@ -21,7 +21,7 @@ python tools/rotation/dps.py --job drg --site --offline       # ...from the scor
 
 | `--job` | Job | Default GCD | Slot | Best over the phase | Standing still | Search |
 |---|---|---|---|---|---|---|
-| `blm` | Black Mage | 2.32 s | R1 / R2 | 99,670 / 99,886 | 100,774 | ~70 s |
+| `blm` | Black Mage | 2.32 s | R1 / R2 | 99,986 / 99,881 | 100,358 | ~70 s |
 | `rpr` | Reaper | 2.49 s | M1 = M2 | 131,628 | 133,399 | |
 | `mnk` | Monk | 1.94 s (2.43 s before Greased Lightning) | M1 / M2 | 133,997 / 133,392 | 135,805 | ~2.5 min |
 | `brd` | Bard | 2.49 s | R1 = R2 = still | 84,651 | | |
@@ -54,7 +54,7 @@ hits at their expected worth, which is what the search ranks by.
 | `--width` | search width per heuristic setting (default the job's `SWEEP_WIDTH`; `WIDTH` with `--layers gcd`) |
 | `--layers` | `time` (default): states compete with others at the same time (`engine.sweep`); `gcd`: after as many GCDs (`engine.beam`) |
 | `--no-polish` | skip the local search on the best rotation (`polish.py`) |
-| `--compare` | replay every benchmark clear's logged rotation under the same buffs, downtime and window |
+| `--compare` | replay every benchmark clear's logged rotation under the same buffs, downtime and window, at the player's own speed, against the optimum standing still at their GCD (a replay plays the log's own path; one search per GCD) |
 
 Damage is potency times the raid buffs active when each hit lands; crit and direct-hit buffs count at their expected
 value, and on a guaranteed hit as the damage the game turns their rate into (x(1 + rate x (crit damage - 1)), x(1 +
@@ -93,10 +93,12 @@ need and the guide doesn't give are listed per job.
 - from the logs alone: a hard-cast Fire III from Umbral Ice III costs no MP (4 of 4 casts), and the Polyglot timer
   starts when the first fire or ice spell lands (Fire III's 1.29 s flight), not when it resolves.
 
-Over the whole phase in R1 the best rotation deals 99,670 potency (R2 99,886); standing still 100,774, so our strategy's
-~59 s of running costs about 1% (2026-10-24; 0.2% before Ley Lines' haste was rounded as the game does and Thunder III
-ticked for its tooltip): instants, slidecasts and weaves cover most of it. The best clear's own rotation, replayed at
-the same 2.32 s GCD with its own movement (`--compare`), dealt 101,033 under the earlier model.
+Over the whole phase in R1 the best rotation deals 99,986 potency (R2 99,881); standing still 100,358, so our strategy's
+~59 s of running costs 0.4-0.5%, about the search's noise (2026-10-24, at speed factor 0.930, calibrate.speed_for's
+pick for 2.32 s: 2.0 s casts take 1.86 s as logged; at 0.928 they took 1.85 s, standing still read 100,774 and R1 99,670,
+a 1% cost): instants, slidecasts and weaves cover most of it. The best clear's own rotation, replayed with its own
+movement (`--compare`), deals 99,731 at the same 2.32 s GCD, 99.4% of the standing-still optimum; the other clears
+replay at 84-98% of the optimum at their own GCD.
 
 ## Reaper
 

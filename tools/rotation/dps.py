@@ -40,7 +40,7 @@ is the median of our players' conversions on the job, each moved to its GCD (the
 their other substats), so GCDs compare with each other. For a job none of our players plays (Ninja), they convert at the
 benchmark clears' players on it since the job's CONVERT_SINCE instead, at the GCDs those play, and the site says so.
 """
-import argparse, collections, json, re, statistics as st, sys
+import argparse, collections, json, re, statistics as st, sys, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -240,23 +240,39 @@ def player_speed(job, ps):
     return calibrate.speed_for(job, st.median(gcds) if gcds else engine.BASE_GCD, st.median_low(hz) if hz else None)
 
 
+def ceiling_key(job, gcd, crit=None, until=WINDOW, speed=None):
+    """What a ceiling is cached by: the job, GCD, crit rate (for a job whose resources come from crits), window and speed
+    factor (a player's, player_speed, where the job model rounds as the game does; else the GCD's)."""
+    if speed is None or not calibrate._rounded(job): speed = calibrate.speed_for(job, round(gcd, 2))
+    return job.__name__, round(gcd, 2), round(crit, 2) if crit is not None else None, until, round(speed, 3)
+
+
+def ceilings(job, width, keys):
+    """Search the ceilings (ceiling_key) not cached yet, all in one pool (engine.search_many: a run of several keeps
+    every core busy), then polish each."""
+    todo = [k for k in dict.fromkeys(keys) if k not in _ceiling]
+    if not todo: return
+    name, keep = job.__name__.split(".")[-1], job.SPEED
+    params = lambda k: {"CRIT": k[2]} if k[2] is not None else None
+    t0 = time.time()
+    found = engine.search_many(name, [(site_fight(job, k[3])[1], k[4], params(k)) for k in todo], width=width)
+    print(f"  searched {len(todo)} ceiling{'s' * (len(todo) > 1)} in {time.time() - t0:.0f} s", flush=True)
+    for k, (s, setting, _) in zip(todo, found):
+        if POLISH:
+            job.SPEED, fight = k[4], site_fight(job, k[3])[1]
+            before = job.final(s, fight)
+            s, passes = polish.polish(name, fight, s, setting, k[4], params=params(k), log=lambda m: None)
+            print(f"  {rot_key(k[1], k[2], calibrate.hasted_label(job, k[4]))} until {k[3]:.0f}s: polished {before:,.0f} -> {job.final(s, fight):,.0f} "
+                  f"in {passes} passes", flush=True)
+        _ceiling[k] = s
+    job.SPEED = keep
+
+
 def ceiling(job, gcd, width, crit=None, until=WINDOW, speed=None):
     """The best unbuffed rotation over 0:00-until (2:00 for the ceilings) with our strategy's runs (site_fight) at this
-    GCD (and crit rate, for a job whose resources come from crits) and speed factor (a player's, player_speed, where the
-    job model rounds as the game does; else the GCD's), cached per all four, searched with the job's own settings."""
-    if speed is None or not calibrate._rounded(job): speed = calibrate.speed_for(job, round(gcd, 2))
-    key = (job.__name__, round(gcd, 2), round(crit, 2) if crit is not None else None, until, round(speed, 3))
-    if key not in _ceiling:
-        job.SPEED = key[4]
-        name, fight = job.__name__.split(".")[-1], site_fight(job, until)[1]
-        params = {"CRIT": key[2]} if key[2] is not None else None
-        s, setting, _ = engine.search(name, fight, width=width, speed=job.SPEED, params=params)
-        if POLISH:
-            before = job.final(s, fight)
-            s, passes = polish.polish(name, fight, s, setting, job.SPEED, params=params, log=lambda m: None)
-            print(f"  {rot_key(key[1], key[2], calibrate.hasted_label(job, key[4]))} until {until:.0f}s: polished {before:,.0f} -> {job.final(s, fight):,.0f} "
-                  f"in {passes} passes", flush=True)
-        _ceiling[key] = s
+    GCD, crit rate and speed factor (ceiling_key), searched with the job's own settings."""
+    key = ceiling_key(job, gcd, crit, until, speed)
+    ceilings(job, width, [key])
     return _ceiling[key]
 
 
@@ -265,7 +281,7 @@ def player_rows(job, pulls, width, more=()):
     by, extra = collections.defaultdict(list), collections.defaultdict(list)
     for p in pulls: by[p["name"]].append(p)
     for p in more: extra[p["name"]].append(p)
-    rows = []
+    rows, keys = [], []
     for name, ps in sorted(by.items()):
         hits = [h for p in ps for h in calibrate.plain_hits(p, WINDOW + 5)]
         if len(hits) < 10: continue
@@ -284,12 +300,13 @@ def player_rows(job, pulls, width, more=()):
             model.append(convert(s, k, e, et, ec))
             logged.append(logged_unbuffed(p, job=job) / WINDOW)
             if p.get("rdps"): sc.append(p["rdps"])
-        opt = ceiling(job, gcd, width, own, speed=speed)
-        top = convert(opt, k, e0, et0, ec0)
+        keys.append(ceiling_key(job, gcd, own, speed=speed))
         rows.append(dict(name=name, pulls=len(ps), gcd=gcd, speed=speed, k=k, crit=crit, dh=dh, e=e, e0=e0, et=et, et0=et0, ec0=ec0, model=st.median(model),
-                         logged=st.median(logged), rdps=st.median(sc) if sc else None, best=max(sc) if sc else None, ceiling=top,
+                         logged=st.median(logged), rdps=st.median(sc) if sc else None, best=max(sc) if sc else None,
                          key=rot_key(round(gcd, 2), round(own, 2) if own is not None else None,
                                      calibrate.hasted_label(job, speed))))
+    ceilings(job, width, keys)                           # every player's at once
+    for r, key in zip(rows, keys): r["ceiling"] = convert(_ceiling[key], r["k"], r["e0"], r["et0"], r["ec0"])
     return rows
 
 
@@ -368,9 +385,12 @@ def rotations(job, rows, width, extra=(), ours=None, bis=()):
     at each GCD, when `rows` (the conversions) are someone else's (the clears', for a job none of ours plays). `bis`:
     more GCDs, searched as the extra ones, that are there for the gear model's best-in-slot sets (tools/gear): their
     rotations are marked `bis_gcd`, so a later run can drop them once no set is at that GCD (scratch/gear/rerun_all.py)."""
+    more = []
     for g in [*extra, *bis]:   # a GCD, or (GCD, hasted GCD) where the tier holds two (Samurai's 2.48 s: 2.15 or 2.16 s under Fuka)
         g, h = _spec(g)
-        ceiling(job, g, width, getattr(job, "CRIT", None), speed=calibrate.speed_for(job, round(g, 2), h) if h else None)
+        more.append(ceiling_key(job, g, getattr(job, "CRIT", None), speed=calibrate.speed_for(job, round(g, 2), h) if h else None))
+    short = [k for k in _ceiling if k[0] == job.__name__ and k[3] == WINDOW] + more
+    ceilings(job, width, short + [ceiling_key(job, k[1], k[2], FULL, k[4]) for k in short])    # all in one go
     def conv(s, r, gcd, w=ROT_UNTIL):
         """The rotation in a player's DPS, the player moved to its GCD: the speed points that takes come out of their
         other substats (or go back into them). DoT ticks follow the speed through the rotation itself, searched at its

@@ -42,7 +42,8 @@ dash back to the run's start if it still fits before the next GCD (a player wait
 Corps-a-corps can't pull the player off a far spot before its snapshot; after it, it ends the stretch out of reach.
 """
 import itertools
-from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, dash, dash_gain, gcd_times, move_credit, open_move, settle, stand
+from engine import (ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, SlotState, cd_key, dash, dash_gain, gcd_times, move_credit,
+                    open_move, settle, stand)
 
 # level-90 potencies from the logs (see above); (out of combo, in combo) for combo steps
 POTENCY = {"Jolt III": 360, "Verthunder III": 380, "Veraero III": 380, "Verfire": 340, "Verstone": 340,
@@ -90,7 +91,7 @@ SPEED = 1.0                                     # spell speed factor on casts an
 IMBALANCE_HALVES = True
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "black", "white", "stacks", "combo", "combo_until", "dc", "accel", "swift", "ms", "ms_until",
                  "mana_until", "emb_from", "emb_until", "vf", "vf_until", "vs", "vs_until", "cds", "dmg", "waste", "pot_at",
                  "first", "hist", "mvi", "acc", "free", "spot", "ai", "mlast", "dashed")
@@ -113,12 +114,6 @@ class State:
         s.dashed = ()                                           # (move window, segment) dashed (engine.dash)
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         left = lambda u: r(max(u - self.t, 0))
@@ -126,7 +121,7 @@ class State:
                 self.combo if self.combo_until > self.t else None, self.dc > self.t, self.accel > self.t, self.swift > self.t,
                 self.ms if self.ms_until > self.t else 0, self.mana_until > self.t, left(self.emb_until),
                 round(self.vf * 4), round(self.vs * 4), self.pot_at is None,
-                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()),
+                cd_key(self.cds),
                 self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai, tuple(k for i, k in self.dashed if i == self.mvi))
 
     def log(self, t, action, note=""):

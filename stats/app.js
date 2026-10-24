@@ -1410,9 +1410,15 @@ function fightTimeline(f, rot, focus = []) {
   };
 }
 // the compact rotation: each GCD's icon on the line with the oGCDs woven after it smaller and raised beside it, wrapped,
-// a line for each stretch between major mechanics; a bar under a GCD cast while running
+// a line for each stretch between major mechanics; a bar under a GCD cast while running, as long as the share of the room
+// it leaves for running that the run takes (a dot for a sliver, the icon's width when it is all used)
+const SLIDE = 0.46;   // engine.py: a hard cast's last 0.46 s may be run in
 function rotationStrip(rows, f, icons) {
   const segs = [{ name: "Opener", t: -Infinity }, ...(f ? f.mechanics.map(([t, n]) => ({ name: shortMech(n), t })) : [])];
+  // a GCD's room to run (dps.py placed_runs): until the next GCD starts, outside its cast bar up to the slide point
+  const room = new Map(), gs = rows.filter(r => r.gcd);
+  gs.forEach((r, i) => room.set(r, (gs[i + 1] ? gs[i + 1].t : f ? f.window : r.t + 2.5) - r.t - Math.max(0, r.cast - SLIDE)));
+  const share = r => Math.max(0, Math.min(1, r.run / (room.get(r) || r.run)));
   const icon = (name, cls) => icons[name] ? el("img", { class: cls, src: icons[name], alt: name, draggable: "false" })
     : el("span", { class: `${cls} noicon` }, name.split(/[\s']+/).map(w => w[0]).join("").slice(0, 3));   // no icon: initials
   return el("div", { class: "rot-strip" }, segs.map((sg, i) => {
@@ -1420,11 +1426,12 @@ function rotationStrip(rows, f, icons) {
     if (!mine.length) return null;
     return el("div", { class: "rot-seg" }, el("div", { class: "rot-seg-label" }, sg.name, isFinite(sg.t) ? el("span", {}, rotClock(sg.t)) : null),
       el("div", { class: "rot-icons" }, mine.map(r => {
-        const g = el("div", { class: `rot-g${r.run ? r.cast ? " moving" : " moving instant" : ""}`, role: "img", "aria-label": [r.gcd, ...r.weaves].filter(Boolean).join(", ") },
+        const g = el("div", { class: `rot-g${r.run ? r.cast ? " moving" : " moving instant" : ""}`, role: "img", "aria-label": [r.gcd, ...r.weaves].filter(Boolean).join(", "),
+          style: r.run ? `--run:${share(r).toFixed(3)}` : null },
           r.gcd ? icon(r.gcd, "gcd") : null, ...r.weaves.map(w => icon(w, "ogcd")));
         hover(g, `${rotClock(r.t)} · ${r.gcd || r.weaves.join(" · ")}`, [
           ...(r.gcd ? [[r.cast ? `${r.cast.toFixed(2)} s` : "instant", r.cast ? "cast" : ""]] : []),
-          ...(r.run ? [[`${r.run.toFixed(1)} s`, r.cast ? "running in its slidecast and after it" : "running through it", true]] : []),
+          ...(r.run ? [[`${r.run.toFixed(1)} s`, `${r.cast ? "running in its slidecast and after it" : "running through it"}, of ${room.get(r).toFixed(1)} s free (${Math.round(share(r) * 100)}%)`, true]] : []),
           ...(r.gcd && r.weaves.length ? [[r.weaves.join(" · "), "woven after it"]] : [])]);
         return g;
       })));
@@ -1672,7 +1679,7 @@ function rotationPage(code, key) {
     ["Resources wasted", waste.length ? String(waste.reduce((s2, [, v]) => s2 + v, 0)) : "none", waste.length ? waste.map(([w, v]) => `${w} ×${v}`).join(" · ") : "nothing overcapped or dropped"],
   ]));
   app.append(
-    card("Rotation", { info: `${nG} GCDs, a line per stretch between mechanics, the oGCDs woven after each smaller and raised. A bar under a GCD: running before the next one (green: an instant, run through it; blue: a hard cast, run after it). Runs sit as late as their band allows, on instants where they can. Hover an icon for its time and cast; negative times are pre-pull.` },
+    card("Rotation", { info: `${nG} GCDs, a line per stretch between mechanics, the oGCDs woven after each smaller and raised. A bar under a GCD: running before the next one (green: an instant, run through it; blue: a hard cast, run after it), as long as the share of the time free to run it takes: a dot for a sliver, the icon's width when all of it is used. Runs sit as late as their band allows, on instants where they can. Hover an icon for its time and cast; negative times are pre-pull.` },
       () => rotationStrip(rows, f, icons),
       () => { const tbl = tableOf(["Time", "GCD", "Cast", "Running", "Woven after it"], rows.map(r => [rotClock(r.t), r.run ? `▸ ${r.gcd}` : r.gcd,
           r.gcd ? r.cast ? `${r.cast.toFixed(2)} s` : "instant" : "", r.run ? `${r.run.toFixed(1)} s${r.cast ? ", after its cast" : ""}` : "", r.weaves.join(" · ")]), [0, 2, 3]);
