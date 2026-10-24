@@ -135,12 +135,26 @@ def rotations():
     empty when it hasn't been run."""
     f = HERE.parent / "rotation" / ".cache" / "rotations.json"
     out = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+    g = HERE.parent / "gear" / ".cache" / "bis_site.json"     # tools/gear/ceiling.py: the best-in-slot ceilings
+    bis = json.loads(g.read_text(encoding="utf-8")) if g.exists() else {}
     import gamedata
     for job, v in out.items():   # each job's action icons, for the compact rotation, its job icon and role
         v["icons"] = gamedata.icons(job, {r[1] for x in v["rotations"].values() for r in x["rotation"]})
         v["job_icon"] = gamedata.job_icon(job)
         v["role"] = ROLE.get(job, "Melee")
+        if job in bis: v["bis"] = bis[job]
     return out
+
+
+def gear():
+    """The best-in-slot sets for the Gear pages and the rotations' job pages, {jobs: {job: sheet}, icons: {item id: data
+    URI}} (tools/gear/sheets.py, from bis.py --combined's sets); empty when there are none."""
+    sys.path.insert(0, str(HERE.parent / "gear"))
+    import gamedata, sheets
+    js = sheets.sheets({a: n for n, a in gamedata.ABBR.items()})
+    if not js: return {}
+    for name, s in js.items(): s["role"] = ROLE.get(name, "Melee")
+    return dict(jobs=js, icons=gamedata.item_icons(sheets.ids(js)))
 
 
 def fetch_echo(data):

@@ -36,7 +36,7 @@ spans; melee actions (the 3 y weaponskills, and Death Rattle, the bites and Reaw
 Athena; Uncoiled Fury and Writhing Snap reach from anywhere.
 """
 import itertools
-from engine import ANIM_LOCK, BASE_GCD, settle
+from engine import ANIM_LOCK, BASE_GCD, recast, settle
 
 POTENCY = {"Steel Fangs": (200, 300), "Reaving Fangs": (200, 300), "Hunter's Sting": 300, "Swiftskin's Sting": 300,
            "Flanksting Strike": 340, "Flanksbane Fang": 340, "Hindsting Strike": 340, "Hindsbane Fang": 340,
@@ -78,8 +78,8 @@ GCDS = ["Steel Fangs", "Reaving Fangs", "Hunter's Sting", "Swiftskin's Sting", "
         "Hindsting Strike", "Hindsbane Fang", "Vicewinder", "Hunter's Coil", "Swiftskin's Coil", "Uncoiled Fury",
         "Reawaken", *GENERATIONS, "Writhing Snap"]
 OGCD_ORDER = ["Tincture", "Serpent's Ire", "Death Rattle", "Twinfang Bite", "Twinblood Bite", "True North"]
-SPEED = 0.996                                   # skill speed factor on the GCD: 2.49 s (2.12 s under Swiftscaled), the
-                                                # benchmark clears' median; our Vipers' is 2.46 s
+SPEED = 0.998                                   # skill speed factor on the GCD: 2.49 s (2.12 s under Swiftscaled), the
+                                                # benchmark clears' median (0.996 gives 2.11 under it); our Vipers' is 2.46 s
 MELEE = True                                    # p12s.py gives it a melee's windows (M1 / M2)
 
 
@@ -304,7 +304,7 @@ def do_gcd(s, fight, name):
     elif name in GENERATIONS:
         s.tribute -= 1; s.gen = GENERATIONS.index(name) + 1
         if not s.tribute: s.ra_until = -1.0
-    s.t, s.gcd = start + ANIM_LOCK, start + BASE_GCD * RECAST.get(name, 2.5) / 2.5 * SPEED * haste
+    s.t, s.gcd = start + ANIM_LOCK, start + recast(RECAST.get(name, 2.5), SPEED, haste)
     s.near = away_soon(s, fight, s.t)
     s.log(start, name, gauge(s, ""))
     return s

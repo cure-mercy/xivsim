@@ -32,6 +32,7 @@ BUFFS = {   # name: (job, multiplier)
     "Battle Litany": ("DRG", 1 + 0.10 * (CRIT_DMG - 1) / (1 + CRIT * (CRIT_DMG - 1))),
     "Battle Voice": ("BRD", 1 + 0.20 * 0.25 / (1 + DH * 0.25)),
 }
+RATES = {"Chain Stratagem": (0.10, 0.0), "Battle Litany": (0.10, 0.0), "Battle Voice": (0.0, 0.20)}   # crit, direct-hit rate
 BURSTS = [(-10, 40), (100, 160), (220, 300), (350, 430)]
 
 
@@ -62,6 +63,8 @@ def fight_for(a, job=blm):
     f = p12s.fight(a.slot, p12s.parse_var(a.var), until=a.until, still=a.still,
                    buffs=sorted(buffs, key=lambda b: b[1]), pot=a.pot, carry=a.carry,
                    far_spots=far_spots)
+    f.typical = (CRIT, CRIT_DMG, DH)     # what BUFFS priced the crit / direct-hit buffs at; Fight.sure corrects sure hits
+    f.rates = [(t0, t1, RATES[n][0], RATES[n][1]) for n, t0, t1, _ in f.buffs if n in RATES]
     extra = [tuple(float(x) for x in w.split("-")) for w in a.move.split(",") if w.strip()]
     if extra: f = dataclasses.replace(f, moves=f.moves + [Move(s, e, e - s, why="--move") for s, e in extra])
     f.buffs = [b for b in f.buffs if b[1] < f.until]

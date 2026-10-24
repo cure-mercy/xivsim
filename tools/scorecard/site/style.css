@@ -245,3 +245,53 @@ td.good{ color: #3fae5a; } td.bad{ color: var(--div-neg); }
 .chart .extra.x-dd{ stroke: #e0a03a; } .chart .mark-extra.x-dd{ fill: #e0a03a; }
 .chart .extra.x-min{ stroke: #9b6cf2; } .chart .mark-extra.x-min{ fill: #9b6cf2; }
 .card + .table-wrap{ margin-top: 16px; }
+
+/* best-in-slot gear: item names in the game's rarity colours (2 green, 3 blue, 4 purple), materia by stat (the
+   dataviz categorical slots 1-4, checked for colour-blind separation in both themes; every chip also carries its name) */
+:root{ --r2: #5cc45c; --r3: #86b6ef; --r4: #c084fc; --m-crit: #3987e5; --m-dh: #d95926; --m-det: #199e70; --m-speed: #c98500; }
+@media (prefers-color-scheme: light){
+  :root:where(:not([data-theme="dark"])){ --r2: #1a7f1a; --r3: #1c5cab; --r4: #7e22ce; --m-crit: #2a78d6; --m-dh: #eb6834; --m-det: #1baf7a; --m-speed: #eda100; }
+}
+:root[data-theme="light"]{ --r2: #1a7f1a; --r3: #1c5cab; --r4: #7e22ce; --m-crit: #2a78d6; --m-dh: #eb6834; --m-det: #1baf7a; --m-speed: #eda100; }
+.r2{ --rc: var(--r2); } .r3{ --rc: var(--r3); } .r4{ --rc: var(--r4); }
+.m-crit{ --mc: var(--m-crit); } .m-dh{ --mc: var(--m-dh); } .m-det{ --mc: var(--m-det); } .m-speed{ --mc: var(--m-speed); }
+.gear-doll{ display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.gear-col{ display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.gear-item{ display: flex; gap: 9px; align-items: center; padding: 4px 6px; border-radius: 6px; min-width: 0; outline: none; }
+.gear-item:hover, .gear-item:focus-visible{ background: var(--surface-2); }
+.gear-item:focus-visible{ box-shadow: 0 0 0 2px var(--accent); }
+.gear-icon{ width: 36px; height: 36px; flex: none; border-radius: 6px; box-shadow: 0 0 0 1px var(--rc, var(--border)); }
+.gear-icon.noicon, .gf-icon.noicon{ display: inline-block; background: var(--surface-2); }
+.gi-body{ min-width: 0; flex: 1; }
+.gi-top, .gi-sub{ display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.gi-name{ color: var(--rc, var(--ink)); font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.gi-ilvl{ color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.gi-sub{ font-size: 12px; margin-top: 1px; }
+.gi-mats{ display: flex; gap: 3px; flex: none; }
+.gi-off{ color: var(--muted); font-style: italic; }
+.gi-stats{ color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: auto; font-variant-numeric: tabular-nums; }
+.mat{ display: inline-flex; align-items: center; gap: 4px; font-size: 11px; line-height: 16px; padding: 0 5px 0 4px; border-radius: 8px; color: var(--ink-2);
+      background: color-mix(in srgb, var(--mc) 16%, transparent); border: 1px solid transparent; white-space: nowrap; }
+.mat::before{ content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--mc); }
+.mat.cut{ border: 1px dashed var(--mc); }
+.mat.empty{ background: var(--surface-2); color: var(--muted); }
+.mat.empty::before{ display: none; }
+.gear-stats{ display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px 12px; margin: 10px 0 0; padding: 10px 6px 0; border-top: 1px solid var(--border); }
+.gs .l{ color: var(--ink-2); font-size: 12px; }
+.gs .v{ font-size: 17px; font-weight: 620; font-variant-numeric: tabular-nums; }
+.gs .s{ color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.gear-foot{ display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: center; margin: 10px 0 2px; padding: 0 6px; font-size: 13px; color: var(--ink-2); }
+.gf{ display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; outline: none; border-radius: 4px; }
+.gf:focus-visible{ box-shadow: 0 0 0 2px var(--accent); }
+.gf b{ color: var(--ink); font-weight: 600; }
+.gf-icon{ width: 22px; height: 22px; border-radius: 4px; }
+.gf-m{ display: inline-flex; gap: 3px; align-items: center; font-variant-numeric: tabular-nums; }
+.tip .t-key.mk{ width: 8px; height: 8px; border-radius: 50%; background: var(--mc); align-self: center; }
+.tip .t-key.k-tier-s{ width: 10px; height: 10px; border-radius: 50%; background: var(--series); align-self: center; }
+.tip .t-key.k-tier-f{ width: 8px; height: 8px; border-radius: 50%; background: var(--muted); align-self: center; }
+.chart .tier-f{ fill: var(--muted); stroke: var(--surface); stroke-width: 2; }
+.chart .tier-s{ fill: var(--series); stroke: var(--surface); stroke-width: 2; }
+.tag{ display: inline-block; font-size: 11px; line-height: 15px; padding: 0 5px; margin-left: 6px; border: 1px solid var(--accent); color: var(--accent); border-radius: 4px; vertical-align: 1px; }
+@media (max-width: 760px){
+  .gear-doll{ grid-template-columns: 1fr; }
+}

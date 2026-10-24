@@ -4,3 +4,4 @@ tools/scorecard/.cache/
 tools/scorecard/site/data.json
 tools/rotation/.cache/
 scratch/
+tools/gear/.cache/

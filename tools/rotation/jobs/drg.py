@@ -48,9 +48,16 @@ POTENCY = {"True Thrust": 230, "Raiden Thrust": 280, "Vorpal Thrust": (130, 280)
            "Doom Spike": 110, "Draconian Fury": 130, "Sonic Thrust": (100, 120), "Coerthan Torment": (100, 150)}  # AoE
 POSITIONAL = 40                                 # Chaotic Spring, Wheeling Thrust (rear), Fang and Claw (flank)
 POSITIONALS = ("Chaotic Spring", "Wheeling Thrust", "Fang and Claw")
-# Chaotic Spring's DoT: 45 potency for 24 s by the tooltip; ticks land for 48-52 relative to High Jump in the logs, with
-# the buffs they snapshot divided out (DoTs scale with skill speed and are computed differently: BLM's Thunder III too)
-DOT, DOT_S = 50, 24.0
+# A DoT tick's plain potency at base speed is its tooltip's 45 (24 s); dot_tick() puts on the speed bonus the game
+# gives DoTs (1 + floor(130 x (speed stat - 400) / 1900) / 1000 = 2 - SPEED). Read from FFLogs' own 100% tick (T,
+# expectedAmount), our players' and the clears' ticks deal the tooltip x0.99 (scratch/gear/dot_t.py, 2026-10-23).
+DOT_BASE, DOT_S = 45, 24.0
+
+
+def dot_tick():
+    return DOT_BASE * (2 - SPEED)
+
+
 DOT_PHASE = 1.5                                 # server ticks land at DOT_PHASE + 3k seconds
 AUTO, AUTO_DELAY = 86, 2.81                     # auto-attacks, from the logs (84 in the 2025 clears)
 # seconds from executing an action to its damage landing, the logs' medians; buffs snapshot on execution
@@ -152,10 +159,11 @@ def mult(s, fight, at):
 
 def crit_factor(s, at, sure=False):
     """A hit's expected crit worth over an average hit at the player's CRIT: Battle Litany adds 10% crit rate; a sure
-    crit (Life Surge) deals the crit damage, plus the crit rate Battle Litany adds."""
+    crit (Life Surge) deals the crit damage, and Battle Litany's rate turns into damage on it as the game does for a
+    guaranteed crit (x(1 + rate x (crit damage - 1)), xivgear's autoCritBuffDmg: 1.696 at x1.60, not 1.70)."""
     bl = LITANY_RATE if s.bl_from <= at < s.bl_until else 0.0
     avg = 1 + CRIT * (CRIT_DMG - 1)
-    return ((CRIT_DMG + bl) if sure else 1 + (CRIT + bl) * (CRIT_DMG - 1)) / avg
+    return (CRIT_DMG * (1 + bl * (CRIT_DMG - 1)) if sure else 1 + (CRIT + bl) * (CRIT_DMG - 1)) / avg
 
 
 def lapse(s, attr, to, i):
@@ -194,7 +202,8 @@ def cd_name(name):
 
 def hit(s, fight, at, potency, name, sure=False):
     land = at + DELAY.get(name, 0.6)
-    if 0 <= land < fight.until and fight.targetable(land): s.dmg += potency * mult(s, fight, at) * crit_factor(s, at, sure)
+    if 0 <= land < fight.until and fight.targetable(land):     # raid crit buffs as damage on a sure crit (Fight.sure)
+        s.dmg += potency * mult(s, fight, at) * crit_factor(s, at, sure) * (fight.sure(at) if sure else 1.0)
 
 
 def ticks(fight, a, b):
@@ -212,9 +221,9 @@ def apply_dot(s, fight, land, m):
     """Chaotic Spring's DoT on the boss at `land` with multiplier m, replacing the old one (its remaining ticks are
     lost). Its damage is counted now."""
     if s.dot and s.dot[0] + DOT_S > land:
-        lost = ticks(fight, land, s.dot[0] + DOT_S) * DOT * s.dot[1]
+        lost = ticks(fight, land, s.dot[0] + DOT_S) * dot_tick() * s.dot[1]
         s.dmg -= lost; s.dotp -= lost
-    gain = ticks(fight, land, land + DOT_S) * DOT * m
+    gain = ticks(fight, land, land + DOT_S) * dot_tick() * m
     s.dmg += gain; s.dotp += gain
     s.dot = (land, m)
 

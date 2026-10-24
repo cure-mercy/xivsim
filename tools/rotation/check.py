@@ -240,6 +240,10 @@ def rdm_cases():
     s2.t, s2.gcd, s2.free = 21.0, 23.0, 21.0
     e = rdm.do_ogcd(s2, Fight(until=60, moves=[Move(20, 30, 2.0, dash=(("out", 0.0, 9.0),))]), "Displacement")
     expect(abs(e.acc - 0.5) < 1e-9, f"a 9 y stretch: the backstep overshoots 6 y and walks back, saving 3 y ({e.acc:.2f} s)")
+    edge = Fight(until=60, moves=[Move(20, 30, 2.0, dash=(("out", 0.0, 9.0, 5.0),))])     # the drop 5 y past the stretch
+    s3 = rdm.State.initial(edge); s3.first = False; s3.t, s3.gcd, s3.free = 21.0, 23.0, 21.0
+    expect(not rdm.ogcd_legal(s3, "Displacement", 21.0, edge),
+           "...but not with the arena's drop 5 y past the stretch: the 6 y overshoot would land off the platform")
     f = Fight(until=60, moves=[Move(10, 15, 4.0, dash=(("in", 0.0, 6.0),))], away=[Move(9.3, 10.7, 1.4)])
     s = rdm.State.initial(f); s.first = False; s.t, s.gcd, s.free = 9.4, 11.5, 9.4
     s.cds["Corps-a-Corps"] = (1, None)
@@ -348,7 +352,7 @@ def dash_faults(state, fight):
         if not d: continue
         kind, dist = rdm.DASHES[name]
         w = next((w for w in fight.moves if w.lo <= t < w.hi), None)
-        cap = max((min(length, dist or length) / engine.RUN for k, _, length in (w.dash if w else ()) if k == kind), default=0)
+        cap = max((min(seg[2], dist or seg[2]) / engine.RUN for seg in (w.dash if w else ()) if seg[0] == kind), default=0)
         if float(d[1]) > cap + 0.01: out.append(f"{name} at {t:.2f} saves {d[1]} s, at most {cap:.2f}")
     return out
 
@@ -513,8 +517,9 @@ def smn_cases():
     em = smn.do_gcd(g, f, "Emerald Rite")
     expect(abs(em.gcd - em.history()[-1][0] - 1.5) < 1e-9, "Emerald Rite: a fixed 1.5 s recast")
     d0 = em.dmg; sl = smn.do_gcd(em, f, "Slipstream")
-    expect(abs(sl.dmg - d0 - 430 - 6 * 30) < 1e-6 and abs(sl.dotp - 180) < 1e-6 and sl.favor is None,
-           "Slipstream: 430 and six 30-potency windstorm ticks")
+    tk = smn.dot_tick()
+    expect(abs(sl.dmg - d0 - 430 - 6 * tk) < 1e-6 and abs(sl.dotp - 6 * tk) < 1e-6 and sl.favor is None,
+           f"Slipstream: 430 and six windstorm ticks of {tk:.1f} (30 at base speed, its tooltip, with the spell speed bonus)")
     i = smn.do_gcd(sl, f, "Summon Ifrit II")
     c = smn.do_gcd(i, f, "Crimson Cyclone")
     expect(c.csr and c.favor is None and smn.do_gcd(c, f, "Crimson Strike") is not None, "Ifrit's Favor: Crimson Cyclone, then Crimson Strike")
@@ -557,7 +562,7 @@ def smn_faults(state, fight, slot="R1", var=None):
     for t, name, note in h:
         d = re.search(r"dash ([\d.]+)s", note)
         w = next((w for w in fight.moves if w.lo <= t < w.hi), None)
-        cap = max((length / engine.RUN for k, _, length in (w.dash if w else ()) if k == "in"), default=0)
+        cap = max((seg[2] / engine.RUN for seg in (w.dash if w else ()) if seg[0] == "in"), default=0)
         if d and float(d[1]) > cap + 0.01: out.append(f"{name} at {t:.2f} saves {d[1]} s, at most {cap:.2f}")
     return out
 

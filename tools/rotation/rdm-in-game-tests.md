@@ -4,6 +4,27 @@ The Red Mage model (`jobs/rdm.py`) was built from logs while FFLogs was down. Th
 below, or settle them only indirectly. Each test says what the model assumes now and what to change if the game
 disagrees. The most important ones come first.
 
+## Results (tested in game, 2026-10-23)
+
+| Test | Result | Model |
+|---|---|---|
+| 1. Level-90 potencies | all as in the table below | right as is |
+| 2. Mana imbalance | halving exists: a colour's gains halve while it leads by 31 or more | changed: `IMBALANCE_HALVES = True` |
+| 3.1 Stack after a broken combo | the gauge's stack is gone after Jolt III (a first reading, the stack staying, was Magicked Swordplay's) | changed: any other GCD clears the stacks |
+| 3.2 ... 30 s later | the gauge's stack doesn't lapse (the 30 s was Magicked Swordplay's) | right |
+| 3.3 Riposte -> Jolt -> Riposte -> Zwerchhau | Verflare doesn't light up (two stacks: Jolt III cleared the first) | changed with 3.1; a Riposte adds a stack like the others (a clear's Riposte -> Zwerchhau -> Manafication -> Riposte -> Verholy is legal) |
+| 4. Swiftcast and Dualcast | Acceleration goes first | right (Dualcast against Swiftcast: as assumed) |
+| 5.1 Manafication's gauge | no change | right |
+| 5.2 Riposte under Manafication | the Magicked Swordplay stack goes first | right |
+| 5.3 Manafication with a stack up | can't be tested (120 s recast) | as is |
+| 6. Verflare at equal mana | Verfire Ready only now and then | right (20%) |
+| 7. Enchanted Reprise recast | 2.5 s | right |
+| 8.1 Displacement's distance | 15 y | right |
+| 8.2 ... facing away | away from the target, whatever the facing | right |
+| 8.3 ... wall behind | no wall in P12S: the arena edge is a drop (a 40 y square, Athena in the middle) | changed: a backstep lands within 20 y of her (`p12s.ARENA_HALF`) |
+| 9. Sprint and Dualcast | Dualcast is gone | right |
+| 10. Reach under Manafication | works from ~10 y only under Manafication | right |
+
 Where to test:
 - **Gauge, status and movement rules** (tests 2 to 10) are the same at any level: a striking dummy is fine. Start each
   test in combat. The Balance Gauge shows both mana values as numbers.

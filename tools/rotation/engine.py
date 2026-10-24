@@ -28,8 +28,10 @@ class Move:
     need: float
     relocate: bool = True
     why: str = ""
-    # stretches of the path a dash can cover: (kind, yalms of the path before it, its length). "in": straight toward the
-    # boss, down to where a gap closer lands; "out": straight away from her, starting beside her (a backstep)
+    # stretches of the path a dash can cover: (kind, yalms of the path before it, its length[, yalms of floor past its
+    # end]). "in": straight toward the boss, down to where a gap closer lands; "out": straight away from her, starting
+    # beside her (a backstep, which may overshoot the stretch and walk back only as far as the floor goes: P12S's arena
+    # edge is a drop, not a wall)
     dash: tuple = ()
 
 
@@ -48,6 +50,10 @@ class Fight:
     pot: bool = False                               # may the job use a tincture (once)?
     pot_mult: float = 1.1057                        # a Grade 4 tincture: +10.57% damage for DPS and healers, measured
     carry: bool = False                             # value the resources still held at `until`
+    # the crit and direct-hit raid buffs among `buffs`, [(start, end, crit rate added, direct-hit rate added)], and the
+    # typical rates `buffs` priced them at (their expected worth on an ordinary hit; solve.py's CRIT, CRIT_DMG, DH)
+    rates: list = field(default_factory=list)
+    typical: tuple = (0.25, 1.60, 0.36)
 
     def __post_init__(self):
         self.moves = sorted(self.moves, key=lambda m: m.lo)
@@ -59,6 +65,19 @@ class Fight:
         for _, a, b, x in self.buffs:
             if a <= t < b: m *= x
         if pot_at is not None and pot_at <= t < pot_at + 30: m *= self.pot_mult
+        return m
+
+    def sure(self, t, dh=False):
+        """The correction on a guaranteed crit (with `dh`, a guaranteed critical direct hit) for the crit / direct-hit
+        raid buffs up at t: a sure hit takes a buff's rate as damage, x(1 + rate x (crit damage - 1)) (x(1 + rate x
+        0.25) for a direct-hit buff), where `buffs` priced it at its worth on an ordinary hit (xivgear autoCritBuffDmg).
+        A direct-hit buff on a sure crit that may still miss its direct hit is worth what `buffs` says."""
+        p, c, q = self.typical
+        m = 1.0
+        for a, b, dc, dd in self.rates:
+            if a <= t < b:
+                if dc: m *= (1 + dc * (c - 1)) / (1 + dc * (c - 1) / (1 + p * (c - 1)))
+                if dd and dh: m *= (1 + dd * 0.25) / (1 + dd * 0.25 / (1 + q * 0.25))
         return m
 
     def targetable(self, t):
@@ -139,9 +158,12 @@ def dash_gain(s, fight, t, kind, dist=None):
     if i >= len(W) or not W[i].lo <= t < W[i].hi: return None
     w = W[i]
     run = ((s.acc if i == s.mvi else 0.0) + _overlap(s.free, t, w.lo, w.hi)) * RUN
-    for k, (kind_k, before, length) in enumerate(w.dash):
+    for k, seg in enumerate(w.dash):
+        kind_k, before, length = seg[:3]
+        room = seg[3] if len(seg) > 3 else math.inf     # floor past the stretch's end before the drop (no wall)
         if kind_k != kind or (i, k) in s.dashed or run < before - 1e-9: continue
         rest = min(length, before + length - run)
+        if dist is not None and dist - rest > room + 1e-9: continue     # the backstep would land off the platform
         saved = rest if dist is None else dist if rest >= dist else 2 * rest - dist
         if saved > 1e-9: return k, min(saved / RUN, w.need)
     return None
@@ -172,13 +194,24 @@ def move_credit(s, fight):
 HEURISTICS = [(r, v, m) for r, v in [(200, 0.5), (220, 0.5), (220, 0.1), (245, 0.5)] for m in (0.0, 1.0)]
 
 
+def recast(base, speed, haste=1.0):
+    """A recast or cast time of `base` seconds as the game times it (xivgear's xivmath sksToGcd / spsToGcd): the speed
+    stat's per-mille factor (a job's SPEED: (1000 - floor(130 x (speed stat - 400) / 1900)) / 1000) in whole
+    milliseconds, then a haste (0.87: 13% faster) in whole hundredths of a second. Under Fuka a 2.40 s GCD is 2.08 s or
+    2.09 s by the factor, not 2.088 s."""
+    ms = math.floor(round(speed * 1000) * base + 1e-6)
+    return math.floor(ms * (100 - round(100 * (1 - haste))) / 1000 + 1e-6) / 100
+
+
 def configure(jobname, speed, setting, params=None):
-    """The job module set up for one heuristic setting (rate, scale, move weight), in this process."""
+    """The job module set up for one heuristic setting (rate, scale, move weight), in this process. A job's derive()
+    then recomputes what it builds from the constants `params` set (the worth of its own crit buffs from its rates)."""
     import importlib
     rate, scale, mw = setting
     job = importlib.import_module(f"jobs.{jobname}")
     job.SPEED, job.RATE, job.MOVE_WEIGHT = speed, rate, mw
     for k, v in (params or {}).items(): setattr(job, k, v)
+    if hasattr(job, "derive"): job.derive()
     if not hasattr(job, "VALUE0"): job.VALUE0 = dict(job.VALUE)     # a worker may run several settings
     job.VALUE = {k: v * scale for k, v in job.VALUE0.items()}
     return job

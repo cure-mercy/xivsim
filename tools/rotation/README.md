@@ -21,18 +21,18 @@ python tools/rotation/dps.py --job drg --site --offline       # ...from the scor
 
 | `--job` | Job | Default GCD | Slot | Best over the phase | Standing still | Search |
 |---|---|---|---|---|---|---|
-| `blm` | Black Mage | 2.32 s | R1 | 101,361 | 101,596 | ~70 s |
+| `blm` | Black Mage | 2.32 s | R1 / R2 | 99,670 / 99,886 | 100,774 | ~70 s |
 | `rpr` | Reaper | 2.49 s | M1 = M2 | 131,628 | 133,399 | |
 | `mnk` | Monk | 1.94 s (2.43 s before Greased Lightning) | M1 / M2 | 133,997 / 133,392 | 135,805 | ~2.5 min |
-| `brd` | Bard | 2.49 s | R1 = R2 = still | 85,922 | | |
-| `drg` | Dragoon | 2.49 s | M1 = M2 | 126,632 | 127,736 | ~70 s |
-| `rdm` | Red Mage | 2.50 s | R1 / R2 | 93,149 / 92,056 | 93,613 | ~35 s |
-| `vpr` | Viper | 2.49 s (2.12 s under Swiftscaled) | M1 = M2 | 145,130 | 145,714 | ~55 s |
-| `sam` | Samurai | 2.40 s (2.09 s under Fuka) | M1 = M2 | 133,863 (148,419 \*) | 134,948 (149,505 \*) | ~2 min |
+| `brd` | Bard | 2.49 s | R1 = R2 = still | 84,651 | | |
+| `drg` | Dragoon | 2.49 s | M1 = M2 | 126,980 | 127,694 | ~70 s |
+| `rdm` | Red Mage | 2.50 s | R1 / R2 | 93,688 / 92,856 | 93,376 | ~35 s |
+| `vpr` | Viper | 2.49 s (2.12 s under Swiftscaled) | M1 = M2 | 145,108 | 145,694 | ~55 s |
+| `sam` | Samurai | 2.40 s (2.09 s under Fuka) | M1 = M2 | 133,320 | 134,424 | ~2 min |
 | `pct` | Pictomancer | 2.45 s | R1 / R2 | 93,782 / 93,146 (103,194 / 102,558 \*) | 94,243 (103,725 \*) | ~30 s |
 | `mch` | Machinist | 2.45 s | R1 = R2 = still | 107,858 (111,688 \*) | | ~30 s |
-| `nin` | Ninja | 2.09 s (2.46 s before Increase Attack Speed) | M1 = M2 | 131,340 | 131,525 | ~50 s |
-| `smn` | Summoner | 2.45 s | R1 / R2 | 94,387 / 94,537 | 94,536 | ~20 s |
+| `nin` | Ninja | 2.09 s (2.46 s before Increase Attack Speed) | M1 = M2 | 131,182 | 131,773 | ~50 s |
+| `smn` | Summoner | 2.45 s | R1 / R2 | 94,559 / 94,556 | 94,602 | ~20 s |
 | `dnc` | Dancer | 2.49 s | R1 = R2 = still | 83,902 (86,220 \*) | | ~40 s |
 
 Potency without raid buffs, over 0:00-449 s, as each job's section last recorded it. \* with sure critical (direct)
@@ -57,7 +57,9 @@ hits at their expected worth, which is what the search ranks by.
 | `--compare` | replay every benchmark clear's logged rotation under the same buffs, downtime and window |
 
 Damage is potency times the raid buffs active when each hit lands; crit and direct-hit buffs count at their expected
-value.
+value, and on a guaranteed hit as the damage the game turns their rate into (x(1 + rate x (crit damage - 1)), x(1 +
+rate x 0.25) for direct hit; `Fight.sure`: Monk's, Samurai's, Dragoon's sure crits, Machinist's, Pictomancer's and
+Dancer's sure critical direct hits).
 
 ## How a job model is built
 
@@ -91,9 +93,10 @@ need and the guide doesn't give are listed per job.
 - from the logs alone: a hard-cast Fire III from Umbral Ice III costs no MP (4 of 4 casts), and the Polyglot timer
   starts when the first fire or ice spell lands (Fire III's 1.29 s flight), not when it resolves.
 
-Over the whole phase in R1 the best rotation deals 101,361 potency; standing still 101,596, so our strategy's ~59 s of
-running costs about 0.2%: instants, slidecasts and weaves cover nearly all of it. The best clear's own rotation,
-replayed at the same 2.32 s GCD with its own movement (`--compare`), deals 101,033.
+Over the whole phase in R1 the best rotation deals 99,670 potency (R2 99,886); standing still 100,774, so our strategy's
+~59 s of running costs about 1% (2026-10-24; 0.2% before Ley Lines' haste was rounded as the game does and Thunder III
+ticked for its tooltip): instants, slidecasts and weaves cover most of it. The best clear's own rotation, replayed at
+the same 2.32 s GCD with its own movement (`--compare`), dealt 101,033 under the earlier model.
 
 ## Reaper
 
@@ -142,7 +145,7 @@ away stretches can't be filled (out of reach a Monk can only meditate, Form Shif
 `jobs/brd.py`. No benchmark clear has a Bard, so our 62 clean pulls (four players) are the only check
 (`calibrate.py --job brd --ours`; `--compare` has nothing to replay). Ranged Mastery (94) raises the main actions in
 the guide; from the logs, scaled to Bloodletter (130): Burst Shot 200, Refulgent Arrow 260, Empyreal Arrow 240,
-Sidewinder 320, Apex Arrow 5 a Soul Voice; DoT ticks 25 and 31 (1.25 x the tooltips); auto-attacks 68 every 3.07 s;
+Sidewinder 320, Apex Arrow 5 a Soul Voice; DoT ticks 20 and 25 at base speed (the tooltips'; see DoT ticks below); auto-attacks 68 every 3.07 s;
 Radiant Finale's damage status is 2964.
 
 - Songs: each 3 s tick with a bite up gives Repertoire 80% of the time; the search counts the expected 0.8 (Pitch
@@ -156,8 +159,8 @@ Radiant Finale's damage status is 2964.
 - DoTs snapshot, tick on the server tick and count when applied; Iron Jaws refreshes late, or early under fresh buffs.
 - Every action is instant and reaches 25 y, so R1, R2 and standing still give the same rotation.
 
-Over the phase 85,922: Raging Strikes and Battle Voice on the Minuet, Minuet -> Ballad -> Paeon, Blast Arrow after
-every Apex Arrow at 80+; Radiant Finale lands in the Ballad, since its worth to the party isn't counted.
+Over the phase 84,651 (2026-10-24): Raging Strikes and Battle Voice on the Minuet, Ballad and Paeon in either order,
+Blast Arrow after every Apex Arrow at 80+; Radiant Finale goes anywhere, since its worth to the party isn't counted.
 
 ## Dragoon
 
@@ -166,7 +169,7 @@ the full logs. Melee Mastery (94) raises most weaponskills in the guide; at leve
 
 - Raiden Thrust 280, Vorpal Thrust 130 / 280 in combo, Heavens' Thrust 100 / 400, Disembowel 140 / 250, Chaotic
   Spring, Fang and Claw and Wheeling Thrust 100 / 260 in combo +40 positional, Drakesbane 400, Wyrmwind Thrust 420,
-  Stardiver 720, Nastrond 720, Mirage Dive 380, Geirskogul 280, Dragonfire Dive 500; DoT ~50 a tick (tooltip 45);
+  Stardiver 720, Nastrond 720, Mirage Dive 380, Geirskogul 280, Dragonfire Dive 500; DoT 45 a tick at base speed (the tooltip's);
   auto-attacks 86 every 2.81 s;
 - statuses come with the cast, so Geirskogul's hit doesn't get the Life of the Dragon it grants; Lance Charge and
   Battle Litany land 0.63 s after; High Jump / Dragonfire Dive lock 0.87 s, Stardiver 1.58 s (single-weave), Elusive
@@ -182,8 +185,8 @@ Every cast in our pulls replays legal, and in the clears all but second tincture
   for it: Disembowel is offered only when the DoT would be nearly out by its Chaotic Spring, or Power Surge is low.
 - Out of reach, Elusive Jump buys an Enhanced Piercing Talon (350).
 
-Over the phase 126,632 in M1 and M2; standing still 127,736 (-0.9%): six True Norths, four Piercing Talons. Life Surge
-goes on eight Drakesbanes and four Heavens' Thrusts.
+Over the phase 126,980 in M1 and M2; standing still 127,694 (-0.6%, 2026-10-24): six True Norths, three Piercing
+Talons. Life Surge goes on seven Drakesbanes and five Heavens' Thrusts.
 
 ## Red Mage
 
@@ -204,15 +207,18 @@ Every cast (24,041, ours and the clears) replays legal.
 - Procs count at their expected worth. At level 90 the search never spends them (Jolt III's 360 and 2 / 2 mana beat
   Verfire's 340 and 5); forcing them costs 0.4-1.1%, though our Red Mages spend them.
 - The melee combo costs 20 / 15 / 15 of each mana (nothing under Manafication's Swordplay) and gives the stacks for
-  Verflare / Verholy -> Scorch -> Resolution. Open in the logs, to test in game ([rdm-in-game-tests.md](rdm-in-game-tests.md)):
-  whether mana gains halve past a 30-point imbalance (left out; searches never pass 30) and whether stacks outlive a
-  broken combo (the search plays whole combos, started only with their mana and their three hits clear of far spots).
+  Verflare / Verholy -> Scorch -> Resolution. Tested in game ([rdm-in-game-tests.md](rdm-in-game-tests.md), 2026-10-23):
+  mana gains halve while a colour leads by more than 30 (searches never get there); each enchanted melee action adds a
+  Mana Stack, any other GCD clears them (oGCDs don't), and they don't lapse (the search plays whole combos, started only
+  with their mana and their three hits clear of far spots).
 - Reach: the melee combo and Engagement need 14 y from Athena's centre (25 y under Manafication); at our plan's far
   spots (`p12s.FAR`) a ranged player is out of reach around the snapshot.
 - Dashes (`engine.dash`): in R1, Corps-a-corps from Paradeigma I's wall to Athena's hitbox edge saves 1.3 s of the
-  swap (+0.8%); R2's Displacement comes after the GCD it could have freed, so it gains nothing.
+  swap (+0.8%); R2's Displacement comes after the GCD it could have freed, so it gains nothing. P12S's arena edge is a
+  drop (a 40 y square), so a backstep may only overshoot its stretch as far as the floor goes (`p12s.ARENA_HALF`).
 
-Over the phase 93,149 in R1 and 92,056 in R2; standing still 93,613. What is left is Paradeigma I's swap through the
+Over the phase 93,688 in R1 and 92,856 in R2; standing still 93,376 (2026-10-24, after the in-game rules; R1 over
+standing still is search noise). What is left is Paradeigma I's swap through the
 middle while the opener's cooldowns recharge, filled with Enchanted Reprise. The clears' rotations, replayed standing
 still over 0:00-380 s, deal 93-97% of the best.
 
@@ -241,7 +247,7 @@ Every cast replays legal. Swiftscaled is up nearly all fight, so `calibrate.gcd_
   Coils and Offerings (-5%). Held values fade over the window's last 15 s. Rates below the filler's own (~275 a second)
   made time look cheap (-1.5%).
 
-Over the phase 145,130 in M1 and M2; standing still 145,714 (-0.4%, the least of the melee jobs): six True Norths
+Over the phase 145,108 in M1 and M2; standing still 145,694 (-0.4%, the least of the melee jobs; 2026-10-24): six True Norths
 cover ten positionals, Uncoiled Fury and the 3 s twinblade gaps cover the stretches out of reach.
 
 ## Samurai
@@ -251,7 +257,7 @@ the full logs. Way of the Samurai III (94) raises most potencies in the guide; a
 (250):
 
 - Hakaze 200; Jinpu / Shifu 120 / 280 in combo; Gekko / Kasha 110 / 320 in combo +50 positional; Yukikaze 110 / 290;
-  Higanbana 200 and ~50 a tick for 60 s; Shoha 560; Senei 800 on 120 s; auto-attacks 80; sure crits Midare Setsugekka
+  Higanbana 200 and 45 a tick at base speed for 60 s (the tooltip's); Shoha 560; Senei 800 on 120 s; auto-attacks 80; sure crits Midare Setsugekka
   and Kaeshi 620 (lowest cluster over each player's crit multiplier), Ogi and Kaeshi: Namikiri 860 (1.38 x Midare in
   the same pull under the same buffs).
 
@@ -275,7 +281,7 @@ Every cast but one in our pulls replays legal, and in the clears all but a Midar
 - Held Tsubame-gaeshi Ready is valued at its Kaeshi less a 2.09 s GCD (valued whole, the beam held it 16 s and
   overwrote Sen).
 
-Over the phase 133,863 in M1 and M2 (148,419 weighted); standing still 134,948 (-0.7%), nearly all of it the stretches
+Over the phase 133,320 in M1 and M2; standing still 134,424 (-0.8%, 2026-10-24), nearly all of it the stretches
 out of reach, where Enpi fills in (the 6-10 y Iaijutsu and Shoha are assumed not to reach there; +0.3% if they do).
 
 ## Pictomancer
@@ -377,8 +383,8 @@ Ready, slower mudras, ninjutsu or Ten Chi Jin, no haste trait) shows each as ill
   is left to replays. `check.py`'s melee control (a standing-still rotation must break an away window) can't fail a
   Ninja, whose ninjutsu leave 2.5-4 s without a melee action anyway, so it uses the windows at twice their length.
 
-Over the phase 131,340 potency in M1 and M2; standing still 131,525, so our strategy costs a Ninja ~0.1%, within
-the search's noise: six True Norths cover the fixed spots and ninjutsu fill the stretches out of reach. It opens on
+Over the phase 131,182 potency in M1 and M2; standing still 131,773 (2026-10-24), so our strategy costs a Ninja
+~0.4%, about the search's noise: five True Norths cover the fixed spots and ninjutsu fill the stretches out of reach. It opens on
 the pre-pull Suiton with Trick Attack, Dokumori and Ten Chi Jin (Meisui into Bhavacakra), then Raiton, Bunshin,
 Kassatsu -> Hyosho Ranryu and the Raijus inside Trick Attack, and over the phase makes 22 Raitons, 10 Suitons, seven
 Hyosho Ranryus, four Ten Chi Jins, five Bunshins and 27 Bhavacakras. Settings from `tune.py` (rates 300-340 at
@@ -398,7 +404,7 @@ Mastery (94) raises nearly every potency in the guide; at level 90 they are Endw
 
 - Ruin III 310, Ruin IV 430, Astral Impulse 440, Fountain of Fire 540, Ruby / Topaz / Emerald Rite 510 / 330 / 230,
   Energy Drain 200, Deathflare 500, Mountain Buster 150, Crimson Cyclone and Crimson Strike 430, Slipstream 430 and its
-  windstorm six ticks of 30;
+  windstorm six ticks of 30 at base speed (the tooltip's);
 - the pets hit at 0.79 of their tooltips: Wyrmwave and Scarlet Flame 119, Akh Morn and Revelation 1,030, Inferno,
   Earthen Fury and Aerial Blast 600; Searing Light (+5%, 20 s) raises them as it does the Summoner's own hits.
 
@@ -428,7 +434,7 @@ Further Ruin, slower Rites or Slipstream) shows each as illegal or early casts (
   scale the beam drifted holding Ruby stacks and Arcanum until the next demi-summon wiped them (-5.5%); `tune.py` puts
   the scale at 0.10-0.15. The search opens on a pre-cast Ruin III, as every clear does.
 
-Our runs cost a Summoner next to nothing: 94,387 potency over the phase in R1 and 94,537 in R2, against 94,536
+Our runs cost a Summoner next to nothing: 94,559 potency over the phase in R1 and 94,556 in R2, against 94,602
 standing still (Ruin III slidecasts, and all but Ruby Rite and Slipstream is instant); keeping Crimson Cyclone out of the
 plan's mechanics only moves it to the stretches between them. Eight demi-summons, Searing
 Light with each Summon Bahamut, Swiftcast on Slipstream, a Ruby Rite or Ruin III, and only eight Ruin IIIs: every Arcanum is
@@ -522,6 +528,25 @@ whole phase the result moves by ~1% with these guesses, so `engine.search` runs 
 through its `expand`; it found 0-0.7% more. Differences between scenarios below ~0.4% are noise. `--layers gcd` (the
 beam by GCD count) and `--no-polish` bring back the earlier search.
 
+DoT ticks: each model's `dot_tick()` is the tick's plain potency (no crit, no direct hit) at base speed, its level-90
+tooltip's, times the speed bonus the game gives DoTs at the model's `SPEED` (1 + floor(130 x (speed stat - 400) / 1900)
+/ 1000 = 2 - `SPEED`). The game sends one combined tick for every DoT on a target, and FFLogs splits it between players
+by each one's simulated tick (its `S`, from its crit rate `C` and estimated direct-hit rate `D`), so a player's single
+tick in the logs is no roll of theirs. FFLogs also keeps each tick's plain value (`T`, `expectedAmount`, from the game's
+packet): measured from it (`scratch/gear/dot_t.py`, 2026-10-23), our players' and the clears' ticks deal the tooltip x
+0.98-0.99 (Thunder III, both bites, Chaotic Spring, Higanbana). The crit and direct-hit gain on ticks is their sum over
+the sum of `T` (`dps.tick_gain`), close to each player's gain on hits (1.25-1.31 against 1.24-1.31). Slipstream's ground
+ticks are ordinary hits in the logs, with crit and direct-hit flags. (Read from the split amounts as if they were rolls,
+ticks had looked 8-13% above their tooltips: the earlier Thunder III 63 and bites 25 / 31 were that, and the median.)
+
+Timing: `engine.recast(base, SPEED, haste)` times a recast or cast as the game does (xivgear's `sksToGcd`): the speed
+stat's per-mille factor (`SPEED`, e.g. 0.962) in whole milliseconds, then the haste in whole hundredths of a second.
+Black Mage (Ley Lines), Samurai (Fuka), Viper (Swiftscaled), Monk and Ninja (their traits) go through it, so a 2.40 s
+Samurai is 2.08 s or 2.09 s under Fuka by the factor (the engine took 2.088 s before; 2026-10-23); the other jobs still
+scale continuously, exact at `SPEED` = GCD / 2.5. A job's own crit and direct-hit buffs and sure-hit weights are built
+from its `CRIT_RATE` / `CRIT_DMG` / `DH_RATE` in `derive()`, which `engine.configure` reruns after `params` set them
+(the gear model passes each set's own: `tools/gear`).
+
 ## From potency to DPS
 
 `dps.py` converts per player, from their clean pulls (alive through 2:00) on the job:
@@ -530,7 +555,12 @@ beam by GCD count) and `--no-polish` bring back the earlier search.
   holds the player's own damage-ups too, so the job's `own_factor` puts them back (Death's Design, Arcane Circle, ...);
 - **crit and direct hit**: their average hit over their plain hit, action by action, over the hits under no crit or
   direct-hit raid buff (rDPS credits those to whoever gave them); sure crits at their own gain;
-- **DoT ticks** at the player's average tick; **GCD** from back-to-back casts.
+- **DoT ticks** at their average over their plain level, DoT by DoT (`tick_gain`); **GCD** from back-to-back casts. Where the job model rounds as the game
+  does (`engine.recast`: Black Mage, Samurai, Viper, Monk, Ninja) the speed factor within the GCD counts too
+  (`calibrate.speed_for`): under Fuka or Swiftscaled the player's hasted GCD as played decides it (the fastest spacing
+  holding a quarter as many gaps as the commonest, `hasted_gcd_of`: our Samurai 2.41 / 2.09, two Vipers whose few
+  unhasted gaps read 2.49 play 2.09, so 2.47); Ley Lines only narrows the GCD's tier. A GCD whose tier holds two
+  hasted GCDs gets both in its site key (`2.41-h2.09`).
 
 Check: each pull's logged casts, replayed through the model and converted, land within ~1.5% of the damage logged for
 Black Mages and Machinists, -2% to +4% for Reapers (the replay takes every positional).

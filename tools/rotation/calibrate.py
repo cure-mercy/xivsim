@@ -21,6 +21,7 @@ from engine import Fight                         # noqa: E402
 from jobs import blm as J                        # noqa: E402
 
 from engine import BASE_GCD, RESOLVE             # noqa: E402
+import engine                                    # noqa: E402
 
 
 def use(job):
@@ -149,6 +150,80 @@ def gcd_of(p):
     return gaps[len(gaps) // 4] if gaps else None     # lower quartile: clean back-to-back GCDs, not delayed ones
 
 
+def _haste_factor(job):
+    """The job's buff haste on the GCD, as a recast factor: Fuka, Swiftscaled (HASTED), Ley Lines; None without one."""
+    return next(iter(getattr(job, "HASTED", {}).values()), getattr(job, "LL_SPEED", None))
+
+
+def hasted_gcd_of(p):
+    """The player's GCD under the job's buff haste, as played: of the spacings (to 0.01 s) of GCD starts under Fuka or
+    Swiftscaled (HASTED) or in Ley Lines' circle (Circle of Power), after a GCD with a 2.5 s recast, the fastest that
+    holds at least a quarter as many as the commonest (a Samurai: 4 at 2.08, 270 at 2.09, 103 at 2.10 from timestamp
+    jitter, 347 at 2.14 after other actions; a lower quartile read 0.01-0.03 s fast). None for a job without such a
+    haste or with fewer than 8 such gaps."""
+    statuses = list(getattr(J, "HASTED", {})) or (["Circle of Power"] if hasattr(J, "LL_SPEED") else [])
+    if not statuses: return None
+    n, base = p["names"], getattr(J, "GCD_BASE", {})
+    ev = lambda s: [x["t"] for x in p["buffs"] if n[str(x["abilityGameID"])] == s and x["type"] in ("applybuff", "removebuff")]
+    spans = [w for s in statuses for w in zip(ev(s)[0::2], ev(s)[1::2] + [math.inf])]
+    starts, lb = [], {}
+    for x in p["casts"]:
+        if x.get("fake"): continue
+        name = n[str(x["abilityGameID"])]
+        if x["type"] == "begincast": lb[name] = x["t"]; continue
+        if x["type"] == "cast" and name in J.GCDS:
+            b = lb.pop(name, None)
+            starts.append((b if b is not None and x["t"] - b < 4 else x["t"], name))
+    gaps = collections.Counter(round(b - a, 2) for (a, na), (b, _) in zip(starts, starts[1:])
+                               if base.get(na, 2.5) == 2.5 and 1.5 <= b - a <= 2.6 and any(x <= a and b <= y for x, y in spans))
+    if sum(gaps.values()) < 8: return None
+    top = max(gaps.values())
+    return min(g for g, k in gaps.items() if k >= top / 4)
+
+
+def _rounded(job):
+    """Whether the job model times its GCD with engine.recast (the game's rounding), so the speed factor itself counts."""
+    return getattr(job, "recast", None) is engine.recast
+
+
+def speed_for(job, gcd, hasted=None):
+    """The job's SPEED (the speed stat's per-mille factor / 1000) for a player at this GCD (gcd_of) and hasted GCD
+    (hasted_gcd_of, if known). A model that rounds as the game does sees the factor itself: of the factors giving the
+    hasted GCD (where known) and the GCD (after the trait haste, as gcd_of times it; else the nearest), the middle one,
+    e.g. Black Mage's 2.32 s: 0.928-0.931 -> 0.930, whose 2.0 s casts are 1.86 s as logged. gcd_of divides gaps under
+    Fuka or Swiftscaled by the haste, so a 2.40 s Samurai at 2.08 under Fuka reads 2.39: the hasted GCD decides. The
+    other models scale continuously, exact at GCD / 2.5."""
+    if not _rounded(job): return gcd / BASE_GCD
+    h = getattr(job, "HASTE", 1.0)
+    want, f = round(gcd * h, 2), _haste_factor(job)
+    off = lambda pm: abs(engine.recast(BASE_GCD, pm / 1000, h) - want)
+    every = list(range(800, 1001))
+    fits = [pm for pm in every if hasted and f and engine.recast(BASE_GCD, pm / 1000, f) == hasted]
+    if getattr(job, "HASTED", None) and fits:
+        pms = fits                  # Fuka, Swiftscaled: up nearly all the time, most gaps are under them
+    else:                           # Ley Lines: a sixth of the fight; it only narrows the GCD's tier
+        tier = [pm for pm in every if off(pm) == min(map(off, every))]
+        pms = [pm for pm in tier if pm in fits] or tier
+    best = min(map(off, pms))
+    pms = [pm for pm in pms if off(pm) == best]
+    return pms[len(pms) // 2] / 1000
+
+
+def gcd_at(job, speed):
+    """The GCD (unhasted by buffs, as gcd_of gives it) a SPEED plays at."""
+    return engine.recast(BASE_GCD, speed) if _rounded(job) else round(speed * BASE_GCD, 4)
+
+
+def hasted_label(job, speed):
+    """The GCD under the job's buff haste at this SPEED, where the GCD's tier holds more than one (Samurai's 2.40 s is
+    2.08 or 2.09 s under Fuka by the factor), else None: the site keys such rotations by both."""
+    f = _haste_factor(job)
+    if not f or not _rounded(job): return None
+    g = gcd_at(job, speed)
+    tier = {engine.recast(BASE_GCD, pm / 1000, f) for pm in range(800, 1001) if engine.recast(BASE_GCD, pm / 1000) == g}
+    return engine.recast(BASE_GCD, speed, f) if len(tier) > 1 else None
+
+
 def fit_phase(p, until):
     """The server tick phase (0-3 s) that best explains the log: fewest illegal casts, then fewest MP mismatches."""
     best = None
@@ -240,7 +315,7 @@ def main():
     for p in L:
         cut = cut_of(p, a.until)
         n0 = len(out["illegal"])
-        J.SPEED = gcd_of(p) / BASE_GCD                  # each player at their own spell speed
+        J.SPEED = speed_for(J, gcd_of(p), hasted_gcd_of(p))     # each player at their own spell speed
         ph = None
         if hasattr(J, "TICK_PHASE"): ph = J.TICK_PHASE = fit_phase(p, cut)
         replay(p, cut, out)

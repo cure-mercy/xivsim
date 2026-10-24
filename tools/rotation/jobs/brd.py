@@ -44,7 +44,17 @@ POTENCY = {"Burst Shot": 200, "Refulgent Arrow": 260, "Caustic Bite": 150, "Stor
 APEX = 5.0                                      # Apex Arrow potency per Soul Voice (logs: ~400 at 80, ~500 at 100)
 BARRAGE_HITS = 3
 PP = (0, 100, 220, 360)                         # Pitch Perfect by Repertoire stacks (in between: interpolated)
-DOT = {"Caustic Bite": 25, "Stormbite": 31}     # tick potency in the logs: 1.25x the tooltip's 20 / 25, as BLM's Thunder III
+# A DoT tick's plain potency at base speed is its tooltip's 20 / 25 (Caustic Bite 150, Stormbite 100, 45 s);
+# dot_tick() puts on the speed bonus the game gives DoTs (1 + floor(130 x (speed stat - 400) / 1900) / 1000 = 2 -
+# SPEED). Read from FFLogs' own 100% tick (T, expectedAmount), our players' and the clears' ticks deal the tooltip
+# x0.99 (scratch/gear/dot_t.py, 2026-10-23).
+DOT_BASE = {"Caustic Bite": 20, "Stormbite": 25}
+
+
+def dot_tick(name):
+    return DOT_BASE[name] * (2 - SPEED)
+
+
 DOT_S = 45.0
 HAWK, REPERTOIRE = 0.35, 0.80                   # chances: Hawk's Eye per proc-granting GCD, Repertoire per server tick
 HAWK_GCDS = {"Burst Shot", "Caustic Bite", "Stormbite", "Iron Jaws"}
@@ -63,9 +73,17 @@ MUSE = (0.0, 0.01, 0.02, 0.04, 0.12)            # Army's Muse by the Paeon's sta
 RAGING, BALLAD = 1.15, 1.01
 # typical rates at this gear level (as in solve.py) for the worth of the Bard's own crit and direct-hit buffs
 CRIT_RATE, CRIT_DMG, DH_RATE = 0.25, 1.60, 0.36
-MINUET = 1 + 0.02 * (CRIT_DMG - 1) / (1 + CRIT_RATE * (CRIT_DMG - 1))
-PAEON = 1 + 0.03 * 0.25 / (1 + DH_RATE * 0.25)
-VOICE = 1 + 0.20 * 0.25 / (1 + DH_RATE * 0.25)
+
+
+def derive():
+    """The songs' and Battle Voice's worth from the rates (engine.configure calls it again after setting them)."""
+    global MINUET, PAEON, VOICE
+    MINUET = 1 + 0.02 * (CRIT_DMG - 1) / (1 + CRIT_RATE * (CRIT_DMG - 1))
+    PAEON = 1 + 0.03 * 0.25 / (1 + DH_RATE * 0.25)
+    VOICE = 1 + 0.20 * 0.25 / (1 + DH_RATE * 0.25)
+
+
+derive()
 SONGS = {"The Wanderer's Minuet": "WM", "Mage's Ballad": "MB", "Army's Paeon": "AP"}
 ALIAS = {"the Wanderer's Minuet": "The Wanderer's Minuet"}      # the logs spell it with a capital T
 CODA = {"WM": 1, "MB": 2, "AP": 4}
@@ -244,9 +262,9 @@ def apply_dot(s, fight, name, land, m):
     attr = "caustic" if name == "Caustic Bite" else "storm"
     cur = getattr(s, attr)
     if cur and cur[0] + DOT_S > land:
-        lost = ticks(fight, land, cur[0] + DOT_S) * DOT[name] * cur[1]
+        lost = ticks(fight, land, cur[0] + DOT_S) * dot_tick(name) * cur[1]
         s.dmg -= lost; s.dotp -= lost
-    gain = ticks(fight, land, land + DOT_S) * DOT[name] * m
+    gain = ticks(fight, land, land + DOT_S) * dot_tick(name) * m
     s.dmg += gain; s.dotp += gain
     setattr(s, attr, (land, m))
 
@@ -288,7 +306,7 @@ def do_gcd(s, fight, name):
     land = snap + DELAY.get(name, 0.6)
     if name in ("Refulgent Arrow", "Shadowbite"):
         if s.barrage_until > snap: s.barrage_until = -1.0
-    elif name in DOT: apply_dot(s, fight, name, land, m)
+    elif name in DOT_BASE: apply_dot(s, fight, name, land, m)
     elif name == "Iron Jaws":
         for d, attr in (("Caustic Bite", "caustic"), ("Stormbite", "storm")):
             cur = getattr(s, attr)

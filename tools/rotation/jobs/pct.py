@@ -63,7 +63,15 @@ AUTO_CRIT = set(HAMMERS)                                              # critical
 # the search weighs a sure critical direct hit by its gain over an average hit at typical rates (our players: crit
 # 18-28%, direct hit 17-48%); s.dmg stays plain potency and dps.py converts the hammers (critp) apart
 CRIT_RATE, CRIT_DMG, DH_RATE, DH_DMG = 0.25, 1.60, 0.30, 1.25
-SURE_W = CRIT_DMG * DH_DMG / ((1 + CRIT_RATE * (CRIT_DMG - 1)) * (1 + DH_RATE * (DH_DMG - 1)))
+
+
+def derive():
+    """SURE_W from the rates (engine.configure calls it again after setting them: the gear model's set's own)."""
+    global SURE_W
+    SURE_W = CRIT_DMG * DH_DMG / ((1 + CRIT_RATE * (CRIT_DMG - 1)) * (1 + DH_RATE * (DH_DMG - 1)))
+
+
+derive()
 # seconds from executing (a spell: resolving) to the damage landing, our logs' medians; buffs snapshot on execution
 DELAY = {"Fire in Red": 0.85, "Aero in Green": 0.89, "Water in Blue": 0.98, "Blizzard in Cyan": 0.76,
          "Stone in Yellow": 0.80, "Thunder in Magenta": 0.85, "Holy in White": 1.34, "Comet in Black": 1.87,
@@ -260,6 +268,7 @@ def hit(s, fight, at, potency, name):
     land = at + DELAY.get(name, 0.8)
     if 0 <= land < fight.until and fight.targetable(land):
         d = potency * mult(s, fight, at)
+        if name in AUTO_CRIT: d *= fight.sure(at, dh=True)  # raid crit / direct-hit buffs as damage on a sure hit
         s.dmg += d
         if name in AUTO_CRIT: s.critp += d
 

@@ -89,10 +89,19 @@ OGCD_ORDER = ["Tincture", "Devilment", "Flourish", "Fan Dance IV", "Fan Dance II
 AUTO_CRIT = {"Starfall Dance"}
 OWN_CRIT_BUFFS = {"1001825"}                    # Devilment: dps.py measures Starfall's sure gain under it (it always is)
 CRIT_RATE, CRIT_DMG, DH_RATE, DH_DMG = 0.25, 1.60, 0.36, 1.25
-DEV = (1 + 0.20 * (CRIT_DMG - 1) / (1 + CRIT_RATE * (CRIT_DMG - 1))) * (1 + 0.20 * (DH_DMG - 1) / (1 + DH_RATE * (DH_DMG - 1)))
-# a sure critical direct hit over an average hit, its crit and direct-hit rates under Devilment turned into damage
-STAR_W = (CRIT_DMG * DH_DMG * (1 + 0.20 * (CRIT_DMG - 1)) * (1 + 0.20 * (DH_DMG - 1))
-          / ((1 + CRIT_RATE * (CRIT_DMG - 1)) * (1 + DH_RATE * (DH_DMG - 1))))
+
+
+def derive():
+    """Devilment's worth and Starfall's weight from the rates (engine.configure calls it again after setting them):
+    STAR_W is a sure critical direct hit over an average hit, its crit and direct-hit rates under Devilment turned
+    into damage."""
+    global DEV, STAR_W
+    DEV = (1 + 0.20 * (CRIT_DMG - 1) / (1 + CRIT_RATE * (CRIT_DMG - 1))) * (1 + 0.20 * (DH_DMG - 1) / (1 + DH_RATE * (DH_DMG - 1)))
+    STAR_W = (CRIT_DMG * DH_DMG * (1 + 0.20 * (CRIT_DMG - 1)) * (1 + 0.20 * (DH_DMG - 1))
+              / ((1 + CRIT_RATE * (CRIT_DMG - 1)) * (1 + DH_RATE * (DH_DMG - 1))))
+
+
+derive()
 SPEED = 0.996                                   # skill speed factor: a 2.49 s GCD (the clears' and our Dancers' median)
 LOG_PREPULL = None                              # a replay: (Step, when) the log's pre-pull dance began, or False (prepare)
 LOG_PROCS = None                                # a replay: {status: times it was granted} from the log (prepare)
@@ -352,6 +361,7 @@ def do_gcd(s, fight, name):
         t = land(fight, start, name)
         if t is not None:
             m = mult(s, fight, start, dev=name != "Starfall Dance")
+            if name == "Starfall Dance": m *= fight.sure(start, dh=True)   # raid buffs as damage on a sure hit
             s.dmg += p * m
             if name == "Starfall Dance": s.critp += p * m
             if name in ESPRIT and esprit_up(s, start): gain(s, ESPRIT[name])
