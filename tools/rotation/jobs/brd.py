@@ -33,7 +33,7 @@ DoTs snapshot buffs when they land and tick on the server's 3 s tick (TICK_PHASE
 and a refresh (Iron Jaws, or the bite again) loses the ticks the old one still had.
 """
 import itertools, math
-from engine import ANIM_LOCK, BASE_GCD, settle
+from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, settle
 
 # Burst Shot, Refulgent Arrow, Empyreal Arrow, Sidewinder and Apex Arrow from the logs (plain hits scaled to Bloodletter:
 # 199 / 260 / 241 / 318 / 5 a Soul Voice), below Ranged Mastery's level-94 values (220 / 280 / 260 / 400 / 140-700);
@@ -101,7 +101,7 @@ HASTE_STATUSES = ("Army's Paeon", "Army's Muse")    # calibrate.gcd_of leaves GC
 LOG = False                                     # a replay of a log: Refulgent Arrow whenever the log fires it
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "song", "song_until", "rep", "sv", "coda", "ethos", "ethos_until", "muse", "muse_until",
                  "rs_until", "bv_until", "rf_until", "rf", "barrage_until", "blast_until", "caustic", "storm", "cds",
                  "auto_next", "tick_next", "dmg", "dotp", "waste", "pot_at", "first", "hist", "mvi", "acc", "free", "spot")
@@ -122,12 +122,6 @@ class State:
         s.mvi, s.acc, s.free, s.spot = 0, 0.0, -30.0, 0
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         left = lambda u: r(max(u - self.t, 0))
@@ -136,7 +130,7 @@ class State:
                 round(self.rep * 5) / 5, round(self.sv / 5), self.coda, round(self.ethos * 5) / 5 if self.ethos_until > self.t else 0,
                 left(self.muse_until), left(self.rs_until), left(self.bv_until), left(self.rf_until),
                 left(self.barrage_until), left(self.blast_until), dot(self.caustic), dot(self.storm), self.pot_at is None,
-                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()))
+                cd_key(self.cds))
 
     def log(self, t, action, note=""):
         self.hist = (self.hist, (round(t, 2), action, note))

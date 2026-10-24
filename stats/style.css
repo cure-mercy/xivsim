@@ -78,7 +78,7 @@ tr.moving td{ background: var(--series-wash); }
 .rot-g{ position: relative; display: flex; align-items: flex-start; gap: 1px; padding-bottom: 5px; border-radius: 5px; }
 .rot-g .gcd{ width: 34px; height: 34px; border-radius: 5px; display: block; }
 .rot-g .ogcd{ width: 22px; height: 22px; border-radius: 4px; display: block; }
-.rot-g.moving::after{ content: ""; position: absolute; left: 2px; width: 30px; bottom: 0; height: 3px; border-radius: 2px; background: var(--series); }
+.rot-g.moving::after{ content: ""; position: absolute; left: 2px; width: calc(3px + 27px * var(--run, 1)); bottom: 0; height: 3px; border-radius: 2px; background: var(--series); }
 .rot-g.moving.instant::after{ background: var(--good); }
 .rot-g:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
 .rot-g .noicon{ display: flex; align-items: center; justify-content: center; background: var(--surface-2); color: var(--ink-2); font-size: 10px; font-weight: 600; }

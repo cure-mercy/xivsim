@@ -43,7 +43,7 @@ needs the player beside Athena (assumed: their 6-10 y ranges may reach a little 
 Out of reach, Hissatsu: Yaten buys an Enhanced Enpi.
 """
 import itertools, math
-from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, gcd_times, recast, settle, stand
+from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, SlotState, cd_key, gcd_times, recast, settle, stand
 
 # level-90 potencies from the logs (see above). (out of combo, in combo) for combo actions.
 POTENCY = {"Hakaze": 200, "Jinpu": (120, 280), "Shifu": (120, 280), "Gekko": (110, 320), "Kasha": (110, 320),
@@ -126,7 +126,7 @@ SPEED = 0.962                                   # skill speed factor on the GCD:
 MELEE = True                                    # p12s.py gives it a melee's windows (M1 / M2)
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "combo", "combo_until", "sen", "kenki", "med", "meikyo", "ms_until", "fug_until",
                  "fuka_until", "tsubame_until", "ogi_until", "kn_until", "tn_until", "ee_until", "ten_hit", "dot", "cds",
                  "auto_next", "dmg", "dotp", "critp", "waste", "pot_at", "first", "hist", "mvi", "acc", "free", "spot",
@@ -152,12 +152,6 @@ class State:
         s.ai, s.mlast, s.near = 0, -30.0, False
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         left = lambda u: r(max(u - self.t, 0))
@@ -166,7 +160,7 @@ class State:
                 round(max(self.fuka_until - self.t, 0) / 2.5), self.tsubame_until > self.t, self.ogi_until > self.t,
                 self.kn_until > self.t, left(self.tn_until), self.ee_until > self.t, self.ten_hit,
                 round(max(self.dot[0] + DOT_S - self.t, 0) / 2.5) if self.dot else None, self.pot_at is None,
-                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()),
+                cd_key(self.cds),
                 self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai, r(min(self.t - self.mlast, 4)) if self.near else None)
 
     def log(self, t, action, note=""):

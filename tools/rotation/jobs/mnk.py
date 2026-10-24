@@ -31,7 +31,7 @@ windows only True North gets it. Reach: every weaponskill and The Forbidden Chak
 meditations and Form Shift work from anywhere. See jobs/rpr.py for the away windows.
 """
 import itertools, math
-from engine import ANIM_LOCK, BASE_GCD, recast, settle
+from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, recast, settle
 
 POTENCY = {"Bootshine": (220, 420), "True Strike": (300, 500), "Snap Punch": (270, 420),      # (plain, with Fury)
            "Dragon Kick": 280, "Twin Snakes": 380, "Demolish": 320,
@@ -74,7 +74,7 @@ MELEE = True
 LOG_CRIT = None                                 # a replay: {cast time (0.1 s): crit} of the log's weaponskills
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "form", "form_until", "formless_until", "pb", "pb_until", "beast", "lunar", "solar",
                  "opo", "raptor", "coeurl", "chakra", "ct", "fire_until", "bh_until", "wind_until", "tn_until", "cds",
                  "auto_next", "dmg", "critp", "waste", "pot_at", "first", "hist", "mvi", "acc", "free", "spot", "ai",
@@ -97,12 +97,6 @@ class State:
         s.ai, s.mlast, s.near = 0, -30.0, False
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         left = lambda u: r(max(u - self.t, 0))
@@ -110,7 +104,7 @@ class State:
                 self.pb if self.pb_until > self.t else 0, tuple(sorted(self.beast)), self.lunar, self.solar,
                 self.opo, self.raptor, self.coeurl, round(self.chakra * 4) / 4, left(self.fire_until),
                 left(self.bh_until), left(self.wind_until), left(self.tn_until), self.pot_at is None,
-                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()),
+                cd_key(self.cds),
                 self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai, r(min(self.t - self.mlast, 4)) if self.near else None)
 
     def log(self, t, action, note=""):

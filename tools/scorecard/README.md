@@ -245,8 +245,9 @@ The Gear pages (`#/gear`, `#/gear/<job>`) and the set card on each Rotations job
 (`tools/gear`, `sheets.py`; `scorecard.gear()` adds them to `data.json` as `gear`, with the item, materia and food
 icons from XIVAPI, cached in `.cache/icons/`): the best searched GCD tier's set and, as tabs, the searched tiers within
 0.4% of it. A job's Rotations table tags the GCD that is a set's (the rotations' GCDs are before a trait's haste, so
-Monk's and Ninja's compare at that); the tag only shows where a rotation was searched at that GCD (`dps.py --gcds`, with the hasted GCD for Samurai and Viper;
-`scratch/gear/rerun_all.py` adds the missing ones).
+Monk's and Ninja's compare at that); the tag only shows where a rotation was searched at that GCD (`dps.py --bis-gcds`, with the hasted GCD for Samurai and Viper;
+`scratch/gear/rerun_all.py` adds the missing ones). Such rotations are marked `bis_gcd`: once no set sits at their GCD and no
+player plays it, the next `rerun_all.py` run drops them, while extras asked for with `--gcds` stay.
 Any `build_site.py` run picks up new sets.
 
 ### Damage by phase

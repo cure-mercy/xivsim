@@ -45,7 +45,7 @@ from Athena's 10.5 y hitbox), so R1, R2 and standing still play the same; only P
 steps can be danced with no target and the finish waits for Athena.
 """
 import itertools
-from engine import ANIM_LOCK, BASE_GCD, settle
+from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, settle
 
 POTENCY = {"Cascade": 200, "Fountain": 100, "Reverse Cascade": 260, "Fountainfall": 320, "Saber Dance": 500,
            "Tillana": 600, "Starfall Dance": 600, "Fan Dance": 150, "Fan Dance II": 100, "Fan Dance III": 200, "Fan Dance IV": 300,
@@ -107,7 +107,7 @@ LOG_PREPULL = None                              # a replay: (Step, when) the log
 LOG_PROCS = None                                # a replay: {status: times it was granted} from the log (prepare)
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "combo_until", "sym", "sym_until", "fsym_until", "flow", "flow_until", "fflow_until",
                  "feathers", "three", "three_until", "four_until", "esprit", "ep_t", "sf_until", "sf_m", "tf_from",
                  "tf_until", "tf_m", "dev_until", "star_until", "ffin_until", "dance", "steps", "dance_t", "dance_until",
@@ -137,12 +137,6 @@ class State:
         s.mvi, s.acc, s.free, s.spot = 0, 0.0, -30.0, 0
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         left = lambda u: r(max(u - self.t, 0))
@@ -150,7 +144,7 @@ class State:
                 left(self.fflow_until), self.feathers, self.three, left(self.four_until), round(self.esprit),
                 left(self.sf_until), left(self.tf_until), left(self.dev_until), left(self.star_until),
                 left(self.ffin_until), self.dance, self.steps, self.pot_at is None,
-                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()))
+                cd_key(self.cds))
 
     def log(self, t, action, note=""):
         self.hist = (self.hist, (round(t, 2), action, note))

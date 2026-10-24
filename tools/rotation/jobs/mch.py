@@ -35,7 +35,7 @@ Every action is instant (Flamethrower, a channel, is left out) and reaches 25 y;
 strategy's running costs a Machinist nothing, only Palladion's downtime: R1, R2 and standing still play the same.
 """
 import itertools
-from engine import ANIM_LOCK, BASE_GCD, settle
+from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, settle
 
 POTENCY = {"Heated Split Shot": 200, "Heated Slug Shot": 120, "Heated Clean Shot": 120, "Drill": 620, "Air Anchor": 620,
            "Chain Saw": 620, "Blazing Shot": 220, "Gauss Round": 130, "Ricochet": 130}
@@ -77,7 +77,7 @@ SPEED = 0.98                                    # skill speed factor: a 2.45 s G
 LOG_PREPULL = None                              # a replay: when the log's pre-pull Reassembled fell off (prepare)
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "combo", "combo_until", "heat", "batt", "hc_until", "oh", "oh_until", "ra_until",
                  "wf_t", "wf_n", "wf_m", "queen_until", "cds", "auto_next", "dmg", "dotp", "critp", "lost", "waste",
                  "pot_at", "first", "hist", "mvi", "acc", "free", "spot")
@@ -101,12 +101,6 @@ class State:
         s.mvi, s.acc, s.free, s.spot = 0, 0.0, -30.0, 0
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         left = lambda u: r(max(u - self.t, 0))
@@ -114,7 +108,7 @@ class State:
                 left(self.hc_until), self.oh if self.oh_until > self.t else 0, left(self.ra_until),
                 self.wf_n if self.wf_t is not None and self.wf_t + WF_LAG + WF_S > self.t else -1, left(self.queen_until),
                 self.pot_at is None,
-                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()))
+                cd_key(self.cds))
 
     def log(self, t, action, note=""):
         self.hist = (self.hist, (round(t, 2), action, note))

@@ -6,7 +6,8 @@ clears over whole pulls: plain hits match the potencies within ~2%, cast times w
 replays as legal (calibrate.py).
 """
 import itertools, math
-from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, gcd_times, move_credit, open_move, recast, settle, stand
+from engine import (ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, SlotState, cd_key, gcd_times, move_credit, open_move, recast,
+                    settle, stand)
 
 # Fire III and Blizzard III were raised from 280 to 290 in patch 7.2 (its notes; the job guide and the clears agree)
 POTENCY = {"Fire III": 290, "Fire IV": 300, "Despair": 350, "Paradox": 540, "Blizzard III": 290, "Blizzard IV": 300,
@@ -43,10 +44,11 @@ PROC_S = math.inf                                   # Thunderhead and Firestarte
 CDS = {"Triplecast": (60, 2), "Swiftcast": (60, 1), "Ley Lines": (120, 2), "Manafont": (100, 1), "Amplifier": (120, 1),
        "Transpose": (5, 1), "Tincture": (270, 1), "Between the Lines": (3, 1)}
 OGCD_ORDER = ["Tincture", "Manafont", "Transpose", "Amplifier", "Ley Lines", "Between the Lines", "Triplecast", "Swiftcast"]
-SPEED = 0.928                                       # spell speed factor on casts and GCDs: 2.32 s GCD, the clears since 7.2
+SPEED = 0.930                                       # spell speed factor on casts and GCDs: 2.32 s GCD, the clears since 7.2;
+                                                    # calibrate.speed_for's pick in its tier: 2.0 s casts are 1.86 s as logged
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "el", "hearts", "mp", "mp_t", "poly", "poly_next", "paradox", "fs", "th", "triple", "triple_until",
                  "swift", "ll", "ll_spot", "cds", "dot", "dmg", "dotp", "waste", "pot_at", "first", "hist", "mvi", "acc", "free", "spot")
 
@@ -64,17 +66,11 @@ class State:
         s.mvi, s.acc, s.free, s.spot, s.ll_spot = 0, 0.0, -30.0, 0, -1    # forced movement (engine.stand) and Ley Lines' spot
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         return (r(self.t), r(self.gcd), self.el, self.hearts, self.mp // 400, self.poly, self.paradox, self.fs > self.t, self.th > self.t,
                 self.triple if self.triple_until > self.t else 0, self.swift > self.t, r(max(self.ll - self.t, 0)), self.pot_at is None,
-                tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()), r(self.dot[0]) if self.dot else None,
+                cd_key(self.cds), r(self.dot[0]) if self.dot else None,
                 self.mvi, r(self.acc), self.spot == self.ll_spot, r(min(self.t - self.free, 6)))
 
     def log(self, t, action, note=""):

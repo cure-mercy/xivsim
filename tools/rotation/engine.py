@@ -7,6 +7,7 @@ that deals the most damage by `fight.until`.
 """
 import heapq, math
 from dataclasses import dataclass, field
+from operator import itemgetter
 
 ANIM_LOCK = 0.65            # seconds an instant action locks the player (0.6 s animation plus typical latency), as in the logs
 CASTER_TAX = 0.10           # a hard cast that is at least as long as the GCD delays the next GCD by this much
@@ -81,15 +82,39 @@ class Fight:
         return m
 
     def targetable(self, t):
-        return not any(a <= t < b for a, b in self.untargetable)
+        for a, b in self.untargetable:          # loops, not any() / min() over a generator: called for every action
+            if a <= t < b: return False
+        return True
 
     def next_down(self, t):
         """When the boss next becomes untargetable at or after t (inf if never)."""
-        return min((a for a, _ in self.untargetable if a >= t), default=math.inf)
+        m = math.inf
+        for a, _ in self.untargetable:
+            if t <= a < m: m = a
+        return m
 
     def back_up(self, t):
         """When the boss becomes targetable again, if it is untargetable at t."""
         return next((b for a, b in self.untargetable if a <= t < b), t)
+
+
+class SlotState:
+    """Base of a job's State (__slots__ only): gives it a `copy` of one straight-line assignment per slot, with the
+    dicts named in DICTS copied too (the getattr / setattr loop it replaces took a fifth of a search)."""
+    __slots__ = ()
+    DICTS = ("cds",)
+
+    def __init_subclass__(cls, **kw):
+        super().__init_subclass__(**kw)
+        body = "".join(f"\n    c.{k} = dict(s.{k})" if k in cls.DICTS else f"\n    c.{k} = s.{k}" for k in cls.__slots__)
+        ns = {"new": cls.__new__, "cls": cls}
+        exec(f"def copy(s):\n    c = new(cls){body}\n    return c", ns)
+        cls.copy = ns["copy"]
+
+
+def cd_key(cds):
+    """A state key's part for its cooldowns {name: (charges, next charge at)}: the times to 0.1 s."""
+    return tuple([(n, x if x is None else round(x, 1)) for n, x in cds.values()])
 
 
 def gcd_times(start, cast, recast):
@@ -210,7 +235,10 @@ def configure(jobname, speed, setting, params=None):
     rate, scale, mw = setting
     job = importlib.import_module(f"jobs.{jobname}")
     job.SPEED, job.RATE, job.MOVE_WEIGHT = speed, rate, mw
-    for k, v in (params or {}).items(): setattr(job, k, v)
+    base = job.__dict__.setdefault("PARAMS0", {})       # the module's own values of every constant a task has set
+    for k, v in base.items(): setattr(job, k, v)        # (a worker of search_many runs tasks with other params)
+    for k, v in (params or {}).items():
+        base.setdefault(k, getattr(job, k, None)); setattr(job, k, v)
     if hasattr(job, "derive"): job.derive()
     if not hasattr(job, "VALUE0"): job.VALUE0 = dict(job.VALUE)     # a worker may run several settings
     job.VALUE = {k: v * scale for k, v in job.VALUE0.items()}
@@ -230,16 +258,29 @@ def search(jobname, fight, width=None, speed=None, settings=None, procs=None, pa
     `params` sets other job constants in the workers (e.g. Monk's CRIT). `layers`: "time" for `sweep` (at the job's
     SWEEP_WIDTH and SWEEP_STEP), "gcd" for `beam` (at its WIDTH). With polish on top the sweep found 0.3-0.6% more for
     BRD, RDM, MNK and SAM and was level elsewhere (within 0.04%; 2026-10-22). Returns (state, setting, all scores)."""
+    return search_many(jobname, [(fight, speed, params)], width, settings, procs, layers)[0]
+
+
+def search_many(jobname, tasks, width=None, settings=None, procs=None, layers="time"):
+    """`search` for several [(fight, speed, params)] at once, each the same as alone: every task's settings go to one
+    pool, so a run of many searches keeps the cores busy (one search uses as many as it has settings and then waits
+    for its slowest), the long fights first. Returns [(state, setting, all scores)] in the tasks' order."""
     import importlib, multiprocessing
     job = importlib.import_module(f"jobs.{jobname}")
     settings = settings or getattr(job, "HEURISTICS", HEURISTICS)
     width = width or (getattr(job, "SWEEP_WIDTH", 1000) if layers == "time" else getattr(job, "WIDTH", 1000))
-    args = [(jobname, speed or job.SPEED, fight, width, x, params, layers) for x in settings]
-    with multiprocessing.Pool(min(procs or len(args), len(args))) as pool:
-        res = pool.map(_search_one, args)
-    score, setting, s, h = max(res, key=lambda r: r[0])
-    for e in h: s.hist = (s.hist, e)
-    return s, setting, sorted((r[1], r[0]) for r in res)
+    args = [(jobname, speed or job.SPEED, fight, width, x, params, layers) for fight, speed, params in tasks for x in settings]
+    order = sorted(range(len(args)), key=lambda i: -args[i][2].until)
+    res = [None] * len(args)
+    with multiprocessing.Pool(min(procs or multiprocessing.cpu_count(), len(args))) as pool:
+        for i, r in zip(order, pool.imap(_search_one, [args[i] for i in order])): res[i] = r
+    out = []
+    for k in range(len(tasks)):
+        mine = res[k * len(settings):(k + 1) * len(settings)]
+        score, setting, s, h = max(mine, key=lambda r: r[0])
+        for e in h: s.hist = (s.hist, e)
+        out.append((s, setting, sorted((r[1], r[0]) for r in mine)))
+    return out
 
 
 def beam(job, fight, width=2000, log=None, start=None):
@@ -247,20 +288,21 @@ def beam(job, fight, width=2000, log=None, start=None):
     it come with it), and each layer keeps the `width` states with the best damage-so-far plus held-resource value.
     `start`: carry on from this state instead of the pull (polish.py finishes rotations with it)."""
     layer = [start or job.State.initial(fight)]
-    best = None
+    best, best_v = None, -math.inf
     step = 0
     while layer:
-        nxt, seen = [], {}
+        seen = {}
         for s in layer:
             for c in job.expand(s, fight):
                 if c.t >= fight.until:
-                    if best is None or job.final(c, fight) > job.final(best, fight): best = c
+                    v = job.final(c, fight)
+                    if v > best_v: best, best_v = c, v
                     continue
                 k = c.key()
                 v = job.rank(c, fight)
                 if k in seen and seen[k][0] >= v: continue
                 seen[k] = (v, c)
-        layer = heapq.nlargest(width, (c for _, c in seen.values()), key=lambda c: job.rank(c, fight))
+        layer = [c for _, c in heapq.nlargest(width, seen.values(), key=itemgetter(0))]
         step += 1
         if log and step % 10 == 0 and layer: log(f"  step {step}: {len(layer)} states, t={min(c.t for c in layer):.1f}-{max(c.t for c in layer):.1f}")
     return best
@@ -273,7 +315,7 @@ def sweep(job, fight, width=2000, step=0.5, log=None, start=None):
     the rank's potency per second of time (RATE) moves the order by at most RATE * step."""
     per = max(1, round(width * step / BASE_GCD))
     buckets = {}
-    best = None
+    best, best_v = None, -math.inf
 
     def push(c, b):
         k, v = c.key(), job.rank(c, fight)
@@ -285,11 +327,12 @@ def sweep(job, fight, width=2000, step=0.5, log=None, start=None):
     while buckets:
         b = min(buckets)
         if b * step >= fight.until: break
-        layer = heapq.nlargest(per, (c for _, c in buckets.pop(b).values()), key=lambda c: job.rank(c, fight))
+        layer = [c for _, c in heapq.nlargest(per, buckets.pop(b).values(), key=itemgetter(0))]   # ranked when pushed
         for s in layer:
             for c in job.expand(s, fight):
                 if c.t >= fight.until:
-                    if best is None or job.final(c, fight) > job.final(best, fight): best = c
+                    v = job.final(c, fight)
+                    if v > best_v: best, best_v = c, v
                     continue
                 push(c, max(int(c.t // step), b + 1))     # a child that gains no time still moves on (no hang)
         if log and b % 100 == 0: log(f"  t={b * step:.1f}: {len(layer)} states, {len(buckets)} buckets ahead")

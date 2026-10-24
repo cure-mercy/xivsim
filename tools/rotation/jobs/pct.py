@@ -43,7 +43,7 @@ A log replay has no movement, so it counts every Starry Muse window as spent ins
 early in ~1 window of 3): that only makes the replay more permissive.
 """
 import itertools, math
-from engine import ANIM_LOCK, BASE_GCD, RESOLVE, RUN, SLIDE, _overlap, gcd_times, settle, stand
+from engine import ANIM_LOCK, BASE_GCD, RESOLVE, RUN, SLIDE, SlotState, _overlap, cd_key, gcd_times, settle, stand
 
 # level-90 potencies (see above)
 POTENCY = {"Fire in Red": 420, "Aero in Green": 460, "Water in Blue": 500, "Blizzard in Cyan": 750,
@@ -95,7 +95,7 @@ SPEED = 0.98                                    # spell speed factor on casts an
                                                 # Pictomancers (2.31-2.49 s) and the benchmark clears' two (2.22, 2.46 s)
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "ah", "ah_until", "gauge", "paint", "mono", "sp", "sp_until", "ht", "ht_until", "creature",
                  "nxt", "weapon", "landscape", "moogle", "spec_until", "sm_from", "sm_until", "hyper", "insp_from",
                  "insp_until", "land_from", "swift", "cds", "lost", "dmg", "critp", "waste", "pot_at", "first", "hist", "mvi",
@@ -118,12 +118,6 @@ class State:
         s.mvi, s.acc, s.free, s.spot = 0, 0.0, -30.0, 0        # forced movement (engine.stand)
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         t = self.t
@@ -131,7 +125,7 @@ class State:
         return (r(t), r(self.gcd), step(self, t), self.sp if self.sp_until > t else 0, self.gauge // 5, self.paint,
                 self.mono, self.ht if self.ht_until > t else 0, self.creature, self.nxt, self.weapon, self.landscape,
                 self.moogle, self.spec_until > t, left(self.sm_until), self.hyper if self.insp_until > t else 0,
-                self.swift > t, self.pot_at is None, tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()),
+                self.swift > t, self.pot_at is None, cd_key(self.cds),
                 self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.spot, self.land_from)
 
     def log(self, t, action, note=""):

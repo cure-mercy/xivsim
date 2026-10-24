@@ -45,7 +45,7 @@ it can't pull them off a far spot before its snapshot. Crimson Strike reaches 3 
 reach (p12s.FAR).
 """
 import itertools
-from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, dash, dash_gain, gcd_times, settle, stand
+from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, SlotState, cd_key, dash, dash_gain, gcd_times, settle, stand
 
 POTENCY = {"Ruin III": 310, "Ruin IV": 430, "Astral Impulse": 440, "Fountain of Fire": 540, "Ruby Rite": 510,
            "Topaz Rite": 330, "Emerald Rite": 230, "Fester": 340, "Energy Drain": 200, "Deathflare": 500,
@@ -89,7 +89,7 @@ SPEED = 0.98                                    # spell speed factor: a 2.45 s G
                                                 # one of our two Summoners' (the other plays 2.32 s)
 
 
-class State:
+class State(SlotState):
     __slots__ = ("t", "gcd", "nxt_demi", "demi", "demi_t", "enk", "arc", "att", "stacks", "att_until", "favor", "csr",
                  "mb", "af", "fr_until", "sl_from", "sl_until", "swift", "cds", "lost", "dmg", "dotp", "pot_at", "first",
                  "hist", "mvi", "acc", "free", "spot", "ai", "mlast", "dashed", "waste")
@@ -113,12 +113,6 @@ class State:
         s.dashed = ()                                           # (move window, segment) dashed (engine.dash)
         return s
 
-    def copy(self):
-        c = State.__new__(State)
-        for k in State.__slots__: setattr(c, k, getattr(self, k))
-        c.cds = dict(self.cds)
-        return c
-
     def key(self):
         r = lambda x: round(x, 1)
         t = self.t
@@ -126,7 +120,7 @@ class State:
         return (r(t), r(self.gcd), self.nxt_demi, self.demi if in_trance(self, t) else None, left(self.demi_t + TRANCE_S),
                 self.enk, self.arc, self.att if attuned(self, t) else None, self.stacks if attuned(self, t) else 0,
                 self.favor, self.csr, self.mb, self.af, left(self.fr_until) // 5, left(self.sl_until), self.swift > t,
-                self.pot_at is None, tuple((n, r(x) if x is not None else None) for n, x in self.cds.values()),
+                self.pot_at is None, cd_key(self.cds),
                 self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.spot, self.ai,
                 tuple(k for i, k in self.dashed if i == self.mvi))
 
