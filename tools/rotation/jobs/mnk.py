@@ -98,22 +98,15 @@ class State(SlotState):
         return s
 
     def key(self):
-        r = lambda x: round(x, 1)
-        left = lambda u: r(max(u - self.t, 0))
-        return (r(self.t), r(self.gcd), self.form if self.form_until > self.t else None, left(self.formless_until) > 0,
-                self.pb if self.pb_until > self.t else 0, tuple(sorted(self.beast)), self.lunar, self.solar,
-                self.opo, self.raptor, self.coeurl, round(self.chakra * 4) / 4, left(self.fire_until),
-                left(self.bh_until), left(self.wind_until), left(self.tn_until), self.pot_at is None,
-                cd_key(self.cds),
-                self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai, r(min(self.t - self.mlast, 4)) if self.near else None)
+        return (round(self.t, 1), round(self.gcd, 1), self.form if self.form_until > self.t else None,
+                round(max(self.formless_until - self.t, 0), 1) > 0, self.pb if self.pb_until > self.t else 0,
+                tuple(sorted(self.beast)), self.lunar, self.solar, self.opo, self.raptor, self.coeurl,
+                round(self.chakra * 4) / 4, round(max(self.fire_until - self.t, 0), 1),
+                round(max(self.bh_until - self.t, 0), 1), round(max(self.wind_until - self.t, 0), 1),
+                round(max(self.tn_until - self.t, 0), 1), self.pot_at is None, cd_key(self.cds), self.mvi,
+                round(min(self.acc, 4.0) * 2) / 2, self.ai,
+                round(min(self.t - self.mlast, 4), 1) if self.near else None)
 
-    def log(self, t, action, note=""):
-        self.hist = (self.hist, (round(t, 2), action, note))
-
-    def history(self):
-        out, h = [], self.hist
-        while h: h, e = h; out.append(e)
-        return out[::-1]
 
 
 WASTE = ("Fury overcapped", "chakra overcapped", "Perfect Balance stacks dropped")
@@ -154,6 +147,7 @@ def advance(s, fight, to):
 
 def charges(s, name, at):
     n, nxt = s.cds[name]
+    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
     rec, mx = CDS[name]
     while n < mx and nxt is not None and nxt <= at:
         n += 1; nxt = nxt + rec if n < mx else None
@@ -206,7 +200,9 @@ def out_of_reach(s, fight, t):
 
 
 def away_soon(s, fight, t, ahead=5.0):
-    return any(w.lo <= t + ahead and w.hi > t for w in fight.away[s.ai:])
+    for w in fight.away[s.ai:]:                     # a loop, not any() over a generator: called for every action
+        if w.lo <= t + ahead and w.hi > t: return True
+    return False
 
 
 # --- actions -------------------------------------------------------------------------------------------------------
@@ -389,10 +385,15 @@ def expand(s, fight):
             if c is None: continue
             now = max(c.t, c.gcd)
             any_gcd = False
+            # do_gcd's first steps (advance, settle: idempotent) once for all the GCDs, then only the legal ones tried;
+            # not before the pull, where do_gcd plays the pre-pull Form Shift and meditation without them
+            b = c
+            if not c.first: b = c.copy(); advance(b, fight, now); settle(b, fight, now)
             for g in candidates(c, fight, now):
                 # True North only before the Snap Punch or Demolish it is for: anything else only multiplies the states
                 if "True North" in combo and g not in ("Snap Punch", "Demolish"): continue
-                n = do_gcd(c, fight, g)
+                if b is not c and not gcd_legal(b, g, now): continue
+                n = do_gcd(b, fight, g)
                 if n is None: continue
                 any_gcd = any_gcd or g in HARM_GCDS
                 out.append(n)

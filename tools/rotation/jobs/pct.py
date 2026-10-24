@@ -119,22 +119,13 @@ class State(SlotState):
         return s
 
     def key(self):
-        r = lambda x: round(x, 1)
         t = self.t
-        left = lambda u: r(max(u - t, 0))
-        return (r(t), r(self.gcd), step(self, t), self.sp if self.sp_until > t else 0, self.gauge // 5, self.paint,
-                self.mono, self.ht if self.ht_until > t else 0, self.creature, self.nxt, self.weapon, self.landscape,
-                self.moogle, self.spec_until > t, left(self.sm_until), self.hyper if self.insp_until > t else 0,
-                self.swift > t, self.pot_at is None, cd_key(self.cds),
+        return (round(t, 1), round(self.gcd, 1), step(self, t), self.sp if self.sp_until > t else 0, self.gauge // 5,
+                self.paint, self.mono, self.ht if self.ht_until > t else 0, self.creature, self.nxt, self.weapon,
+                self.landscape, self.moogle, self.spec_until > t, round(max(self.sm_until - t, 0), 1),
+                self.hyper if self.insp_until > t else 0, self.swift > t, self.pot_at is None, cd_key(self.cds),
                 self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.spot, self.land_from)
 
-    def log(self, t, action, note=""):
-        self.hist = (self.hist, (round(t, 2), action, note))
-
-    def history(self):
-        out, h = [], self.hist
-        while h: h, e = h; out.append(e)
-        return out[::-1]
 
 
 WASTE = ("Palette Gauge overcapped", "White Paint overcapped", "Moogle Portrait overwritten", "Hammer Time lapsed")
@@ -167,6 +158,7 @@ def advance(s, fight, to):
 
 def charges(s, name, at):
     n, nxt = s.cds[name]
+    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
     rec, mx = CDS[name]
     while n < mx and nxt is not None and nxt <= at:
         n += 1; nxt = nxt + rec if n < mx else None

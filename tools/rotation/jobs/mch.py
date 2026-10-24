@@ -102,21 +102,12 @@ class State(SlotState):
         return s
 
     def key(self):
-        r = lambda x: round(x, 1)
-        left = lambda u: r(max(u - self.t, 0))
-        return (r(self.t), r(self.gcd), self.combo if self.combo_until > self.t else 0, self.heat, self.batt,
-                left(self.hc_until), self.oh if self.oh_until > self.t else 0, left(self.ra_until),
-                self.wf_n if self.wf_t is not None and self.wf_t + WF_LAG + WF_S > self.t else -1, left(self.queen_until),
-                self.pot_at is None,
-                cd_key(self.cds))
+        return (round(self.t, 1), round(self.gcd, 1), self.combo if self.combo_until > self.t else 0, self.heat,
+                self.batt, round(max(self.hc_until - self.t, 0), 1), self.oh if self.oh_until > self.t else 0,
+                round(max(self.ra_until - self.t, 0), 1),
+                self.wf_n if self.wf_t is not None and self.wf_t + WF_LAG + WF_S > self.t else -1,
+                round(max(self.queen_until - self.t, 0), 1), self.pot_at is None, cd_key(self.cds))
 
-    def log(self, t, action, note=""):
-        self.hist = (self.hist, (round(t, 2), action, note))
-
-    def history(self):
-        out, h = [], self.hist
-        while h: h, e = h; out.append(e)
-        return out[::-1]
 
 
 WASTE = ("heat overcapped", "battery overcapped", "Blazing Shot cuts lost on full charges", "Overheated stacks dropped")
@@ -144,6 +135,7 @@ def recast_of(name):
 
 def charges(s, name, at):
     n, nxt = s.cds[name]
+    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
     rec, mx = recast_of(name), CDS[name][1]
     while n < mx and nxt is not None and nxt <= at:
         n += 1; nxt = nxt + rec if n < mx else None
@@ -153,9 +145,9 @@ def charges(s, name, at):
 def full_since(s, name, t):
     """When the cooldown last came back to full charges, if it is full at t (else None); full at the pull counts from 0."""
     n, nxt = s.cds[name]
-    rec, mx = recast_of(name), CDS[name][1]
+    mx = CDS[name][1]
     if n == mx: return 0.0
-    f = nxt + (mx - n - 1) * rec
+    f = nxt + (mx - n - 1) * recast_of(name)
     return f if f <= t else None
 
 

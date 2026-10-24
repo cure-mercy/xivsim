@@ -110,24 +110,15 @@ class State(SlotState):
         return s
 
     def key(self):
-        r = lambda x: round(x, 1)
-        left = lambda u: r(max(u - self.t, 0))
-        return (r(self.t), r(self.gcd), self.combo if self.combo_until > self.t else None,
+        return (round(self.t, 1), round(self.gcd, 1), self.combo if self.combo_until > self.t else None,
                 self.honed if self.honed_until > self.t else None, self.venom if self.venom_until > self.t else None,
                 self.tail, self.coil if self.coil_until > self.t else None, self.bites, self.hv, self.sv, self.rattle,
                 self.offer, self.rr_until > self.t, self.tribute if self.ra_until > self.t else 0, self.gen,
                 round(max(self.hi_until - self.t, 0) / 2.5), round(max(self.ss_until - self.t, 0) / 2.5),
-                left(self.tn_until), self.pot_at is None,
-                cd_key(self.cds),
-                self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai, r(min(self.t - self.mlast, 4)) if self.near else None)
+                round(max(self.tn_until - self.t, 0), 1), self.pot_at is None, cd_key(self.cds), self.mvi,
+                round(min(self.acc, 4.0) * 2) / 2, self.ai,
+                round(min(self.t - self.mlast, 4), 1) if self.near else None)
 
-    def log(self, t, action, note=""):
-        self.hist = (self.hist, (round(t, 2), action, note))
-
-    def history(self):
-        out, h = [], self.hist
-        while h: h, e = h; out.append(e)
-        return out[::-1]
 
 
 WASTE = ("Serpent Offerings overcapped", "Rattling Coil overcapped", "Death Rattle or a bite lost")
@@ -157,6 +148,7 @@ def advance(s, fight, to):
 
 def charges(s, name, at):
     n, nxt = s.cds[name]
+    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
     rec, mx = CDS[name]
     while n < mx and nxt is not None and nxt <= at:
         n += 1; nxt = nxt + rec if n < mx else None
@@ -205,7 +197,9 @@ def out_of_reach(s, fight, t):
 
 
 def away_soon(s, fight, t, ahead=5.0):
-    return any(w.lo <= t + ahead and w.hi > t for w in fight.away[s.ai:])
+    for w in fight.away[s.ai:]:                     # a loop, not any() over a generator: called for every action
+        if w.lo <= t + ahead and w.hi > t: return True
+    return False
 
 
 # --- actions -------------------------------------------------------------------------------------------------------

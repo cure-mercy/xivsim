@@ -114,23 +114,14 @@ class State(SlotState):
         return s
 
     def key(self):
-        r = lambda x: round(x, 1)
         t = self.t
-        left = lambda u: r(max(u - t, 0))
-        return (r(t), r(self.gcd), self.nxt_demi, self.demi if in_trance(self, t) else None, left(self.demi_t + TRANCE_S),
-                self.enk, self.arc, self.att if attuned(self, t) else None, self.stacks if attuned(self, t) else 0,
-                self.favor, self.csr, self.mb, self.af, left(self.fr_until) // 5, left(self.sl_until), self.swift > t,
-                self.pot_at is None, cd_key(self.cds),
-                self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.spot, self.ai,
-                tuple(k for i, k in self.dashed if i == self.mvi))
+        return (round(t, 1), round(self.gcd, 1), self.nxt_demi, self.demi if in_trance(self, t) else None,
+                round(max((self.demi_t + TRANCE_S) - t, 0), 1), self.enk, self.arc,
+                self.att if attuned(self, t) else None, self.stacks if attuned(self, t) else 0, self.favor, self.csr,
+                self.mb, self.af, round(max(self.fr_until - t, 0), 1) // 5, round(max(self.sl_until - t, 0), 1),
+                self.swift > t, self.pot_at is None, cd_key(self.cds), self.mvi, round(min(self.acc, 4.0) * 2) / 2,
+                self.spot, self.ai, tuple(k for i, k in self.dashed if i == self.mvi))
 
-    def log(self, t, action, note=""):
-        self.hist = (self.hist, (round(t, 2), action, note))
-
-    def history(self):
-        out, h = [], self.hist
-        while h: h, e = h; out.append(e)
-        return out[::-1]
 
 
 WASTE = ("Arcanum lost to a demi-summon", "attunement stacks lost", "favor lost", "Aetherflow overcapped",
@@ -175,6 +166,7 @@ def recast_of(name):
 
 def charges(s, name, at):
     n, nxt = s.cds[name]
+    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
     rec, mx = recast_of(name), CDS[name][1]
     while n < mx and nxt is not None and nxt <= at:
         n += 1; nxt = nxt + rec if n < mx else None
@@ -184,9 +176,9 @@ def charges(s, name, at):
 def full_since(s, name, t):
     """When the cooldown last came back, if it is up at t (else None); up at the pull counts from 0."""
     n, nxt = s.cds[name]
-    rec, mx = recast_of(name), CDS[name][1]
+    mx = CDS[name][1]
     if n == mx: return 0.0
-    f = nxt + (mx - n - 1) * rec
+    f = nxt + (mx - n - 1) * recast_of(name)
     return f if f <= t else None
 
 

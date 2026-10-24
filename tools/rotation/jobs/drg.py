@@ -116,23 +116,15 @@ class State(SlotState):
         return s
 
     def key(self):
-        r = lambda x: round(x, 1)
-        left = lambda u: r(max(u - self.t, 0))
-        return (r(self.t), r(self.gcd), self.combo if self.combo_until > self.t else None, self.df_until > self.t,
-                self.focus, round(max(self.ps_until - self.t, 0) / 2.5), left(self.lc_until), left(self.bl_until),
-                left(self.lotd_until), self.nr_until > self.t, self.dr_until > self.t, self.ls_until > self.t,
-                left(self.tn_until), self.ept_until > self.t,
+        return (round(self.t, 1), round(self.gcd, 1), self.combo if self.combo_until > self.t else None,
+                self.df_until > self.t, self.focus, round(max(self.ps_until - self.t, 0) / 2.5),
+                round(max(self.lc_until - self.t, 0), 1), round(max(self.bl_until - self.t, 0), 1),
+                round(max(self.lotd_until - self.t, 0), 1), self.nr_until > self.t, self.dr_until > self.t,
+                self.ls_until > self.t, round(max(self.tn_until - self.t, 0), 1), self.ept_until > self.t,
                 round(max(self.dot[0] + DOT_S - self.t, 0) / 2.5) if self.dot else None, self.pot_at is None,
-                cd_key(self.cds),
-                self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai, r(min(self.t - self.mlast, 4)) if self.near else None)
+                cd_key(self.cds), self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai,
+                round(min(self.t - self.mlast, 4), 1) if self.near else None)
 
-    def log(self, t, action, note=""):
-        self.hist = (self.hist, (round(t, 2), action, note))
-
-    def history(self):
-        out, h = [], self.hist
-        while h: h, e = h; out.append(e)
-        return out[::-1]
 
 
 WASTE = ("Firstminds' Focus overcapped", "Life Surge lapsed", "Dive Ready or Nastrond Ready lapsed")
@@ -177,6 +169,7 @@ def advance(s, fight, to):
 
 def charges(s, name, at):
     n, nxt = s.cds[name]
+    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
     rec, mx = CDS[name]
     while n < mx and nxt is not None and nxt <= at:
         n += 1; nxt = nxt + rec if n < mx else None
@@ -248,7 +241,9 @@ def out_of_reach(s, fight, t):
 
 
 def away_soon(s, fight, t, ahead=5.0):
-    return any(w.lo <= t + ahead and w.hi > t for w in fight.away[s.ai:])
+    for w in fight.away[s.ai:]:                     # a loop, not any() over a generator: called for every action
+        if w.lo <= t + ahead and w.hi > t: return True
+    return False
 
 
 # --- actions -------------------------------------------------------------------------------------------------------
