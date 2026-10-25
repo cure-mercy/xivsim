@@ -45,6 +45,7 @@ from Athena's 10.5 y hitbox), so R1, R2 and standing still play the same; only P
 steps can be danced with no target and the finish waits for Athena.
 """
 import itertools
+import engine
 from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, settle
 
 POTENCY = {"Cascade": 200, "Fountain": 100, "Reverse Cascade": 260, "Fountainfall": 320, "Saber Dance": 500,
@@ -267,9 +268,13 @@ def logged(status, at):
 
 def grant(s, which, at, status):
     """A 50% chance of a Silken proc ("sym" / "flow") or Threefold ("three"): half a token in the search, the log's own
-    in a replay. A token over a whole one already held is wasted."""
+    in a replay, a whole one or none with procs drawn (engine.DRAW: montecarlo.py). A token over a whole one already
+    held is wasted."""
     if LOG_PROCS is not None:
         if not logged(status, at): return
+        n = 1.0
+    elif engine.DRAW is not None:
+        if not engine.drawn(0.5, at, status): return
         n = 1.0
     else: n = 0.5
     v = getattr(s, which) + n
@@ -277,9 +282,13 @@ def grant(s, which, at, status):
     setattr(s, which, min(1.0, v)); setattr(s, which + "_until", at + PROC_S)
 
 
-def feather(s):
-    """Half a feather (a 50% chance) in the search; a replay can't see feathers, so it counts every chance."""
-    v = s.feathers + (1.0 if LOG_PROCS is not None else 0.5)
+def feather(s, at):
+    """Half a feather (a 50% chance) in the search; a replay can't see feathers, so it counts every chance; with procs
+    drawn, a whole one or none."""
+    if engine.DRAW is not None and LOG_PROCS is None:
+        if not engine.drawn(0.5, at, "Fourfold Feather"): return
+        v = s.feathers + 1.0
+    else: v = s.feathers + (1.0 if LOG_PROCS is not None else 0.5)
     if v > 4: wasted(s, 1, v - 4)
     s.feathers = min(4.0, v)
 
@@ -365,11 +374,11 @@ def do_gcd(s, fight, name):
         elif name == "Reverse Cascade":
             if s.sym >= 1 - 1e-9: s.sym -= 1.0
             else: s.fsym_until = -1.0
-            feather(s)
+            feather(s, start)
         elif name == "Fountainfall":
             if s.flow >= 1 - 1e-9: s.flow -= 1.0
             else: s.fflow_until = -1.0
-            feather(s)
+            feather(s, start)
         elif name == "Saber Dance": s.esprit -= 50
         elif name == "Tillana": s.ffin_until = -1.0; gain(s, 50)
         elif name == "Starfall Dance": s.star_until = -1.0

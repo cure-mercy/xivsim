@@ -8,8 +8,15 @@ is replayed through `expand`: a step that no longer fits loses the oGCDs that ar
 be cast), and if the steps run out before the end a small beam finishes it. Every pass scores all edits of the best
 rotation so far in parallel, then takes the improving ones, best first, as long as each still improves the whole
 rotation. A result is always a legal rotation, never worse than the beam's.
+
+When no single edit improves it any more, a restart pass (`restarts`) searches the rest of the fight afresh from the
+rotation's state every RESTART_EVERY seconds: a sweep at RESTART_WIDTH times the job's width, from a state the search
+itself may have pruned on the way. An improving restart is a splice (the steps where the two rotations differ, in place
+of the old ones), so restarts whose changes don't overlap combine; then single edits again, and so on. Re-planning
+only a window and finishing with the rotation's own steps doesn't work: a different window leaves a job in another
+phase (Black Mage's fire or ice, Summoner's demi-summon) and the old steps no longer fit (2026-10-25).
 """
-import multiprocessing, time
+import bisect, multiprocessing, time
 
 import engine
 
@@ -17,6 +24,8 @@ SHIFT = 3                   # an oGCD moves up to this many steps earlier or lat
 FINISH_WIDTH = 10           # beam width for the steps after an edited rotation's own run out
 MAX_DROPS = 3               # an edited rotation with this many steps in a row that no longer fit is given up
 EPS = 1e-6
+RESTART_EVERY = 15.0        # a restart pass searches from the rotation's state every this many seconds
+RESTART_WIDTH = 2.0         # at this many times the job's SWEEP_WIDTH
 
 _W = {}                     # worker state: the configured job, the fight, and the current rotation's states
 
@@ -91,11 +100,29 @@ def _score(job, fight, s):
     return job.final(s, fight) if s is not None else -1.0
 
 
-# --- edits: (kind, i, ...) on a list of steps, None for a dropped one ------------------------------------------------
+# --- edits: (kind, i, ...) on a list of steps, None for a dropped one, a list for spliced ones -------------------------
+
+def flat(steps):
+    """The steps an edited list stands for."""
+    out = []
+    for x in steps:
+        if isinstance(x, list): out.extend(x)
+        elif x is not None: out.append(x)
+    return out
+
 
 def apply(edit, steps):
     kind, i = edit[0], edit[1]
     out = list(steps)
+    if kind == "splice":                        # ("splice", i, j, new steps): steps i..j-1 replaced
+        j, mid = edit[2], list(edit[3])
+        if any(x is None or isinstance(x, list) for x in out[i:j]): return None     # overlaps an earlier edit
+        if j == i:                              # an insertion: carries the step it goes before
+            if i == len(out): return out + [mid]
+            if out[i] is None or isinstance(out[i], list): return None
+            mid, j = mid + [out[i]], i + 1
+        out[i:j] = [mid] + [None] * (j - i - 1)
+        return out
     if kind == "set": out[i] = edit[2]
     elif kind == "drop": out[i] = None
     elif kind == "swap":
@@ -157,6 +184,25 @@ def _evaluate(args):
     return out
 
 
+def _restart(args):
+    """[(gain, splice)]: the rest of the fight searched afresh from the rotation's first state at or after t0, if that
+    improves the rotation."""
+    version, steps, t0 = args
+    job, fight = _W["job"], _W["fight"]
+    states, base = _load(version, steps)
+    i = bisect.bisect_left([x.t for x in states], t0 - EPS, 0, len(steps))
+    if i >= len(steps): return []
+    s = engine.sweep(job, fight, RESTART_WIDTH * getattr(job, "SWEEP_WIDTH", 1000), getattr(job, "SWEEP_STEP", 0.5),
+                     start=states[i])
+    v = _score(job, fight, s)
+    if v <= base + EPS: return []
+    new = split(job, fight, job.State.initial(fight), s.history())[0]
+    p, k = 0, 0                                 # the steps both share at the start and at the end
+    while p < min(len(new), len(steps)) and new[p] == steps[p]: p += 1
+    while k < min(len(new), len(steps)) - p and new[-1 - k] == steps[-1 - k]: k += 1
+    return [(v - base, ("splice", p, len(steps) - k, new[p:len(new) - k]))]
+
+
 def _combine(args):
     """Take the improving edits, best first, while each still improves the whole rotation. Returns the result as
     (score, steps, flat history, final state without its history)."""
@@ -167,7 +213,7 @@ def _combine(args):
     for _, e in sorted(found, key=lambda x: -x[0]):
         new = apply(e, cur)
         if new is None: continue
-        s = run(job, fight, s0, [x for x in new if x])
+        s = run(job, fight, s0, flat(new))
         if _score(job, fight, s) > _score(job, fight, best) + EPS: cur, best = new, s
     h = best.history()
     steps = split(job, fight, s0, h)[0]
@@ -183,10 +229,11 @@ def _start(entries):
     return _score(job, fight, run(job, fight, s0, steps)), steps
 
 
-def polish(jobname, fight, best, setting, speed, params=None, procs=None, budget=600, log=print):
-    """The beam's best rotation improved by local search under its own heuristic setting (which only breaks ties in
-    the repair and steers the beam that finishes a rotation; edits are scored by the job's `final`). Stops when a pass
-    finds nothing or after `budget` seconds. Returns (state, passes)."""
+def polish(jobname, fight, best, setting, speed, params=None, procs=None, budget=600, log=print, restarts=False):
+    """The beam's best rotation improved by local search under its own heuristic setting (which steers the restarts,
+    breaks ties in the repair and steers the beam that finishes a rotation; edits are scored by the job's `final`).
+    `restarts`: search the rest of the fight afresh from points along it when single edits find nothing. Stops when
+    nothing improves it or after `budget` seconds. Returns (state, passes)."""
     import importlib
     job = importlib.import_module(f"jobs.{jobname}")
     beam_score = job.final(best, fight)
@@ -201,18 +248,25 @@ def polish(jobname, fight, best, setting, speed, params=None, procs=None, budget
         if score < beam_score - EPS:
             log(f"polish: the beam's rotation replays at {score:,.1f}, not {beam_score:,.1f}; kept as it was")
             return best, 0
-        result, passes = None, 0
+        result, passes, mode = None, 0, "edits"
         while time.time() - t0 < budget:
             passes += 1
             n = len(steps)
-            chunk = max(1, n // (procs * 4))
-            found = [x for r in pool.imap_unordered(_evaluate, [(passes, steps, a, min(n, a + chunk)) for a in range(0, n, chunk)])
-                     for x in r]
-            if not found: break
-            new, steps, h, s = pool.apply(_combine, ((steps, found),))
-            log(f"  pass {passes}: {len(found)} improving edits, {score:,.1f} -> {new:,.1f} ({time.time() - t0:.0f} s)")
-            if new <= score + EPS: break
-            score, result = new, (h, s)
+            if mode == "edits":
+                chunk = max(1, n // (procs * 4))
+                tasks = [(passes, steps, a, min(n, a + chunk)) for a in range(0, n, chunk)]
+            else:                               # the earliest (longest) restarts first
+                tasks = [(passes, steps, k * RESTART_EVERY) for k in range(int(fight.until // RESTART_EVERY) + 1)]
+            found = [x for r in pool.imap_unordered(_evaluate if mode == "edits" else _restart, tasks) for x in r]
+            new = score
+            if found:
+                new, cand, h, s = pool.apply(_combine, ((steps, found),))
+                log(f"  pass {passes}: {len(found)} improving {mode}, {score:,.1f} -> {new:,.1f} ({time.time() - t0:.0f} s)")
+            if new > score + EPS:
+                score, steps, result, mode = new, cand, (h, s), "edits"
+                continue
+            if mode == "edits" and restarts: mode = "restarts"; continue
+            break
     if result is None: return best, passes
     h, s = result
     for e in h: s.hist = (s.hist, e)

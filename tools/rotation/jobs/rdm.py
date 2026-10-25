@@ -42,6 +42,7 @@ dash back to the run's start if it still fits before the next GCD (a player wait
 Corps-a-corps can't pull the player off a far spot before its snapshot; after it, it ends the stretch out of reach.
 """
 import itertools
+import engine
 from engine import (ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, SlotState, cd_key, dash, dash_gain, gcd_times, move_credit,
                     open_move, settle, stand)
 
@@ -187,8 +188,12 @@ def gain(s, b, w):
 
 def grant(s, colour, chance, at, ev):
     """A chance at Verfire Ready ("vf") or Verstone Ready ("vs"). The search counts its expectation: the chance it is up
-    afterwards, and the part already up that the grant overwrites as waste. A replay (ev False) only knows it may be up."""
+    afterwards, and the part already up that the grant overwrites as waste. A replay (ev False) only knows it may be up.
+    With procs drawn (engine.DRAW: montecarlo.py) it happens or doesn't."""
     p = getattr(s, colour)
+    if ev and engine.DRAW is not None:
+        if not engine.drawn(chance, at, colour): return
+        chance = 1.0
     if ev:
         wasted(s, 1, p * chance)
         setattr(s, colour, 1 - (1 - p) * (1 - chance))

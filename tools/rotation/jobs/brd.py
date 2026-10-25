@@ -9,9 +9,12 @@ the logs (2026-10-22, scratch/brd): no benchmark clear has a Bard, so our groups
 
 Every action is instant and reaches 25 y, so the strategy's running costs a Bard nothing: only the boss's downtime.
 
-Songs (45 s each, 120 s recast, singing one ends the one before; only in combat): while one plays, every server tick
-(3 s) on which Caustic Bite or Stormbite is on the boss grants Repertoire with an 80% chance, and Empyreal Arrow grants
-one surely. The search counts the expected 0.8 per tick (as Monk's chakra counts the expected crits):
+Songs (45 s each, 120 s recast, singing one ends the one before; only in combat): while one plays, every 3 s on the
+song's own clock (from when it was sung, not the server tick; no DoT needed) grants Repertoire with an 80% chance, and
+Empyreal Arrow grants one surely, also while Athena is away (xivintheshell's songTick; in our logs Army's Paeon stacks
+come with the song's ticks, not the status refresh's, one Pitch Perfect went off with no DoT up, and in every P12S kill
+with a Bard the first Apex Arrow after Palladion was at 80+ Soul Voice, which only ticks during it can pay; 2026-10-25).
+The search counts the expected 0.8 per tick (as Monk's chakra counts the expected crits); montecarlo.py draws each tick:
   - the Wanderer's Minuet: stacks (up to 3) for Pitch Perfect, 100 / 220 / 360; lost when the song ends;
   - Mage's Ballad: each takes 7.5 s off Bloodletter's recast (three charges of 15 s);
   - Army's Paeon: stacks (up to 4), each 4% off the GCD and the auto-attack delay. Singing the Minuet or the Ballad
@@ -33,6 +36,7 @@ DoTs snapshot buffs when they land and tick on the server's 3 s tick (TICK_PHASE
 and a refresh (Iron Jaws, or the bite again) loses the ticks the old one still had.
 """
 import itertools, math
+import engine
 from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, settle
 
 # Burst Shot, Refulgent Arrow, Empyreal Arrow, Sidewinder and Apex Arrow from the logs (plain hits scaled to Bloodletter:
@@ -58,6 +62,7 @@ def dot_tick(name):
 DOT_S = 45.0
 HAWK, REPERTOIRE = 0.35, 0.80                   # chances: Hawk's Eye per proc-granting GCD, Repertoire per server tick
 HAWK_GCDS = {"Burst Shot", "Caustic Bite", "Stormbite", "Iron Jaws"}
+HAWK_S = 30                                     # Hawk's Eye lasts 30 s
 HAWK_EV = HAWK * (POTENCY["Refulgent Arrow"] - POTENCY["Burst Shot"]) / (1 + HAWK)
 # auto-attacks: 68 potency (logs, scaled to Bloodletter) every 3.07 s; Army's Paeon / Muse shorten the delay
 AUTO, AUTO_DELAY = 68, 3.07
@@ -105,7 +110,8 @@ LOG = False                                     # a replay of a log: Refulgent A
 class State(SlotState):
     __slots__ = ("t", "gcd", "song", "song_until", "rep", "sv", "coda", "ethos", "ethos_until", "muse", "muse_until",
                  "rs_until", "bv_until", "rf_until", "rf", "barrage_until", "blast_until", "caustic", "storm", "cds",
-                 "auto_next", "tick_next", "dmg", "dotp", "waste", "pot_at", "first", "hist", "mvi", "acc", "free", "spot")
+                 "auto_next", "tick_next", "dmg", "dotp", "waste", "pot_at", "first", "hist", "mvi", "acc", "free", "spot",
+                 "hawk_until")
 
     @classmethod
     def initial(cls, fight):
@@ -114,10 +120,11 @@ class State(SlotState):
         s.song, s.song_until, s.rep, s.sv, s.coda = None, -1.0, 0.0, 0.0, 0
         s.ethos, s.ethos_until, s.muse, s.muse_until = 0.0, -1.0, 0.0, -1.0
         s.rs_until = s.bv_until = s.rf_until = s.barrage_until = s.blast_until = -1.0
+        s.hawk_until = -1.0                         # a drawn Hawk's Eye (montecarlo.py; the search counts its worth)
         s.rf = 1.0
         s.caustic = s.storm = None                  # (when it landed, the multiplier it snapshot)
         s.cds = {k: (n, None) for k, (_, n) in CDS.items()}
-        s.auto_next, s.tick_next = 0.0, TICK_PHASE
+        s.auto_next, s.tick_next = 0.0, math.inf       # tick_next: the song's next Repertoire tick
         s.dmg, s.dotp, s.pot_at, s.first, s.hist = 0.0, 0.0, None, True, None
         s.waste = (0.0, 0.0, 0.0)
         s.mvi, s.acc, s.free, s.spot = 0, 0.0, -30.0, 0
@@ -192,8 +199,7 @@ def repertoire(s, at, n):
 
 
 def advance(s, fight, to):
-    """Up to `to`, in time order: songs running out, auto-attacks, and the server ticks on which the DoTs grant
-    Repertoire."""
+    """Up to `to`, in time order: songs running out, auto-attacks, and the song's ticks that grant Repertoire."""
     while True:
         e = s.song_until if s.song is not None else math.inf
         a, k = s.auto_next, s.tick_next
@@ -201,9 +207,9 @@ def advance(s, fight, to):
         if nxt > to: break
         if e == nxt: end_song(s, e)
         elif k == nxt:
-            if singing(s, k) and fight.targetable(k) and k < fight.until and (dot_on(s.caustic, k) or dot_on(s.storm, k)):
-                repertoire(s, k, REPERTOIRE)
-            s.tick_next = k + 3.0
+            if singing(s, k) and k < fight.until:
+                repertoire(s, k, REPERTOIRE if engine.DRAW is None else float(engine.drawn(REPERTOIRE, k, "Repertoire")))
+            s.tick_next = k + 3.0 if singing(s, k + 3.0) else math.inf
         else:
             if 0 <= a + 0.5 < fight.until and fight.targetable(a): s.dmg += AUTO * mult(s, fight, a)
             s.auto_next = a + AUTO_DELAY * (1 - haste(s, a))
@@ -277,6 +283,8 @@ def potency(s, fight, name, at):
     if name == "Refulgent Arrow": return POTENCY[name] * (BARRAGE_HITS if s.barrage_until > at else 1)
     if name == "Shadowbite" and s.barrage_until > at: return 300
     if name == "Apex Arrow": return APEX * s.sv
+    if engine.DRAW is not None and not LOG:        # procs drawn: a Burst Shot under Hawk's Eye is a Refulgent Arrow
+        return POTENCY["Refulgent Arrow" if name == "Burst Shot" and s.hawk_until > at else name]
     return POTENCY[name] + (HAWK_EV if name in HAWK_GCDS and not LOG else 0)
 
 
@@ -293,6 +301,9 @@ def do_gcd(s, fight, name):
     snap = start
     m = mult(s, fight, snap)
     hit(s, fight, snap, potency(s, fight, name, snap), name)
+    if engine.DRAW is not None and not LOG and name in HAWK_GCDS:
+        if name == "Burst Shot" and s.hawk_until > snap: s.hawk_until = -1.0      # it was a Refulgent Arrow
+        elif engine.drawn(HAWK, snap, "Hawk's Eye"): s.hawk_until = snap + HAWK_S
     land = snap + DELAY.get(name, 0.6)
     if name in ("Refulgent Arrow", "Shadowbite"):
         if s.barrage_until > snap: s.barrage_until = -1.0
@@ -329,6 +340,7 @@ def sing(s, name, at):
         s.muse, s.muse_until = MUSE[i] + (MUSE[i + 1] - MUSE[i]) * (min(stacks, 4) - i), at + MUSE_S
     s.ethos, s.ethos_until = 0.0, -1.0
     s.song, s.song_until, s.rep = new, at + SONG_S, 0.0
+    s.tick_next = at + 3.0
     s.coda |= CODA[new]
 
 

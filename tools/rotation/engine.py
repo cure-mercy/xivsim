@@ -126,6 +126,34 @@ def cd_key(cds):
     return tuple([(n, x if x is None else round(x, 1)) for n, x in cds.values()])
 
 
+# --- drawn procs (montecarlo.py) ---------------------------------------------------------------------------------
+# The search counts random procs at their expectation. With DRAW set (a seed), a job's proc chances are drawn instead:
+# each event's outcome is fixed by the seed, its time and a tag, so the same event draws the same however often a
+# replay expands it.
+DRAW = None
+
+
+def uniform(t, tag):
+    """The event's draw in [0, 1)."""
+    import hashlib
+    h = hashlib.blake2b(f"{DRAW}|{t:.2f}|{tag}".encode(), digest_size=8).digest()
+    return int.from_bytes(h, "big") / 2 ** 64
+
+
+def drawn(chance, t, tag):
+    """Does a proc of this chance happen at t (DRAW set)?"""
+    return chance >= 1 or (chance > 0 and uniform(t, tag) < chance)
+
+
+def drawn_count(mean, t, tag):
+    """A Poisson count of this mean at t (DRAW set): many small chances, such as the party's crits."""
+    u, k, p = uniform(t, tag), 0, math.exp(-mean)
+    c = p
+    while u > c and k < 100:
+        k += 1; p *= mean / k; c += p
+    return k
+
+
 def gcd_times(start, cast, recast):
     """(when the spell resolves, when the player may act again, when the next GCD may start)."""
     if cast > 0:

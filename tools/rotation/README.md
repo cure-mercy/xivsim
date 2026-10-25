@@ -13,10 +13,13 @@ python tools/rotation/p12s.py [--slot R2]                     # the move windows
 python tools/rotation/check.py                                # movement, downtime and job-rule checks
 python tools/rotation/calibrate.py [--job rpr] [--ours]       # replay the clears' (or our) logs through a job model
 python tools/rotation/tune.py --job rpr                       # pick a job's heuristic settings
+python tools/rotation/solve.py --job nin --no-restarts        # polish without restarting the search along the rotation (faster)
+python tools/rotation/montecarlo.py --job dnc [--replan 20]   # the rotation under drawn procs, followed or re-planned
 python tools/rotation/patchnotes.py Reaper                    # the job's PvE changes in the official patch notes
 python tools/rotation/dps.py [--job rpr]                      # our players: ceiling in DPS next to their scorecard rDPS
 python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceilings and rotations for the scorecard site
 python tools/rotation/dps.py --job drg --site --offline       # ...from the scorecard's cached events, when FFLogs is down
+python tools/rotation/dps.py --job nin --site --restarts      # ...with polish's restarts (~0-1% more, minutes a search)
 ```
 
 | `--job` | Job | Default GCD | Slot | Best over the phase | Standing still | Search |
@@ -24,7 +27,7 @@ python tools/rotation/dps.py --job drg --site --offline       # ...from the scor
 | `blm` | Black Mage | 2.32 s | R1 / R2 | 99,986 / 99,881 | 100,358 | ~70 s |
 | `rpr` | Reaper | 2.49 s | M1 = M2 | 131,628 | 133,399 | |
 | `mnk` | Monk | 1.94 s (2.43 s before Greased Lightning) | M1 / M2 | 133,997 / 133,392 | 135,805 | ~2.5 min |
-| `brd` | Bard | 2.49 s | R1 = R2 = still | 84,651 | | |
+| `brd` | Bard | 2.49 s | R1 = R2 = still | 84,398 | | ~2 min |
 | `drg` | Dragoon | 2.49 s | M1 = M2 | 126,980 | 127,694 | ~70 s |
 | `rdm` | Red Mage | 2.50 s | R1 / R2 | 93,688 / 92,856 | 93,376 | ~35 s |
 | `vpr` | Viper | 2.49 s (2.12 s under Swiftscaled) | M1 = M2 | 145,108 | 145,694 | ~55 s |
@@ -54,6 +57,7 @@ hits at their expected worth, which is what the search ranks by.
 | `--width` | search width per heuristic setting (default the job's `SWEEP_WIDTH`; `WIDTH` with `--layers gcd`) |
 | `--layers` | `time` (default): states compete with others at the same time (`engine.sweep`); `gcd`: after as many GCDs (`engine.beam`) |
 | `--no-polish` | skip the local search on the best rotation (`polish.py`) |
+| `--no-restarts` | polish without its restarts (searching the rest of the fight afresh along the rotation; see The search): faster, ~0-1% less |
 | `--compare` | replay every benchmark clear's logged rotation under the same buffs, downtime and window, at the player's own speed, against the optimum standing still at their GCD (a replay plays the log's own path; one search per GCD) |
 
 Damage is potency times the raid buffs active when each hit lands; crit and direct-hit buffs count at their expected
@@ -150,10 +154,16 @@ the guide; from the logs, scaled to Bloodletter (130): Burst Shot 200, Refulgent
 Sidewinder 320, Apex Arrow 5 a Soul Voice; DoT ticks 20 and 25 at base speed (the tooltips'; see DoT ticks below); auto-attacks 68 every 3.07 s;
 Radiant Finale's damage status is 2964.
 
-- Songs: each 3 s tick with a bite up gives Repertoire 80% of the time; the search counts the expected 0.8 (Pitch
-  Perfect stacks under the Minuet, 7.5 s off Bloodletter under the Ballad, 4% haste under the Paeon plus Army's Muse
-  after it). Repertoire isn't logged, so the ~48 illegal casts left in replays (Bloodletters under the Ballad, Blast
-  Arrows under 80 Soul Voice) are that expectation.
+- Songs: every 3 s on the song's own clock (from its cast, not the server tick; no DoT needed) gives Repertoire 80% of
+  the time; the search counts the expected 0.8 (Pitch Perfect stacks under the Minuet, 7.5 s off Bloodletter under the
+  Ballad, 4% haste under the Paeon plus Army's Muse after it), also while Athena is away (2026-10-25; before, ticks
+  were the server's with a bite up and none in downtime). The clock is xivintheshell's (songTick); in our logs Army's
+  Paeon stacks are gained on it (a tick in 86% of the GCD pairs that gained one, 62-69% of those that didn't; the song
+  status's own refresh clock shows no such contrast), and a Pitch Perfect went off with no DoT up. In every P12S kill
+  with a Bard (FFLogs, 8 pulls) the first Apex Arrow after Palladion was at 80+ Soul Voice, which only ticks during it
+  can pay (`scratch/brd`). Repertoire isn't logged, so the ~73 illegal casts left in
+  replays (Bloodletters under the Ballad, Blast Arrows under 80 Soul Voice) are that expectation; on the server tick
+  76, or 48 with calibrate.py fitting the tick's phase to each log (a free parameter the song clock doesn't need).
 - Hawk's Eye (35% from Burst Shot, the bites and Iron Jaws) counts at its expected 0.35 x 60 / 1.35 per GCD; the search
   fires Refulgent Arrow only under Barrage.
 - Own buffs: Raging Strikes, Radiant Finale and the Ballad are damage; Battle Voice and the songs' crit / direct hit
@@ -161,7 +171,8 @@ Radiant Finale's damage status is 2964.
 - DoTs snapshot, tick on the server tick and count when applied; Iron Jaws refreshes late, or early under fresh buffs.
 - Every action is instant and reaches 25 y, so R1, R2 and standing still give the same rotation.
 
-Over the phase 84,651 (2026-10-24): Raging Strikes and Battle Voice on the Minuet, Ballad and Paeon in either order,
+Over the phase 84,398 (2026-10-25, song clock, ticking through Palladion; 84,504 without downtime ticks, 84,651 on the
+server tick: within the search's noise of each other): Raging Strikes and Battle Voice on the Minuet, Ballad and Paeon in either order,
 Blast Arrow after every Apex Arrow at 80+; Radiant Finale goes anywhere, since its worth to the party isn't counted.
 
 ## Dragoon
@@ -530,6 +541,37 @@ whole phase the result moves by ~1% with these guesses, so `engine.search` runs 
 through its `expand`; it found 0-0.7% more. Differences between scenarios below ~0.4% are noise. `--layers gcd` (the
 beam by GCD count) and `--no-polish` bring back the earlier search.
 
+Restarts (2026-10-25; solve.py by default, `--no-restarts` skips them; dps.py with `--restarts`): when single edits find nothing, polish searches the rest of the fight afresh from
+the rotation's state every 15 s, at twice the job's width, and splices in what improves it. Over the whole phase in the
+site's slot it found more for most jobs, at 2-15 minutes a job instead of seconds (`scratch/restarts`; times with other
+searches running beside it, and some hit the 600 s budget):
+
+| | NIN | DNC | BLM | MNK | SAM | RDM | DRG | RPR | BRD | VPR | SMN, PCT, MCH |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| gain | +0.95% | +0.69% | +0.57% | +0.55% | +0.32% | +0.28% | +0.26% | +0.26% | +0.17% | +0.06% | 0 |
+
+Re-planning only a window and rejoining the rotation's own steps doesn't work: a different window leaves the job in
+another phase (Black Mage's fire or ice, Summoner's demi-summon) and the old steps no longer fit. Fitting the resource
+values (`VALUE`) instead was tried too, by regression on sweep states (confounded, and its target mostly search noise)
+and by tuning each entry against the search (within noise of the portfolio): `scratch/values`.
+
+Procs (`montecarlo.py`, 2026-10-25): the search counts random procs at their expectation; `engine.DRAW` draws them
+instead (Red Mage's Verfire / Verstone Ready, Bard's Repertoire and Hawk's Eye, Dancer's Silken procs, Threefold and
+feathers, Monk's crits and party chakra; the party's Esprit stays expected). The site's whole-phase rotation, replayed
+under drawn procs by a player who follows it (the planned step, else its oGCDs with another GCD in its place, a planned
+oGCD not up yet woven in the next four steps) and by one who re-plans 20 s ahead before every step:
+
+| | follows the plan | re-plans, nothing drawn | re-plans, procs drawn | its p5 / p95 |
+|---|---|---|---|---|
+| RDM | +0.00% (no draw matters) | +0.04% | -0.24% | -1.5% / +0.1% |
+| DNC | -1.94% | -0.24% | -0.28% | -2.6% / +1.7% |
+| MNK | -1.22% | -0.44% | -0.86% | -2.1% / +0.3% |
+| BRD | -2.11% | -0.18% | -0.89% | -2.3% / +0.1% |
+
+A player who reacts loses ~0.4-0.7% to luck at most (Monk's chakra, Bard's Repertoire; the rest is the 20 s horizon), so the expected-value
+plan is a fair target; one who plays the published steps as they stand loses 1-2.5%. Red Mage's plan uses no proc:
+at level 90 Jolt III (360) beats Verfire / Verstone (340) but for their mana.
+
 DoT ticks: each model's `dot_tick()` is the tick's plain potency (no crit, no direct hit) at base speed, its level-90
 tooltip's, times the speed bonus the game gives DoTs at the model's `SPEED` (1 + floor(130 x (speed stat - 400) / 1900)
 / 1000 = 2 - `SPEED`). The game sends one combined tick for every DoT on a target, and FFLogs splits it between players
@@ -608,7 +650,8 @@ Summoner's trances, pets, attunement and favors, Dancer's dances, procs, feather
 | `jobs/<job>.py` | a job: its resources, actions, potencies, the search's choices and ranking, and the calibration hooks |
 | `p12s.py`, `p12s_p1.json` | the fight: timeline, downtime, our strategy's runs, the clears' runs elsewhere, melee reach |
 | `solve.py` | command line |
-| `polish.py` | local search on a found rotation |
+| `polish.py` | local search on a found rotation (and restarts of the search along it) |
+| `montecarlo.py` | a rotation under drawn procs: followed, or re-planned before every step |
 | `tune.py` | picks a job's heuristic settings |
 | `logs.py` | detailed per-player logs from the benchmark clears and our pulls, cached in `.cache/` |
 | `calibrate.py` | replays logs through a job model and reports where they disagree |
