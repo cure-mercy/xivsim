@@ -25,12 +25,13 @@ three for Midare Setsugekka (a sure crit; Tsubame-gaeshi Ready for Kaeshi: Setsu
 60 s). Ikishoten (120 s) gives 50 Kenki and Ogi Namikiri Ready (30 s): Ogi Namikiri (1.3 s cast) then Kaeshi: Namikiri,
 both sure crits. Iaijutsu and Ogi Namikiri each give a Meditation stack; three make Shoha (15 s). The Kaeshis don't.
 
-Kenki (0-100): Hakaze 5, Jinpu / Shifu 5 and Gekko / Kasha / Yukikaze 15 in combo (or under Meikyo), Enpi 10,
+Kenki (0-100): Hakaze 5, Jinpu / Shifu 5, Gekko / Kasha 10 and Yukikaze 15 in combo (or under Meikyo), Enpi 10,
 Ikishoten 50, Tengentsu 10 when the player is hit under it (the fight's HITS: our pulls' raidwides), Meditate 10 a tick;
-Hissatsu: Shinten (250, 1 s) and Senei (800, 120 s at level 90) cost 25, Gyoten and Yaten 10. The guide gives Gekko and
-Kasha 10, but only 15 replays our pulls' spending legal (246 Hissatsu short at 10, 2 at 15; no other source fits); whether
-5 of it needs the positional the logs can't tell (430 missed positionals never left a spender short), so it's flat.
-Statuses come on with the hit that grants them, Meikyo, Tsubame-gaeshi Ready and Ogi Namikiri Ready with the cast.
+Hissatsu: Shinten (250, 1 s) and Senei (800, 120 s at level 90) cost 25, Gyoten and Yaten 10. Gekko and Kasha give the
+guide's 10 (positionals give none): it replays every pull's spending legal once Tengentsu's window and Meikyo's length
+are the logged ones (a 4 s window and a 20 s Meikyo left 136 spenders short, which a wrong 15 used to cover).
+Statuses come on with the hit that grants them, Meikyo, Tsubame-gaeshi Ready and Ogi Namikiri Ready with the cast; those
+last ~0.6 s past their tooltip (MEIKYO_S and the others).
 
 Meditate (60 s) stands the player still: each 3 s tick gives a Meditation stack (the clears' Shohas right after Palladion
 need exactly the ticks their Meditate status lasted) and Kenki (10, the in-game value; the logs can't confirm it). The
@@ -74,7 +75,11 @@ DELAY = {"Hakaze": 0.63, "Jinpu": 0.63, "Shifu": 0.80, "Gekko": 0.76, "Kasha": 0
 CAST = {"Midare Setsugekka": 1.3, "Higanbana": 1.3, "Tenka Goken": 1.3, "Ogi Namikiri": 1.3}  # flat: begin -> cast 0.76 s at every speed, with Fuka or not
 FUGETSU, FUKA = 1.13, 0.87
 WEAVE_SLACK = 0.05                              # a weave may clip the GCD by this much
-COMBO_S, BUFF_S, MEIKYO_S, TSUBAME_S, OGI_S, TN_S, EE_S, TENGENTSU_S = 30, 40, 20, 30, 30, 10, 15, 4
+COMBO_S, BUFF_S, EE_S = 30, 40, 15
+# statuses logged at the cast run ~0.5-0.7 s past their tooltip (their clock starts as the action lands), longest logged:
+# True North 10.54, Tengentsu 4.67 (hits up to 4.60 s after the cast), Meikyo 20.76 (spent up to 20.62), Ogi Namikiri
+# Ready 30.59, Tsubame-gaeshi 30.61; those applied with the hit (Fugetsu, Fuka) last their 40.00 (status_len.py)
+MEIKYO_S, TSUBAME_S, OGI_S, TN_S, TENGENTSU_S = 20.7, 30.6, 30.6, 10.5, 4.65
 MEIKYO_PREPULL = -13.0                          # the pre-pull Meikyo Shisui: its charge comes back at 42.2-42.7 s in the clears
 CDS = {"Meikyo Shisui": (55, 2), "Ikishoten": (120, 1), "Hissatsu: Senei": (120, 1), "Shoha": (15, 1),
        "Hissatsu: Shinten": (1, 1), "Tengentsu": (15, 1), "True North": (45, 2), "Hissatsu: Gyoten": (5, 1),
@@ -83,7 +88,7 @@ CDS = {"Meikyo Shisui": (55, 2), "Ikishoten": (120, 1), "Hissatsu: Senei": (120,
 SHARED = {"Hissatsu: Guren": "Hissatsu: Senei"}
 KENKI_COST = {"Hissatsu: Shinten": 25, "Hissatsu: Senei": 25, "Hissatsu: Gyoten": 10, "Hissatsu: Yaten": 10,
               "Hissatsu: Kyuten": 25, "Hissatsu: Guren": 25}
-KENKI_GAIN = {"Hakaze": 5, "Jinpu": 5, "Shifu": 5, "Gekko": 15, "Kasha": 15, "Yukikaze": 15}    # combo steps, in combo
+KENKI_GAIN = {"Hakaze": 5, "Jinpu": 5, "Shifu": 5, "Gekko": 10, "Kasha": 10, "Yukikaze": 15}    # combo steps, in combo
 SEN = {"Gekko": "getsu", "Kasha": "ka", "Yukikaze": "setsu"}
 IAI = {1: "Higanbana", 2: "Tenka Goken", 3: "Midare Setsugekka"}
 # when the player is hit (Tengentsu's Foresight in our pulls, cluster medians where it paid off 70%+ of the time it was
@@ -121,6 +126,7 @@ def derive():
 
 derive()
 LOG_OPENER = None                               # a replay: (Meikyo stacks, until, charges) from the log (prepare)
+LOG_TN = None                                   # a replay: (until, charges) of a pre-pull True North in the log (prepare)
 SPEED = 0.962                                   # skill speed factor on the GCD: 2.40 s (2.09 s under Fuka), our four
                                                 # Samurais' and the benchmark clears' median (0.960 gives 2.08 under Fuka)
 MELEE = True                                    # p12s.py gives it a melee's windows (M1 / M2)
@@ -146,6 +152,7 @@ class State(SlotState):
         s.cds = {k: (n, None) for k, (_, n) in CDS.items()}
         s.cds["Meikyo Shisui"] = (1, MEIKYO_PREPULL + CDS["Meikyo Shisui"][0])
         if LOG_OPENER is not None: s.meikyo, s.ms_until, s.cds["Meikyo Shisui"] = LOG_OPENER
+        if LOG_TN is not None: s.tn_until, s.cds["True North"] = LOG_TN
         s.auto_next, s.dmg, s.dotp, s.critp, s.pot_at, s.first, s.hist = 0.0, 0.0, 0.0, 0.0, None, True, None
         s.waste = (0, 0, 0, 0)
         s.mvi, s.acc, s.free, s.spot = 0, 0.0, -30.0, 0
@@ -583,11 +590,11 @@ HASTED = {"Fuka": FUKA}                             # calibrate.gcd_of divides g
 
 
 def prepare(p):
-    """A replay takes from the log Tengentsu's Kenki (when Tengentsu's Foresight came on: the player was hit) and the
-    pre-pull Meikyo Shisui, which the casts don't show: its status coming off before the first Meikyo cast marks one
+    """A replay takes from the log Tengentsu's Kenki (when Tengentsu's Foresight came on: the player was hit), a pre-pull
+    True North (its status coming off first) and the pre-pull Meikyo Shisui, which the casts don't show: its status coming off before the first Meikyo cast marks one
     (players press it 12-13 s ahead: the log only shows its stacks were all spent, so it lasts until then); without
     that, there was none and both charges are there."""
-    global LOG_HITS, LOG_OPENER, LOG_MEDITATE
+    global LOG_HITS, LOG_OPENER, LOG_MEDITATE, LOG_TN
     n = p["names"]
     name = lambda x: n[str(x["abilityGameID"])]
     LOG_HITS = sorted(x["t"] for x in p["buffs"] if name(x) == "Tengentsu's Foresight" and x["type"] == "applybuff")
@@ -595,6 +602,8 @@ def prepare(p):
     off = [x["t"] for x in p["buffs"] if name(x) == "Meikyo Shisui" and x["type"] == "removebuff" and x["t"] < first]
     LOG_OPENER = ((3, max(off[0] + 0.05, MEIKYO_PREPULL + MEIKYO_S), (1, MEIKYO_PREPULL + CDS["Meikyo Shisui"][0]))
                   if off else (0, -1.0, (2, None)))
+    tn = sorted((x["t"], x["type"]) for x in p["buffs"] if name(x) == "True North")      # pre-pull: comes off first
+    LOG_TN = (tn[0][0], (1, tn[0][0] - TN_S + CDS["True North"][0])) if tn and tn[0][1] == "removebuff" else None
     med = sorted((x["t"], x["type"]) for x in p["buffs"] if name(x) == "Meditate")
     LOG_MEDITATE = {}
     for x in p["casts"]:
@@ -606,8 +615,8 @@ def prepare(p):
 
 def unprepare():
     """Forget the log (calibrate.prepared): searches and rebuilt rotations use the fight's hits and the usual opener."""
-    global LOG_HITS, LOG_OPENER, LOG_MEDITATE
-    LOG_HITS = LOG_OPENER = LOG_MEDITATE = None
+    global LOG_HITS, LOG_OPENER, LOG_MEDITATE, LOG_TN
+    LOG_HITS = LOG_OPENER = LOG_MEDITATE = LOG_TN = None
 
 
 def cast_time(s, name, at):
@@ -622,6 +631,12 @@ def at(s, fight, t):
 def status(s, t):
     return dict(combo=step(s, t), sen=sorted(s.sen), kenki=s.kenki, med=s.med, meikyo=s.meikyo if meikyo(s, t) else 0,
                 tsubame=s.tsubame_until > t, ogi=s.ogi_until > t, namikiri=s.kn_until > t)
+
+
+STATUSES = {"Meikyo Shisui": meikyo, "Fugetsu": lambda s, t: s.fug_until > t, "Fuka": lambda s, t: s.fuka_until > t,
+            "True North": lambda s, t: s.tn_until > t, "Ogi Namikiri Ready": lambda s, t: s.ogi_until > t,
+            "Tsubame-Gaeshi": lambda s, t: s.tsubame_until > t,     # Kaeshi: Setsugekka's (Kaeshi: Namikiri's has none)
+            "Enhanced Enpi": lambda s, t: s.ee_until > t}
 
 
 def force(s, fight, name, start):

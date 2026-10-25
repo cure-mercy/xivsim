@@ -532,6 +532,12 @@ def at(s, fight, t):
     return c
 
 
+STATUSES = {"Further Ruin": lambda s, t: s.fr_until > t, "Searing Light": lambda s, t: s.sl_from <= t < s.sl_until,
+            "Swiftcast": lambda s, t: s.swift > t, "Aetherflow": lambda s, t: s.af > 0,
+            "Ifrit's Favor": lambda s, t: s.favor == "ifrit", "Garuda's Favor": lambda s, t: s.favor == "garuda",
+            "Crimson Strike Ready": lambda s, t: bool(s.csr), "Titan's Favor": lambda s, t: bool(s.mb)}
+
+
 def status(s, t):
     return dict(demi=s.demi if in_trance(s, t) else None, arc=sorted(s.arc), att=s.att if attuned(s, t) else None,
                 stacks=s.stacks if attuned(s, t) else 0, favor=s.favor, csr=s.csr, mb=s.mb, af=s.af,

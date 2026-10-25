@@ -507,6 +507,13 @@ def at(s, fight, t):
     return c
 
 
+STATUSES = {"Aetherhues": lambda s, t: s.ah == 1 and s.ah_until > t, "Aetherhues II": lambda s, t: s.ah == 2 and s.ah_until > t,
+            "Subtractive Palette": lambda s, t: s.sp > 0 and s.sp_until > t, "Monochrome Tones": lambda s, t: bool(s.mono),
+            "Hammer Time": lambda s, t: s.ht > 0 and s.ht_until > t, "Starry Muse": lambda s, t: s.sm_from <= t < s.sm_until,
+            "Subtractive Spectrum": lambda s, t: s.spec_until > t, "Swiftcast": lambda s, t: s.swift > t}
+# (not Hyperphantasia: an unspent one stays its 30 s in the log, the model keeps it only while Inspiration can spend it)
+
+
 def status(s, t):
     return dict(step=step(s, t), gauge=s.gauge, paint=s.paint, mono=s.mono, sp=s.sp if subtractive(s, t) else 0,
                 ht=s.ht if hammer_time(s, t) else 0, creature=s.creature, nxt=s.nxt, weapon=s.weapon,

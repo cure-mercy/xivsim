@@ -264,8 +264,10 @@ def do_gcd(s, fight, name):
         if b > 100: wasted(s, 1, b - 100)
         s.batt = min(100, b)
     if name in TOOLS: use_cd(s, name, start)
-    if name == "Blazing Shot":
+    if s.oh and s.oh_until > start:             # any weaponskill takes a stack (logs: Drill, Air Anchor, the combo too)
         s.oh -= 1
+        if not s.oh: s.oh_until = -1.0
+    if name == "Blazing Shot":
         for g in ("Gauss Round", "Ricochet"): cut(s, g, start, BLAZING_CUT)
     recast = BLAZING_RECAST if name == "Blazing Shot" else BASE_GCD * SPEED
     s.t, s.gcd = start + ANIM_LOCK, start + recast
@@ -448,6 +450,10 @@ def unprepare():
 def at(s, fight, t):
     c = s.copy(); advance(c, fight, t)
     return c
+
+
+STATUSES = {"Overheated": lambda s, t: s.oh > 0 and s.oh_until > t, "Hypercharged": lambda s, t: s.hc_until > t,
+            "Reassembled": lambda s, t: s.ra_until > t}
 
 
 def status(s, t):

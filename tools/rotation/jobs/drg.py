@@ -71,7 +71,11 @@ WEAVE_SLACK = 0.05                              # a weave may clip the GCD by th
 POWER_SURGE, LANCE_CHARGE, LIFE = 1.10, 1.10, 1.15
 BUFF_DELAY = 0.63                               # Lance Charge and Battle Litany land this long after the cast
 LITANY_RATE = 0.10
-COMBO_S, DF_S, PS_S, LC_S, BL_S, LOTD_S, NR_S, DR_S, LS_S, TN_S, EPT_S = 30, 30, 30, 20, 20, 20, 20, 15, 5, 10, 15
+COMBO_S, DF_S, LC_S, BL_S, LOTD_S, LS_S = 30, 30, 20, 20, 20, 5
+# statuses logged at the cast run past their tooltip (their clock starts as the action lands; logged ends after the
+# cast): Nastrond Ready 20.60-20.66, Dive Ready 15.46-15.49, Enhanced Piercing Talon 15.64-15.66, True North 10.49-10.53,
+# Power Surge 31.61-31.64 after Disembowel (sic: 15 expiries); Life of the Dragon ends at 20.00 (calibrate's status check)
+PS_S, NR_S, DR_S, EPT_S, TN_S = 31.6, 20.6, 15.45, 15.6, 10.5
 CDS = {"Life Surge": (40, 2), "Lance Charge": (60, 1), "Battle Litany": (120, 1), "Geirskogul": (60, 1),
        "Nastrond": (2, 1), "Stardiver": (30, 1), "High Jump": (30, 1), "Mirage Dive": (1, 1),
        "Dragonfire Dive": (120, 1), "Wyrmwind Thrust": (10, 1), "True North": (45, 2), "Elusive Jump": (30, 1),
@@ -462,6 +466,13 @@ def cast_time(s, name, at):
 def at(s, fight, t):
     c = s.copy(); advance(c, fight, t)
     return c
+
+
+STATUSES = {"Draconian Fire": lambda s, t: s.df_until > t, "Power Surge": lambda s, t: s.ps_until > t,
+            "Lance Charge": lambda s, t: s.lc_from <= t < s.lc_until, "Battle Litany": lambda s, t: s.bl_from <= t < s.bl_until,
+            "Life of the Dragon": lambda s, t: s.lotd_until > t, "Nastrond Ready": lambda s, t: s.nr_until > t,
+            "Dive Ready": lambda s, t: s.dr_until > t, "Life Surge": lambda s, t: s.ls_until > t,
+            "True North": lambda s, t: s.tn_until > t, "Enhanced Piercing Talon": lambda s, t: s.ept_until > t}
 
 
 def status(s, t):

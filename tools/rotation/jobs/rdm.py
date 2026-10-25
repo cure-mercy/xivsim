@@ -26,6 +26,13 @@ From the logs (none of it in the guide):
 - The enchanted combo's recasts are fixed at 1.5 / 1.5 / 2.2 s whatever the spell speed; Embolden's status lands 0.67 s
   after the cast, every other status on the cast.
 
+MP: 10,000, +200 on each 3 s server tick; Jolt III, Verfire and Verstone cost 200, Verthunder / Veraero III 300,
+Verflare, Verholy, Scorch and Resolution 400, the enchanted combo nothing (the logs' MP between casts; xivintheshell has
+the Ver-IIIs at 400). Without more the
+rotation runs dry by ~190 s (xivintheshell, 2026-10-25), so Lucid Dreaming (60 s) gives 550 more on each tick for
+21 s: every pull of ours lasting 200 s or more uses it, about every 77 s. The model's MP matches 96-97% of the logged
+snapshots (the rest a tick apart); MP potions aren't modelled (one Verraise after a Super-Ether replays short).
+
 Procs are random. The search counts them at their expected worth (as the Bard's Repertoire): a Verthunder III raises
 the chance that Verfire Ready is up by half of what is left, and casting "Verfire" means "Verfire if it is up, else
 Verstone if that is, else Jolt III" (all cast in 2 s), at the mixture's potency and mana. A log replay knows which spell
@@ -75,12 +82,19 @@ RECAST = {"Enchanted Riposte": 1.5, "Enchanted Zwerchhau": 1.5, "Enchanted Redou
 EMBOLDEN, EMB_DELAY = 1.10, 0.67                # own magic damage; the status lands 0.67 s after the cast
 PROC = 0.5                                      # a Verthunder / Veraero III's chance of its colour's proc
 FIN_PROC = (1.0, 0.2)                           # Verflare / Verholy: when the other colour leads, else
-DC_S, ACC_S, SWIFT_S, PROC_S, MS_S, MANA_S, EMB_S, COMBO_S = 15, 20, 10, 30, 30, 30, 20, 30
+DC_S, ACC_S, SWIFT_S, PROC_S, MS_S, EMB_S, COMBO_S = 15, 20, 10, 30, 30, 20, 30
+MANA_S = 30.4      # logged at the cast, it runs past its 30 (ends 30.38-30.43 after the cast; calibrate's status check).
+                   # Before 7.5 it was 6 stacks spent by GCDs (the 2025 clears): every log since is a plain 30 s status
+MP_COST = {"Jolt III": 200, "Verfire": 200, "Verstone": 200, "Verthunder III": 300, "Veraero III": 300,
+           "Verthunder II": 400, "Veraero II": 400, "Impact": 400, "Verflare": 400, "Verholy": 400, "Scorch": 400,
+           "Resolution": 400, "Vercure": 500, "Verraise": 2400}
+MP_TICK, LUCID_TICK, LUCID_S, TICK_PHASE = 200, 550, 21, 1.5    # server ticks land at TICK_PHASE + 3k seconds
+LUCID_LAG = 0.62                                # Lucid Dreaming lands this long after the cast, then lasts its 21 s
 CDS = {"Fleche": (25, 1), "Contre Sixte": (35, 1), "Corps-a-Corps": (35, 2), "Engagement": (35, 2),
        "Embolden": (120, 1), "Manafication": (110, 1), "Acceleration": (55, 2), "Swiftcast": (60, 1),
-       "Tincture": (270, 1)}
+       "Lucid Dreaming": (60, 1), "Tincture": (270, 1)}
 OGCD_ORDER = ["Tincture", "Embolden", "Manafication", "Fleche", "Contre Sixte", "Acceleration", "Swiftcast",
-              "Engagement", "Displacement", "Corps-a-Corps"]
+              "Engagement", "Displacement", "Corps-a-Corps", "Lucid Dreaming"]
 BACKSTEP = 15.0                                 # Displacement's backstep, yalms (the tooltip's: 3 uses in our logs)
 DAMAGE_OGCDS = {"Fleche", "Contre Sixte", "Corps-a-Corps", "Engagement", "Displacement"}
 MELEE_ACTIONS = {"Enchanted Riposte", "Enchanted Zwerchhau", "Enchanted Redoublement", "Engagement", "Riposte",
@@ -95,7 +109,7 @@ IMBALANCE_HALVES = True
 class State(SlotState):
     __slots__ = ("t", "gcd", "black", "white", "stacks", "combo", "combo_until", "dc", "accel", "swift", "ms", "ms_until",
                  "mana_until", "emb_from", "emb_until", "vf", "vf_until", "vs", "vs_until", "cds", "dmg", "waste", "pot_at",
-                 "first", "hist", "mvi", "acc", "free", "spot", "ai", "mlast", "dashed")
+                 "first", "hist", "mvi", "acc", "free", "spot", "ai", "mlast", "dashed", "mp", "mp_t", "lucid")
 
     @classmethod
     def initial(cls, fight):
@@ -113,6 +127,7 @@ class State(SlotState):
         s.mvi, s.acc, s.free, s.spot = 0, 0.0, -30.0, 0        # forced movement (engine.stand)
         s.ai, s.mlast = 0, -30.0                                # out of reach (fight.away)
         s.dashed = ()                                           # (move window, segment) dashed (engine.dash)
+        s.mp, s.mp_t, s.lucid = 10000, 0.0, -1.0                # MP, ticked up to mp_t; Lucid Dreaming's end
         return s
 
     def key(self):
@@ -121,7 +136,7 @@ class State(SlotState):
                 self.swift > self.t, self.ms if self.ms_until > self.t else 0, self.mana_until > self.t,
                 round(max(self.emb_until - self.t, 0), 1), round(self.vf * 4), round(self.vs * 4), self.pot_at is None,
                 cd_key(self.cds), self.mvi, round(min(self.acc, 4.0) * 2) / 2, self.ai,
-                tuple(k for i, k in self.dashed if i == self.mvi))
+                tuple(k for i, k in self.dashed if i == self.mvi), self.mp // 400, self.lucid > self.t)
 
 
 
@@ -135,7 +150,11 @@ def wasted(s, i, n=1.0):
 # --- time passing --------------------------------------------------------------------------------------------------
 
 def advance(s, fight, to):
-    """Procs that lapse by `to`."""
+    """MP ticks, and procs that lapse, by `to`."""
+    if to > s.mp_t:
+        for k in range(int((s.mp_t - TICK_PHASE) // 3) + 1, int((to - TICK_PHASE) // 3) + 1):
+            s.mp = min(10000, s.mp + MP_TICK + (LUCID_TICK if lucid(s, TICK_PHASE + 3 * k) else 0))
+        s.mp_t = to
     if s.vf_until != -1.0 and s.vf_until <= to:
         wasted(s, 1, s.vf); s.vf, s.vf_until = 0.0, -1.0
     if s.vs_until != -1.0 and s.vs_until <= to:
@@ -161,6 +180,10 @@ def use_cd(s, name, at):
 
 def cd_name(name):
     return "Engagement" if name == "Displacement" else name
+
+
+def lucid(s, at):
+    return s.lucid - LUCID_S <= at < s.lucid
 
 
 def mult(s, fight, at, name):
@@ -244,6 +267,7 @@ def payable(s, name, at):
 
 
 def gcd_legal(s, name, at, ev):
+    if s.mp < MP_COST.get(name, 0): return False
     if name in ("Verfire", "Verstone"):
         return (s.vf > 0.05 or s.vs > 0.05) if ev else getattr(s, "vf" if name == "Verfire" else "vs") > 0
     if name in ("Verflare", "Verholy"): return s.stacks == 3
@@ -277,6 +301,7 @@ def do_gcd(s, fight, name, ev=False):
         s.dc = -1.0
         if used == "swift": s.swift = -1.0
     combo = in_combo(s, name, snap)
+    s.mp -= MP_COST.get(name, 0)
     note = ""
     if name in ("Verfire", "Verstone") and ev:
         # the named proc if it is up, else the other one if that is, else Jolt III; whichever is spent is gone, and the
@@ -345,6 +370,7 @@ def ogcd_legal(s, name, at, fight, policy=True):
     if name == "Acceleration": return not (policy and s.accel > at)
     if name == "Swiftcast": return not (policy and s.swift > at)
     if name == "Tincture": return fight.pot and s.pot_at is None
+    if name == "Lucid Dreaming": return not policy or s.mp <= 10000 - LUCID_TICK * 7
     if name == "Sprint": return not policy          # replays only: a general action, it cancels Dualcast
     # Displacement is Engagement with a backstep: the search only uses it where the backstep saves running
     if name == "Displacement": return not policy or dash_gain(s, fight, at, "out", BACKSTEP) is not None
@@ -401,6 +427,7 @@ def do_ogcd(s, fight, name, policy=True):
     elif name == "Acceleration": s.accel = at + ACC_S
     elif name == "Swiftcast": s.swift = at + SWIFT_S
     elif name == "Tincture": s.pot_at = at
+    elif name == "Lucid Dreaming": s.lucid = at + LUCID_LAG + LUCID_S
     elif name == "Sprint":
         if s.dc > at: wasted(s, 2)
         s.dc = -1.0
@@ -473,7 +500,7 @@ def expand(s, fight):
 # over a loop step; a proc little (Verfire / Verstone about tie Jolt III with their mana); a second of Embolden its share
 # of the rotation's rate.
 VALUE = dict(mana=7, imbalance=3, chain_r=310, chain_z=490, chain_3=660, chain_f=500, chain_s=290, ms=230, dc=60,
-             acc=50, swift=50, proc=20, emb=15)
+             acc=50, swift=50, proc=20, emb=15, mp=0.03)
 RATE = 220                                            # potency per second, to compare states at slightly different times
 # tune.py (2026-10-22, sweep): VALUE at 1.15-1.5 times, +0.13% over the phase in R1 (level in R2); 0.5 loses 2%
 HEURISTICS = [(185, 1.5, 0.0), (200, 1.15, 0.0), (230, 1.15, 0.0), (185, 1.15, 0.0)]
@@ -493,6 +520,7 @@ def held(s):
     v += VALUE["dc"] * (s.dc > t) + VALUE["acc"] * (s.accel > t) + VALUE["swift"] * (s.swift > t)
     v += VALUE["proc"] * (s.vf + s.vs)
     v += VALUE["emb"] * max(s.emb_until - max(t, s.emb_from), 0)
+    v += VALUE["mp"] * s.mp
     return v
 
 
@@ -517,10 +545,16 @@ def at(s, fight, t):
     return c
 
 
+STATUSES = {"Dualcast": lambda s, t: s.dc > t, "Acceleration": lambda s, t: s.accel > t,
+            "Swiftcast": lambda s, t: s.swift > t, "Magicked Swordplay": lambda s, t: s.ms > 0 and s.ms_until > t,
+            "Manafication": lambda s, t: s.mana_until > t, "Embolden": lambda s, t: s.emb_from <= t < s.emb_until,
+            "Lucid Dreaming": lambda s, t: lucid(s, t)}
+
+
 def status(s, t):
     return dict(black=round(s.black, 1), white=round(s.white, 1), stacks=s.stacks,
                 combo=s.combo if s.combo_until > t else None, dc=s.dc > t, acc=s.accel > t, swift=s.swift > t,
-                ms=s.ms if s.ms_until > t else 0, vf=s.vf > 0, vs=s.vs > 0)
+                ms=s.ms if s.ms_until > t else 0, vf=s.vf > 0, vs=s.vs > 0, mp=s.mp)
 
 
 def force(s, fight, name, start):
@@ -531,6 +565,7 @@ def force(s, fight, name, start):
     if name in ("Verflare", "Verholy"): s.stacks = 3
     if name in ("Scorch", "Resolution"): s.combo, s.combo_until = {"Scorch": "f", "Resolution": "s"}[name], start + 1
     if name in COST: s.black, s.white = max(s.black, COST[name]), max(s.white, COST[name])
+    s.mp = max(s.mp, MP_COST.get(name, 0))
     return do_gcd(s, fight, name) or s
 
 

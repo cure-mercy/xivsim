@@ -15,7 +15,9 @@ Fist (Form Shift, any Masterful Blitz) and Perfect Balance stand in for any form
 Snakes +200 to the next True Strike, Demolish two stacks of +150 for Snap Punch.
 
 Perfect Balance: three form actions in any order, each adding the beast chakra of the form it leads to (opo-opo action:
-opo-opo chakra, and so on). Masterful Blitz then: three alike, Elixir Field (Lunar Nadi); three distinct, Rising Phoenix
+opo-opo chakra, and so on). It takes away the form held (and Formless Fist) and its actions grant none, so after it only
+an opo-opo action or a Masterful Blitz follows (the logs: no form status in 1,552 endings; xivintheshell agrees). Form Shift under it grants no Formless Fist
+(xivintheshell's rule; no logged Form Shift falls inside one). Masterful Blitz then: three alike, Elixir Field (Lunar Nadi); three distinct, Rising Phoenix
 (Solar Nadi); two kinds, Celestial Revolution (Lunar, or Solar if Lunar is open); both Nadi, Phantom Rush (closes both).
 
 Chakra: a weaponskill that crits opens one (Bootshine in opo-opo form always does); the search counts the expected
@@ -54,7 +56,11 @@ WEAVE_SLACK = 0.05                              # a double weave in a 1.94 s GCD
 SSS_RECAST = 4.0                                # Six-sided Star: skill speed shortens it, Greased Lightning doesn't (3.9 s logged)
 MEDITATION_RECAST = 1.0                         # the meditations: 1 s, fixed (0.98-0.99 s between them in the logs)
 RIDDLE_OF_FIRE, BROTHERHOOD = 1.15, 1.05
-FIRE_S, BH_S, WIND_S, PB_S, FORM_S, FORMLESS_S, TN_S = 20, 20, 15, 20, 30, 30, 10
+BH_S, PB_S, FORM_S, FORMLESS_S = 20, 20, 30, 30
+# statuses run ~0.5-0.8 s past their tooltip from the cast (their clock starts as the action lands; logged ends after
+# the cast: Riddle of Fire 20.73-20.82, Riddle of Wind 15.78-15.82, True North 10.52-10.54); Brotherhood is logged on
+# landing, 0.76 s after the cast, and lasts its 20 from there (calibrate's status check, scratch/timing/status_len.py)
+FIRE_S, WIND_S, TN_S, BH_LAG = 20.75, 15.8, 10.5, 0.76
 CRIT = 0.25                                     # the player's critical-hit rate: chakra per weaponskill (dps.py sets it)
 PARTY_CHAKRA = 7 * 0.20 / 2.45                  # seven party members, a GCD each ~2.45 s, 20% each (logs: 0.51-0.57)
 CDS = {"Perfect Balance": (40, 2), "Riddle of Fire": (60, 1), "Brotherhood": (120, 1), "Riddle of Wind": (90, 1),
@@ -117,8 +123,12 @@ def wasted(s, i, n=1):
     w = list(s.waste); w[i] += n; s.waste = tuple(w)
 
 
+def brotherhood(s, at):
+    return s.bh_until - BH_S <= at < s.bh_until
+
+
 def add_chakra(s, at, n):
-    cap = 10 if s.bh_until > at else 5
+    cap = 10 if brotherhood(s, at) else 5
     v = s.chakra + n
     if v > cap: wasted(s, 1, v - cap)
     s.chakra = min(max(cap, s.chakra), v)          # what Brotherhood opened beyond five stays open
@@ -129,7 +139,7 @@ def add_chakra(s, at, n):
 def mult(s, fight, at):
     """Damage multiplier on a hit executed at `at`: raid buffs, tincture, own Riddle of Fire and Brotherhood."""
     return (fight.mult(at, s.pot_at) * (RIDDLE_OF_FIRE if s.fire_until > at else 1) *
-            (BROTHERHOOD if s.bh_until > at else 1))
+            (BROTHERHOOD if brotherhood(s, at) else 1))
 
 
 def advance(s, fight, to):
@@ -289,11 +299,12 @@ def do_gcd(s, fight, name):
         elif name == "Demolish":
             if s.coeurl: wasted(s, 0, s.coeurl)
             s.coeurl = 2
-        if balanced(s, snap):
+        if balanced(s, snap):                       # no form: Perfect Balance took it, and its actions grant none
             s.pb -= 1; s.beast += (k,)
             if not s.pb: s.pb_until = -1.0
-        s.formless_until = -1.0
-        s.form, s.form_until = NEXT[k], snap + FORM_S
+        else:
+            s.formless_until = -1.0
+            s.form, s.form_until = NEXT[k], snap + FORM_S
     elif name in BLITZ:
         if name == "Phantom Rush": s.lunar = s.solar = False
         elif name == "Elixir Field": s.lunar = True
@@ -303,10 +314,11 @@ def do_gcd(s, fight, name):
         s.beast = ()
         s.formless_until = snap + FORMLESS_S
     elif name == "Six-Sided Star": s.chakra = 0.0
-    elif name == "Form Shift": s.formless_until = snap + FORMLESS_S
+    elif name == "Form Shift" and not balanced(s, snap):     # takes the form; Formless Fist (none under PB)
+        s.form_until, s.formless_until = -1.0, snap + FORMLESS_S
     elif name in MEDITATION: add_chakra(s, snap, 1)
     if harm:                                    # chakra: a critical weaponskill, and Meditative Brotherhood
-        n = (0.0 if name == "Six-Sided Star" else 1.0 if crit else crit_chance(snap)) + (s.bh_until > snap)
+        n = (0.0 if name == "Six-Sided Star" else 1.0 if crit else crit_chance(snap)) + brotherhood(s, snap)
         add_chakra(s, snap, n)
     s.t, s.gcd = free, nxt
     s.near = away_soon(s, fight, s.t)
@@ -347,9 +359,11 @@ def do_ogcd(s, fight, name, policy=True):
     use_cd(s, cd_name(name), at)
     if name in ("The Forbidden Chakra", "Enlightenment"):
         hit(s, fight, at, POTENCY[name], name); s.chakra -= 5
-    elif name == "Perfect Balance": s.pb, s.pb_until = 3, at + PB_S
+    elif name == "Perfect Balance":                 # takes the form (and Formless Fist) away
+        s.pb, s.pb_until = 3, at + PB_S
+        s.form_until = s.formless_until = -1.0
     elif name == "Riddle of Fire": s.fire_until = at + FIRE_S
-    elif name == "Brotherhood": s.bh_until = at + BH_S; s.ct = max(s.ct, at)
+    elif name == "Brotherhood": s.bh_until = at + BH_LAG + BH_S; s.ct = max(s.ct, at)
     elif name == "Riddle of Wind": s.wind_until = at + WIND_S
     elif name == "True North": s.tn_until = at + TN_S
     elif name == "Tincture": s.pot_at = at
@@ -373,7 +387,7 @@ def candidates(c, fight, now):
     if min(fight.next_down(now), fight.until) - now < 8: out.append("Six-Sided Star")
     if not fight.targetable(now) or c.near or not reach(c, fight, now, commit=False):
         out.append("Forbidden Meditation")
-        if c.formless_until - now < 5: out.append("Form Shift")
+        if c.formless_until - now < 5 and not balanced(c, now): out.append("Form Shift")
     return out
 
 
@@ -477,6 +491,14 @@ def unprepare():
 def at(s, fight, t):
     c = s.copy(); advance(c, fight, t)
     return c
+
+
+STATUSES = {"Opo-Opo Form": lambda s, t: s.form == "o" and s.form_until > t,
+            "Raptor Form": lambda s, t: s.form == "r" and s.form_until > t,
+            "Coeurl Form": lambda s, t: s.form == "c" and s.form_until > t,
+            "Formless Fist": lambda s, t: s.formless_until > t, "Perfect Balance": balanced,
+            "Riddle of Fire": lambda s, t: s.fire_until > t, "Riddle of Wind": lambda s, t: s.wind_until > t,
+            "Brotherhood": brotherhood, "True North": lambda s, t: s.tn_until > t}
 
 
 def status(s, t):

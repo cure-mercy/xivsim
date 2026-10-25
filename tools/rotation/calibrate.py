@@ -9,7 +9,9 @@ procs, which the model doesn't follow). A job model supplies the hooks at the en
 LOGS_SINCE, OGCDS, REFERENCE, at, status, force, label, cast_label; optionally prepare(p) (read what the replay
 takes from the log itself, e.g. Monk's critical hits) with unprepare() (forget it again afterwards), force_ogcd, HASTE
 (a permanent GCD haste, e.g. Monk's 20%), HASTE_STATUSES (statuses whose haste comes and goes, e.g. Bard's Army's
-Paeon: gcd_of leaves the GCDs under them out, as it does Ley Lines).
+Paeon: gcd_of leaves the GCDs under them out, as it does Ley Lines), STATUSES ({logged status: up(state, t)}: just
+before each cast the model's view of the player's own statuses is checked against the log, both ways; damage buffs
+never make a cast illegal, so a window that ends early or lands too soon shows up only here).
 """
 import argparse, collections, contextlib, datetime, importlib, json, math, statistics as st, sys
 from pathlib import Path
@@ -49,8 +51,47 @@ def replay(p, until, out, fight=None):
     with prepared(p): return _replay(p, until, out, fight)
 
 
+def log_spans(p):
+    """{status: [(on, off)]} for the player's own statuses on themselves; one already up at the pull (its first event a
+    removal or refresh) from -inf, one still up at the end to inf."""
+    n, me = p["names"], p.get("id")
+    on, out = {}, collections.defaultdict(list)
+    for x in sorted(p["buffs"], key=lambda x: x["t"]):
+        if me is not None and x.get("sourceID", me) != me: continue
+        k, ty = n[str(x["abilityGameID"])], x["type"]
+        if k not in out and k not in on and ty in ("removebuff", "refreshbuff", "removebuffstack", "applybuffstack"):
+            on[k] = -math.inf
+        if ty == "applybuff": on.setdefault(k, x["t"])
+        elif ty == "removebuff" and k in on: out[k].append((on.pop(k), x["t"]))
+    for k, t in on.items(): out[k].append((t, math.inf))
+    return out
+
+
+STATUS_EPS = 0.02                                   # the log's state just before the cast (a use removes it at the cast)
+
+
+def check_statuses(out, spans, s, t):
+    """The model's statuses in state s at t against the log's just before t (out["status"])."""
+    for name, up in J.STATUSES.items():
+        m, w = bool(up(s, t)), spans.get(name, ())
+        x = t - STATUS_EPS
+        span = next(((a, b) for a, b in w if a <= x < b), None)
+        r = out["status"][name]
+        if m and span: r["both"] += 1
+        elif not m and not span: r["neither"] += 1
+        elif span:                                   # the log has it, the model doesn't: the model's window is short
+            a, b = span
+            r["log only"].append((("after it came on", x - a) if x - a < b - x else ("before it went", b - x)) + (t, out.get("who")))
+        else:                                        # the model has it, the log doesn't: it lands early or lasts long
+            nxt = min((a - x for a, b in w if a > x), default=math.inf)
+            prv = min((x - b for a, b in w if b <= x), default=math.inf)
+            r["model only"].append((("before it came on", nxt) if nxt < prv else ("after it went", prv)) + (t, out.get("who")))
+
+
 def _replay(p, until, out, fight):
     n = p["names"]
+    spans = log_spans(p) if hasattr(J, "STATUSES") and "status" in out else None
+    if spans is not None: out["who"] = (p["name"], p.get("code"), p.get("fight"))
     fight = fight or Fight(until=until + 30, pot=True)
     s = J.State.initial(fight)
     seq = []
@@ -70,7 +111,8 @@ def _replay(p, until, out, fight):
                 if s.gcd - start > 0.15: out["early"].append((p["name"], t, name, round(s.gcd - start, 2)))
                 s.t = s.gcd = start
             pre = J.at(s, fight, start)
-            if mp is not None and not s.first and hasattr(pre, "mp"): out["mp"].append((name, pre.el, pre.mp, mp, p["name"], t))
+            if spans is not None and not s.first: check_statuses(out, spans, pre, start)
+            if mp is not None and not s.first and hasattr(pre, "mp"): out["mp"].append((name, getattr(pre, "el", 0), pre.mp, mp, p["name"], t))
             c, _ = J.cast_time(pre, name, start)
             if b is not None and c: out["cast"][(name, J.cast_label(pre, name, start))].append((t - b + RESOLVE, c))
             ns = J.do_gcd(s, fight, name)
@@ -83,6 +125,7 @@ def _replay(p, until, out, fight):
             s = ns
         elif name in J.OGCDS:
             s.t = t
+            if spans is not None and t >= 0: check_statuses(out, spans, J.at(s, fight, t), t)
             ns = J.do_ogcd(s, fight, name, policy=False)
             nxt = J.charges(s, cd_of(name), t)[1]
             if ns is None and nxt is not None and nxt - t <= 0.1:      # a charge back within the logs' timing noise
@@ -311,7 +354,8 @@ def main():
     else: L = [dict(p, day=days[(p["code"], p["fight"])]) for p in logs.clears(J.LOG_NAME) if days[(p["code"], p["fight"])] >= since]
     print(f"{len(L)} {J.LOG_NAME} logs since {since}, replayed " + (f"0:00-{a.until:.0f}s" if a.until else "over the whole pull") +
           ", up to the player's first death:")
-    out = dict(illegal=[], early=[], mp=[], cast=collections.defaultdict(list))
+    out = dict(illegal=[], early=[], mp=[], cast=collections.defaultdict(list),
+               status=collections.defaultdict(lambda: collections.defaultdict(int, {"log only": [], "model only": []})))
     for p in L:
         cut = cut_of(p, a.until)
         n0 = len(out["illegal"])
@@ -330,6 +374,17 @@ def main():
         bad = [m for m in out["mp"] if abs(m[2] - m[3]) > 250]
         print(f"\nMP mismatches (>250): {len(bad)} of {len(out['mp'])}")
         for x in bad[:25]: print(f"   {x[4][:14]:<14} {x[5]:7.2f} {x[0]:<13} el {x[1]:+d}  model {x[2]:>5}  log {x[3]:>5}")
+    if out["status"]:
+        print("\nstatuses just before each cast: model vs log (disagreements by the nearest logged edge: count, median and"
+              " max distance, s)")
+        for name, r in out["status"].items():
+            line = f"   {name:<24} both {r['both']:5d}  neither {r['neither']:5d}"
+            for side in ("log only", "model only"):
+                g = collections.defaultdict(list)
+                for edge, d, *_ in r[side]: g[edge].append(d)
+                if g: line += f"\n      {side:<11}" + "  ".join(f"{e} {len(v)} ({st.median(v):.2f}, max {max(v):.2f})"
+                                                          for e, v in sorted(g.items()))
+            print(line)
     print(f"\ncast times: logged (begin->cast + {RESOLVE} s to the bar end) vs model at the player's GCD")
     for k, v in sorted(out["cast"].items(), key=str):
         print(f"   {k[0]:<17} {k[1]:<12}: logged {st.median(a for a, _ in v):.2f}  model {st.median(b for _, b in v):.2f}  ({len(v)})")

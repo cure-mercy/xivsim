@@ -21,7 +21,9 @@ from its side, +10 Serpent Offerings) grants the venom of the next in the cycle 
 -> Hindsbane -> Flanksting (+100), and Death Rattle (an oGCD, lost with the next weaponskill).
 
 Twinblade combo: Vicewinder (40 s, two charges, one Rattling Coil) -> Hunter's Coil and Swiftskin's Coil in either
-order (+50 from the flank / rear, +5 Offerings, each refreshes its sting's status); after each Coil, Twinfang Bite and
+order as the next weaponskills: any other but Uncoiled Fury or Writhing Snap ends it (the logs: 1,225 Vicewinders
+followed by both Coils with only Uncoiled Fury between, and no Coil ever after another weaponskill; xivintheshell
+agrees) (+50 from the flank / rear, +5 Offerings, each refreshes its sting's status); after each Coil, Twinfang Bite and
 Twinblood Bite (oGCDs, 120 or 170 with the venom the Coil or the first bite grants, lost with the next weaponskill).
 Uncoiled Fury (20 y) spends a Rattling Coil (three at most; Serpent's Ire grants one). Reawaken spends 50 Offerings
 or Ready to Reawaken (Serpent's Ire) for four Anguine Tribute: First to Fourth Generation, 680 each in order.
@@ -45,6 +47,7 @@ POTENCY = {"Steel Fangs": (200, 300), "Reaving Fangs": (200, 300), "Hunter's Sti
            "First Generation": (480, 680), "Second Generation": (480, 680), "Third Generation": (480, 680),
            "Fourth Generation": (480, 680), "Writhing Snap": 200}
 FINISHER_POS, VENOM, COIL_POS = 60, 100, 50
+TWINBLADE_KEEPS = {"Vicewinder", "Hunter's Coil", "Swiftskin's Coil", "Uncoiled Fury", "Writhing Snap"}   # the rest end it
 FLANK = {"Flanksting Strike", "Flanksbane Fang", "Hunter's Coil"}
 REAR = {"Hindsting Strike", "Hindsbane Fang", "Swiftskin's Coil"}
 POSITIONALS = FLANK | REAR
@@ -67,7 +70,11 @@ RECAST = {"Vicewinder": 3.0, "Hunter's Coil": 3.0, "Swiftskin's Coil": 3.0, "Unc
 SWIFT = 0.85
 INSTINCT = 1.10
 WEAVE_SLACK = 0.05                              # a weave may clip the GCD by this much
-COMBO_S, COIL_S, HONED_S, VENOM_S, BUFF_S, RR_S, RA_S, TN_S = 30, 30, 60, 60, 40, 30, 30, 10
+COMBO_S, COIL_S, HONED_S, VENOM_S, BUFF_S, RR_S, RA_S = 30, 30, 60, 60, 40, 30, 30
+# Honed / Venom statuses, Hunter's Instinct and Swiftscaled: logged at the cast, they end the granting weaponskill's hit
+# delay plus their length after it (Honed Steel 61.27 after Reaving Fangs, 1.29 + 60; Swiftscaled 41.12-41.47 after
+# Swiftskin's Sting / Coil, 1.16 / 1.47 + 40; calibrate's status check); True North ends 10.49-10.61 after its cast
+TN_S = 10.5
 TRIBUTE = 4                                     # Anguine Tribute at level 90 (the fifth is level 96)
 CDS = {"Vicewinder": (40, 2), "Serpent's Ire": (120, 1), "True North": (45, 2), "Tincture": (270, 1),
        "Death Rattle": (1, 1), "Twinfang Bite": (1, 1), "Twinblood Bite": (1, 1)}
@@ -258,18 +265,20 @@ def do_gcd(s, fight, name):
     snap = start
     haste = SWIFT if s.ss_until > snap else 1.0     # the GCD granting Swiftscaled isn't hasted by it
     hit(s, fight, snap, potency(s, fight, name, snap), name)
+    land = snap + DELAY.get(name, 0.6)  # a status it grants is logged at the cast but runs its length from here
     if s.tail or s.bites: wasted(s, 2, s.tail + s.bites)
     s.tail, s.bites, s.hv, s.sv = False, 0, False, False
+    if name not in TWINBLADE_KEEPS: s.coil = None
     if name in ("Steel Fangs", "Reaving Fangs"):
         s.combo, s.combo_until = "1", snap + COMBO_S
-        s.honed, s.honed_until = ("Reaving Fangs" if name == "Steel Fangs" else "Steel Fangs"), snap + HONED_S
+        s.honed, s.honed_until = ("Reaving Fangs" if name == "Steel Fangs" else "Steel Fangs"), land + HONED_S
     elif name == "Hunter's Sting":
-        s.combo, s.combo_until, s.hi_until = "h", snap + COMBO_S, snap + BUFF_S
+        s.combo, s.combo_until, s.hi_until = "h", snap + COMBO_S, land + BUFF_S
     elif name == "Swiftskin's Sting":
-        s.combo, s.combo_until, s.ss_until = "s", snap + COMBO_S, snap + BUFF_S
+        s.combo, s.combo_until, s.ss_until = "s", snap + COMBO_S, land + BUFF_S
     elif name in VENOM_OF:
         s.combo, s.tail = None, True
-        s.venom, s.venom_until = VENOM_OF[name], snap + VENOM_S
+        s.venom, s.venom_until = VENOM_OF[name], land + VENOM_S
         gain(s, 10)
     elif name == "Vicewinder":
         use_cd(s, name, snap)
@@ -279,8 +288,8 @@ def do_gcd(s, fight, name):
     elif name in ("Hunter's Coil", "Swiftskin's Coil"):
         hunter = name == "Hunter's Coil"
         s.coil = ("h" if hunter else "s") if s.coil == "v" else None
-        if hunter: s.hi_until = snap + BUFF_S
-        else: s.ss_until = snap + BUFF_S
+        if hunter: s.hi_until = land + BUFF_S
+        else: s.ss_until = land + BUFF_S
         s.bites, s.hv, s.sv = 2, hunter, not hunter
         gain(s, 5)
     elif name == "Uncoiled Fury":
@@ -473,6 +482,17 @@ def cast_time(s, name, at):
 def at(s, fight, t):
     c = s.copy(); advance(c, fight, t)
     return c
+
+
+STATUSES = {"Hunter's Instinct": lambda s, t: s.hi_until > t, "Swiftscaled": lambda s, t: s.ss_until > t,
+            "Honed Steel": lambda s, t: s.honed == "Steel Fangs" and s.honed_until > t,
+            "Honed Reavers": lambda s, t: s.honed == "Reaving Fangs" and s.honed_until > t,
+            **{v: (lambda f: lambda s, t: s.venom == f and s.venom_until > t)(f) for v, f in (
+                ("Flankstung Venom", "Flanksting Strike"), ("Hindstung Venom", "Hindsting Strike"),
+                ("Flanksbane Venom", "Flanksbane Fang"), ("Hindsbane Venom", "Hindsbane Fang"))},
+            "Hunter's Venom": lambda s, t: bool(s.hv), "Swiftskin's Venom": lambda s, t: bool(s.sv),
+            "Ready to Reawaken": lambda s, t: s.rr_until > t, "Reawakened": lambda s, t: s.tribute > 0 and s.ra_until > t,
+            "True North": lambda s, t: s.tn_until > t}
 
 
 def status(s, t):

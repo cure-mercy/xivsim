@@ -39,6 +39,8 @@ UMBRAL_SOUL_MP = {-1: 2500, -2: 5000, -3: 10000}
 TICK_PHASE = 1.5                                    # server ticks land at TICK_PHASE + 3k seconds
 POLY_S, POLY_MAX = 30, 2
 LL_S, LL_SPEED, TRIPLE_S, SWIFT_S = 20, 0.85, 15, 10     # 7.2: Ley Lines 30 -> 20 s
+LL_DELAY = 0.49     # the circle (Circle of Power) lands this long after the cast (logs: 0.48-0.54, n=1,036); Ley Lines
+                    # can't be cast again until it is gone (xivintheshell's rule; no logged recast comes sooner)
 PROC_S = math.inf                                   # Thunderhead and Firestarter no longer expire (patch 7.2's notes);
                                                     # they are only lost by being granted again while held
 CDS = {"Triplecast": (60, 2), "Swiftcast": (60, 1), "Ley Lines": (120, 2), "Manafont": (100, 1), "Amplifier": (120, 1),
@@ -159,8 +161,8 @@ def dot(s, fight, at):
 # --- actions -------------------------------------------------------------------------------------------------------
 
 def in_ll(s, at):
-    """Ley Lines is up and the player still stands in its circle."""
-    return s.ll > at and s.spot == s.ll_spot
+    """Ley Lines is up and the player still stands in its circle (s.ll: when the circle ends; it came LL_S before)."""
+    return s.ll - LL_S <= at < s.ll and s.spot == s.ll_spot
 
 
 def timed(s, base, at, ll=None):
@@ -292,7 +294,7 @@ def do_ogcd(s, fight, name, policy=True):
         if s.poly == POLY_MAX: wasted(s, 0)
         s.poly = min(POLY_MAX, s.poly + 1)
     elif name == "Transpose": set_element(s, -1 if s.el > 0 else 1, at)
-    elif name == "Ley Lines": s.ll = at + LL_S; s.ll_spot = s.spot
+    elif name == "Ley Lines": s.ll = at + LL_DELAY + LL_S; s.ll_spot = s.spot
     elif name == "Between the Lines": s.spot = s.ll_spot                  # back into the circle once the mechanic is done
     elif name == "Triplecast": s.triple, s.triple_until = 3, at + TRIPLE_S
     elif name == "Swiftcast": s.swift = at + SWIFT_S
@@ -390,6 +392,11 @@ def at(s, fight, t):
     """A copy of the state advanced to t, to read it at a logged cast."""
     c = s.copy(); advance(c, t)
     return c
+
+
+STATUSES = {"Ley Lines": lambda s, t: s.ll - LL_S <= t < s.ll, "Circle of Power": in_ll,
+            "Triplecast": lambda s, t: s.triple > 0 and s.triple_until > t, "Swiftcast": lambda s, t: s.swift > t,
+            "Thunderhead": lambda s, t: s.th > t, "Firestarter": lambda s, t: s.fs > t}
 
 
 def status(s, t):
