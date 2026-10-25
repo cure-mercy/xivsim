@@ -71,7 +71,12 @@ DELAY = {"Burst Shot": 1.47, "Refulgent Arrow": 1.47, "Caustic Bite": 1.29, "Sto
          "Apex Arrow": 1.07, "Blast Arrow": 1.65, "Empyreal Arrow": 1.03, "Sidewinder": 0.53, "Bloodletter": 1.60,
          "Rain of Death": 1.65, "Pitch Perfect": 0.80}
 TICK_PHASE = 1.5                                # server ticks land at TICK_PHASE + 3k seconds
-SONG_S, ETHOS_S, MUSE_S, BUFF_S, BARRAGE_S, BLAST_S = 45, 30, 10, 20, 10, 10
+SONG_S, ETHOS_S, MUSE_S, BUFF_S, BLAST_S = 45, 30, 10, 20, 10
+# the raid buffs land after the cast and last their 20 s from there (Raging Strikes on 0.53 s after it, Battle Voice and
+# Radiant Finale 0.62); Barrage, logged at the cast, runs 10.62 s; Blast Arrow Ready its 10 s from Apex Arrow's hit
+# (11.04-11.07 s after the cast; calibrate's status check)
+BUFF_LAG = {"Raging Strikes": 0.53, "Battle Voice": 0.62, "Radiant Finale": 0.62}
+BARRAGE_S = 10.6
 SV_PER = 5
 AP_HASTE = 0.04
 MUSE = (0.0, 0.01, 0.02, 0.04, 0.12)            # Army's Muse by the Paeon's stacks
@@ -156,11 +161,16 @@ def singing(s, t, song=None):
     return s.song is not None and s.song_until > t and (song is None or s.song == song)
 
 
+def buff(until, at):
+    """A raid buff (ending at `until`) is on at `at`: it lasts BUFF_S from its landing."""
+    return until - BUFF_S <= at < until
+
+
 def mult(s, fight, at):
     """Damage multiplier on a hit executed at `at`: raid buffs, tincture, own Raging Strikes, Radiant Finale, songs and
     Battle Voice (the last three at their expected worth)."""
-    m = fight.mult(at, s.pot_at) * (RAGING if s.rs_until > at else 1) * (s.rf if s.rf_until > at else 1)
-    m *= VOICE if s.bv_until > at else 1
+    m = fight.mult(at, s.pot_at) * (RAGING if buff(s.rs_until, at) else 1) * (s.rf if buff(s.rf_until, at) else 1)
+    m *= VOICE if buff(s.bv_until, at) else 1
     if singing(s, at): m *= SONG_MULT[s.song]
     return m
 
@@ -313,7 +323,7 @@ def do_gcd(s, fight, name):
             cur = getattr(s, attr)
             if cur and cur[0] + DOT_S > land: apply_dot(s, fight, d, land, m)
     elif name == "Apex Arrow":
-        if s.sv >= 80 - 1e-6: s.blast_until = snap + BLAST_S
+        if s.sv >= 80 - 1e-6: s.blast_until = land + BLAST_S
         s.sv = 0.0
     elif name == "Blast Arrow": s.blast_until = -1.0
     s.t, s.gcd = start + ANIM_LOCK, start + recast
@@ -376,10 +386,10 @@ def do_ogcd(s, fight, name, policy=True):
         hit(s, fight, at, POTENCY[name], name)
         if singing(s, at): repertoire(s, at, 1.0)
     elif name in ("Sidewinder", "Bloodletter", "Rain of Death"): hit(s, fight, at, POTENCY[name], name)
-    elif name == "Raging Strikes": s.rs_until = at + BUFF_S
-    elif name == "Battle Voice": s.bv_until = at + BUFF_S
+    elif name == "Raging Strikes": s.rs_until = at + BUFF_LAG[name] + BUFF_S
+    elif name == "Battle Voice": s.bv_until = at + BUFF_LAG[name] + BUFF_S
     elif name == "Radiant Finale":
-        s.rf, s.rf_until, s.coda = 1 + 0.02 * bin(s.coda).count("1"), at + BUFF_S, 0
+        s.rf, s.rf_until, s.coda = 1 + 0.02 * bin(s.coda).count("1"), at + BUFF_LAG[name] + BUFF_S, 0
     elif name == "Barrage": s.barrage_until = at + BARRAGE_S
     elif name == "Tincture": s.pot_at = at
     s.t = at + ANIM_LOCK
@@ -484,6 +494,11 @@ def prepare(p):
 def at(s, fight, t):
     c = s.copy(); advance(c, fight, t)
     return c
+
+
+STATUSES = {"Raging Strikes": lambda s, t: buff(s.rs_until, t), "Battle Voice": lambda s, t: buff(s.bv_until, t),
+            "Radiant Finale": lambda s, t: buff(s.rf_until, t), "Barrage": lambda s, t: s.barrage_until > t,
+            "Blast Arrow Ready": lambda s, t: s.blast_until > t}
 
 
 def status(s, t):

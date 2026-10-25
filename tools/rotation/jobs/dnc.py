@@ -66,7 +66,8 @@ DANCE_RECAST = {"Standard Step": 1.5, "Technical Step": 1.5}
 STEP_RECAST, FINISH_RECAST = 1.0, 1.5
 # statuses as long as the logs show them (they outlast the tooltips by ~0.5 s: unspent Silken procs lapse ~30.8 s after
 # their grant, spent up to 30.7 s; Flourishing Starfall lapses at 20.5 s; dances finished up to 15.12 s after the Step)
-DANCE_S, SF_S, TF_S, TF_LAG, DEV_S, STAR_S, FFIN_S, PROC_S = 15.2, 60.0, 20.0, 0.54, 20.0, 20.5, 30.5, 30.8
+DANCE_S, SF_S, TF_S, TF_LAG, DEV_S, STAR_S, FFIN_S, PROC_S = 15.2, 60.0, 20.15, 0.54, 20.0, 20.5, 30.5, 30.8
+# (Technical Finish runs 20.04-20.18 s from its landing: calibrate's status check)
 PREPULL_SS = -14.0                              # the search's pre-pull Standard Step (its two steps follow)
 ESPRIT = {"Cascade": 5, "Fountain": 5, "Reverse Cascade": 10, "Fountainfall": 10}
 # the party's Esprit, expected per second: the dance partner's while Standard Finish is up, and the six others' in the
@@ -592,6 +593,15 @@ def unprepare():
 def at(s, fight, t):
     c = s.copy(); advance(c, fight, t)
     return c
+
+
+STATUSES = {"Standard Step": lambda s, t: s.dance == "std" and s.dance_until > t,
+            "Technical Step": lambda s, t: s.dance == "tech" and s.dance_until > t,
+            "Standard Finish": lambda s, t: s.sf_until > t, "Technical Finish": lambda s, t: s.tf_from <= t < s.tf_until,
+            "Devilment": lambda s, t: s.dev_until > t, "Flourishing Starfall": lambda s, t: s.star_until > t,
+            "Flourishing Finish": lambda s, t: s.ffin_until > t, "Flourishing Symmetry": lambda s, t: s.fsym_until > t,
+            "Flourishing Flow": lambda s, t: s.fflow_until > t, "Fourfold Fan Dance": lambda s, t: s.four_until > t}
+# (the procs and feathers are expected values: not compared)
 
 
 def status(s, t):

@@ -36,7 +36,10 @@ CAST = {"Harpe": 1.3, "Communio": 1.3, "Soulsow": 5.0}
 REAPING_GCD = 1.5                           # Void / Cross Reaping: fixed, not affected by skill speed
 DEATHS_DESIGN, DD_ADD, DD_MAX = 1.10, 30, 60
 CIRCLE, CIRCLE_S, BLOODSOWN_S = 1.03, 20, 6
-COMBO_S, REAVER_S, ENH_S, REAPING_ENH_S, SHROUD_S, IDEAL_S, SACRIFICE_S, TN_S, HARPE_S = 30, 30, 60, 30, 30, 30, 30, 10, 10
+AC_DELAY = 0.63     # Arcane Circle's statuses land this long after the cast (logs: Bloodsown Circle 0.62-0.67 s, n=708;
+                    # it comes off 6.6 s after the cast and no Plentiful Harvest came sooner than 6.63 s)
+COMBO_S, REAVER_S, ENH_S, REAPING_ENH_S, SHROUD_S, IDEAL_S, SACRIFICE_S, HARPE_S = 30, 30, 60, 30, 30, 30, 30, 10
+TN_S = 10.5        # logged at the cast, True North runs past its 10 (ends 10.51-10.55 after it; calibrate's status check)
 CDS = {"Soul Slice": (30, 2), "Gluttony": (60, 1), "Blood Stalk": (1, 1), "Enshroud": (5, 1), "Lemure's Slice": (1, 1),
        "Arcane Circle": (120, 1), "True North": (45, 2), "Hell's Ingress": (20, 1), "Tincture": (270, 1)}
 AVATAR = {"Blood Stalk", "Unveiled Gibbet", "Unveiled Gallows"}       # one action on the hotbar, one recast
@@ -108,7 +111,7 @@ def gain(s, gauge, n):
 
 def mult(s, fight, at):
     """Damage multiplier on a hit executed at `at`: raid buffs, tincture, own Arcane Circle, Death's Design."""
-    return fight.mult(at, s.pot_at) * (CIRCLE if s.circle_until > at else 1) * (DEATHS_DESIGN if s.dd_until > at else 1)
+    return fight.mult(at, s.pot_at) * (CIRCLE if s.circle_until - CIRCLE_S <= at < s.circle_until else 1) * (DEATHS_DESIGN if s.dd_until > at else 1)
 
 
 def advance(s, fight, to):
@@ -247,9 +250,10 @@ def do_gcd(s, fight, name):
         gain(s, "shroud", 10)
     elif name in ("Void Reaping", "Cross Reaping"):
         s.lemure -= 1; s.void += 1
-        s.renh, s.renh_until = ("Cross Reaping" if name == "Void Reaping" else "Void Reaping"), snap + REAPING_ENH_S
-        if not s.lemure: s.void = 0; s.shroud_until = snap
-    elif name == "Communio": s.lemure = s.void = 0; s.shroud_until = snap
+        if s.lemure:                            # the other one enhanced, while the Enshroud lasts; the last grants none
+            s.renh, s.renh_until = ("Cross Reaping" if name == "Void Reaping" else "Void Reaping"), min(snap + REAPING_ENH_S, s.shroud_until)
+        else: s.void, s.shroud_until, s.renh_until = 0, snap, -1.0
+    elif name == "Communio": s.lemure = s.void = 0; s.shroud_until = s.renh_until = snap
     elif name == "Harpe":
         if s.harpe_until > start: s.harpe_until = -1.0
         gain(s, "soul", 10)
@@ -309,7 +313,7 @@ def do_ogcd(s, fight, name, policy=True):
         s.lemure, s.void, s.shroud_until = 5, 0, at + SHROUD_S
     elif name == "Lemure's Slice": hit(s, fight, at, POTENCY[name], name); s.void -= 2
     elif name == "Arcane Circle":
-        s.circle_until, s.bloodsown_until = at + CIRCLE_S, at + BLOODSOWN_S
+        s.circle_until, s.bloodsown_until = at + AC_DELAY + CIRCLE_S, at + AC_DELAY + BLOODSOWN_S
         s.sacrifice, s.sacrifice_until = SACRIFICE, at + SACRIFICE_S
     elif name == "True North": s.tn_until = at + TN_S
     elif name == "Hell's Ingress": s.harpe_until = at + HARPE_S
@@ -423,6 +427,19 @@ def at(s, fight, t):
     """A copy of the state advanced to t, to read it at a logged cast."""
     c = s.copy(); advance(c, fight, t)
     return c
+
+
+STATUSES = {"Soul Reaver": lambda s, t: s.reaver > 0 and s.reaver_until > t,
+            "Enhanced Gibbet": lambda s, t: s.enh == "Gibbet" and s.enh_until > t,
+            "Enhanced Gallows": lambda s, t: s.enh == "Gallows" and s.enh_until > t,
+            "Enhanced Void Reaping": lambda s, t: s.renh == "Void Reaping" and s.renh_until > t,
+            "Enhanced Cross Reaping": lambda s, t: s.renh == "Cross Reaping" and s.renh_until > t,
+            "Enshrouded": lambda s, t: s.shroud_until > t,
+            "Arcane Circle": lambda s, t: s.circle_until - CIRCLE_S <= t < s.circle_until,
+            "Bloodsown Circle": lambda s, t: s.bloodsown_until - BLOODSOWN_S <= t < s.bloodsown_until,
+            "Immortal Sacrifice": lambda s, t: s.sacrifice > 0 and s.sacrifice_until > t,
+            "Ideal Host": lambda s, t: s.ideal_until > t, "True North": lambda s, t: s.tn_until > t,
+            "Enhanced Harpe": lambda s, t: s.harpe_until > t}
 
 
 def status(s, t):

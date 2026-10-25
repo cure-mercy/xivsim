@@ -73,7 +73,8 @@ TRICK, DOKUMORI = 1.10, 1.05                    # own debuffs on Athena: +10% th
 TA_S, DK_S = 15.0, 20.0                         # from the debuff's landing (its action's hit)
 LAG = 0.6                                       # statuses outlast their tooltip in the logs (a Trick Attack 20.49 s after
                                                 # its Suiton spent Shadow Walker; Meisui and Raiju Ready ran out at 30.6-30.7 s)
-COMBO_S, SEQ_S, TCJ_S, TN_S = 30, 6, 6, 10
+COMBO_S, SEQ_S, TCJ_S = 30, 6, 6
+TN_S = 10.5                                     # True North ends 10.49-10.61 after its cast (calibrate's status check)
 KASS_S, SW_S, MEISUI_S, RAIJU_S, BUN_S, PK_S = (d + LAG for d in (15, 20, 30, 30, 30, 45))
 PREPULL = -3.5                                  # the search's pre-pull mudras: Ten, Chi, Jin from -3.5 s, Suiton at 0 (the
                                                 # clears' charges fit first mudras 1.5-4.5 s before their opening Suiton)
@@ -577,6 +578,13 @@ def unprepare():
 def at(s, fight, t):
     c = s.copy(); advance(c, fight, t)
     return c
+
+
+STATUSES = {"Mudra": lambda s, t: bool(s.seq) and s.seq_until > t, "Kassatsu": lambda s, t: s.kass_until > t,
+            "Ten Chi Jin": lambda s, t: s.tcj_until > t, "Shadow Walker": lambda s, t: s.sw_until > t,
+            "Meisui": lambda s, t: s.meisui_until > t, "Raiju Ready": lambda s, t: s.raiju > 0 and s.raiju_until > t,
+            "Bunshin": lambda s, t: s.bun > 0 and s.bun_until > t, "Phantom Kamaitachi Ready": lambda s, t: s.pk_until > t,
+            "True North": lambda s, t: s.tn_until > t}
 
 
 def status(s, t):
