@@ -91,8 +91,9 @@ def one(job, tier, d, best, food, food_bonus, gear_, totals):
 
 
 def sheet(jobkey):
-    """A job's entry: its set(s), best first, and its DPS per GCD tier (fitted over the grid, and the searched tiers;
-    whole phase, no raid buffs, the job's own constant multipliers left out: compare within the job only)."""
+    """A job's entry: its set(s), best first, and its DPS per GCD tier (fitted over the grid, the grid's own searches and
+    the searched tiers; whole phase, no raid buffs, the job's own constant multipliers left out: compare within the job
+    only)."""
     f = CACHE / f"bis_{jobkey}.json"
     if not f.exists(): return None
     b = json.loads(f.read_text(encoding="utf-8"))
@@ -104,6 +105,7 @@ def sheet(jobkey):
     key = lambda k: [float(v) for v in k.split("/")]
     tiers = {k: dict(tier=key(k), fitted=v) for k, v in b["fitted"].items()}
     for k, v in b["searched"].items(): tiers.setdefault(k, dict(tier=key(k)))["searched"] = v
+    for k, v in b.get("grid", {}).items(): tiers.setdefault(k, dict(tier=key(k)))["grid"] = v     # one-round grid searches
     return dict(job=job, main=JOBS[job][0], speed=JOBS[job][1], haste=HASTE.get(job), tie=TIE, sync=gear.DB["sync"],
                 sets=[one(job, x["tier"], x["dps"], best, x["food"], x["foodBonus"], x["gear"], x["totals"]) for x in sets],
                 tiers=sorted(tiers.values(), key=lambda t: t["tier"]))

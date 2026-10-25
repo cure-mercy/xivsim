@@ -1,5 +1,5 @@
 {
- "built": "2026-10-23",
+ "built": "2026-10-25",
  "pools": {
   "clears": {
    "kills": 29,
@@ -27,7 +27,9 @@
       12412
      ],
      "given_ratio": 1.193,
-     "given_ratio_n": 4
+     "given_ratio_n": 4,
+     "given_ratio_full": 1.096,
+     "given_ratio_full_n": 3
     },
     "Dancer": {
      "rdps": 11840,
@@ -47,7 +49,9 @@
       12538
      ],
      "given_ratio": 1.124,
-     "given_ratio_n": 33
+     "given_ratio_n": 33,
+     "given_ratio_full": 0.935,
+     "given_ratio_full_n": 22
     },
     "Sage": {
      "rdps": 7360,
@@ -78,7 +82,9 @@
       7840
      ],
      "given_ratio": 1.202,
-     "given_ratio_n": 30
+     "given_ratio_n": 30,
+     "given_ratio_full": 0.965,
+     "given_ratio_full_n": 22
     },
     "Paladin": {
      "rdps": 8395,
@@ -141,7 +147,9 @@
       13978
      ],
      "given_ratio": 1.194,
-     "given_ratio_n": 8
+     "given_ratio_n": 8,
+     "given_ratio_full": 1.003,
+     "given_ratio_full_n": 4
     },
     "DarkKnight": {
      "rdps": 7695,
@@ -176,7 +184,9 @@
       8270
      ],
      "given_ratio": 1.156,
-     "given_ratio_n": 27
+     "given_ratio_n": 27,
+     "given_ratio_full": 0.957,
+     "given_ratio_full_n": 23
     },
     "Samurai": {
      "rdps": 13143,
@@ -204,7 +214,9 @@
       13481
      ],
      "given_ratio": 1.216,
-     "given_ratio_n": 11
+     "given_ratio_n": 11,
+     "given_ratio_full": 0.935,
+     "given_ratio_full_n": 7
     },
     "Pictomancer": {
      "rdps": 13009,
@@ -218,7 +230,9 @@
       13063
      ],
      "given_ratio": 1.18,
-     "given_ratio_n": 3
+     "given_ratio_n": 3,
+     "given_ratio_full": 0.917,
+     "given_ratio_full_n": 2
     },
     "WhiteMage": {
      "rdps": 6510,
@@ -248,7 +262,9 @@
       13819
      ],
      "given_ratio": 1.132,
-     "given_ratio_n": 16
+     "given_ratio_n": 16,
+     "given_ratio_full": 0.958,
+     "given_ratio_full_n": 14
     },
     "Summoner": {
      "rdps": 12786,
@@ -263,7 +279,9 @@
       13309
      ],
      "given_ratio": 1.148,
-     "given_ratio_n": 11
+     "given_ratio_n": 11,
+     "given_ratio_full": 0.9,
+     "given_ratio_full_n": 4
     },
     "RedMage": {
      "rdps": 11318,
@@ -278,7 +296,9 @@
       11723
      ],
      "given_ratio": 1.167,
-     "given_ratio_n": 18
+     "given_ratio_n": 18,
+     "given_ratio_full": 0.971,
+     "given_ratio_full_n": 15
     },
     "Viper": {
      "rdps": 12024,
@@ -320,7 +340,8 @@
     }
    },
    "given_until": 284.0,
-   "given_ratio_all": 1.157
+   "given_ratio_all": 1.157,
+   "given_ratio_full_all": 0.961
   }
  },
  "method": "Savage P1 (Athena) clears from FFLogs, level 90, no level-92+ abilities, logger main stat 3400-3560 (capped gear). rDPS/nDPS over 0:00-2:00 with pots stripped (+10.57% DPS/healer, +10.42% tank for the Medicated window); deaths before 2:00 excluded. Job values are averages of distinct players over all clears. Kills with The Echo (+20% damage) count for casts and timing only, not for damage, HP or kill time, except that a job with fewer than three other players also gets its Echo clears, damage divided by 1.2.",

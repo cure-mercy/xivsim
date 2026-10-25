@@ -218,11 +218,17 @@ def given_ratios(kills):
     expected rDPS, which run to Palladion. The Echo changes both alike, so its clears count too. Only players who used
     their raid buff in each of GIVEN_BURSTS count, as the optimized rotations do: about half the clears' Reapers hold
     the second Arcane Circle to 2:56-3:12, leaving two before Palladion (all of them: 0.74 instead of ~1.2).
-    "*": the median over every player, for a job without clears."""
+    "*": the median over every player, for a job without clears. Each value is (ratio, players, full-phase ratio,
+    players): the same rate over the whole kill (kill_given_full; players alive to the kill), for the site's full-phase
+    rDPS; a kill FFLogs won't serve the whole of (archived) is left out of it."""
     first = [(n, a, b) for n, a, b in WINDOWS if b <= GIVEN_UNTIL]
-    per = collections.defaultdict(list)
+    per, full = collections.defaultdict(list), collections.defaultdict(list)
     for k in kills:
         g120 = {(p["name"], p["job"]): p["given"] for p in kill_players(k)[0]}
+        try: whole = kill_given_full(k)
+        except Exception as e: print(f"  no whole-kill table for {k['code']} #{k['fight']}: {e}", file=sys.stderr); whole = None
+        raw = CACHE / f"phases_{k['code']}_{k['fight']}.json"
+        died = {d["name"]: d["t"] for d in (json.loads(raw.read_text()).get("deaths", []) if raw.exists() else [])}
         a = kill_acts(k)
         uses = collections.defaultdict(list)
         for when, _, job, src in acts.buff_uses(a): uses[(a["players"][str(src)][0], job)].append(when)
@@ -232,9 +238,12 @@ def given_ratios(kills):
         for key, w in by.items():
             if g120.get(key, 0) > 0 and key not in held and all(n in w for n, _, _ in first):
                 per[key[1]].append(sum(w[n]["given"] * (b - a) for n, a, b in first) / GIVEN_UNTIL / g120[key])
-    out = {j: (round(st.median(v), 3), len(v)) for j, v in per.items()}
-    every = [r for v in per.values() for r in v]
-    if every: out["*"] = (round(st.median(every), 3), len(every))
+                if whole and key[0] in whole["given"] and died.get(key[0], 1e9) >= whole["dur"] - 2:
+                    full[key[1]].append(whole["given"][key[0]] / whole["dur"] / g120[key])
+    med = lambda v: (round(st.median(v), 3), len(v)) if v else (None, 0)
+    out = {j: med(v) + med(full.get(j, [])) for j, v in per.items()}
+    every, every_full = [r for v in per.values() for r in v], [r for v in full.values() for r in v]
+    if every: out["*"] = med(every) + med(every_full)
     return out
 
 
@@ -258,6 +267,18 @@ def kill_opener(k, seconds=20):
         nd = y["totalNDPS"] / seconds
         out.append(dict(name=y["name"], job=y["type"], ndps=nd - overlap * nd * POT[kind] / seconds))
     return out
+
+
+def kill_given_full(k):
+    """Per player of one kill: the rDPS their buffs gave others from the pull to the kill, and the kill's length (the
+    whole phase, which the phase windows don't reach: the last one ends at enrage)."""
+    def get():
+        f = fflogs.gql('query($c:String!){reportData{report(code:$c){fights(fightIDs:[%d]){startTime endTime}}}}' % k["fight"],
+                       {"c": k["code"]})["reportData"]["report"]["fights"][0]
+        s, e = f["startTime"], f["endTime"]
+        t = fflogs.tables(k["code"], [(s, e)])[0]
+        return dict(dur=(e - s) / 1000, given={y["name"]: y.get("totalRDPSGiven", 0) for y in t["entries"]})
+    return cached(f"given_full_{k['code']}_{k['fight']}", get)
 
 
 def kill_phases_raw(k):
@@ -395,9 +416,9 @@ def build(kills):
     res["windows"] = phases(kills, echo_kills)
     ratios = given_ratios(kills + echo_kills)
     res["pools"]["clears"]["given_until"] = GIVEN_UNTIL
-    if "*" in ratios: res["pools"]["clears"]["given_ratio_all"] = ratios["*"][0]
+    if "*" in ratios: res["pools"]["clears"]["given_ratio_all"], res["pools"]["clears"]["given_ratio_full_all"] = ratios["*"][0], ratios["*"][2]
     for j, v in res["pools"]["clears"]["jobs"].items():
-        if j in ratios: v["given_ratio"], v["given_ratio_n"] = ratios[j]
+        if j in ratios: v["given_ratio"], v["given_ratio_n"], v["given_ratio_full"], v["given_ratio_full_n"] = ratios[j]
     return res
 
 

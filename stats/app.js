@@ -1251,13 +1251,13 @@ const ROT_CHALLENGES = {
     ["Burst", "Brotherhood at 0:01, 2:02 and 4:03; eight Perfect Balances by Palladion."],
     ["Crit rate", "Each GCD is searched at our players' crit rates: 5 points more crit is ~0.5–0.8% more potency through The Forbidden Chakra."],
     ["Six-Sided Star", "Only as Athena leaves (4:40); anywhere else it about ties.", [[278.4, 281.6]]],
-    ["GCD", "2.45 s comes out ~0.7% above 2.40 s at a like crit rate."],
+    ["GCD", "Over the phase, 2.40–2.45 s at 23–25% crit come out within 0.5% of each other; crit decides: the best-in-slot 2.43 s at its 28% comes out best, 2.45 s at 30% ~0.4% below (within the search's noise), 2.40–2.45 s at 23–25% ~1.5–1.7% below."],
     ["Cost", "~1.3% (M1) to 1.8% (M2) against standing still, within noise of each other."]]],
   Bard: ["All instant at 25 y: R1, R2 and standing still play the same rotation.", [
     ["Songs", "The Minuet every two minutes (0:01, 2:01–2:06, 4:01–4:06) with Raging Strikes, Battle Voice and Barrage. Ballad and Paeon fill the minute between in either order, a near-tie.", [[0, 18.0], [120.8, 143.9], [241.1, 264.2]]],
     ["Radiant Finale", "Barely moves your own damage, so the searches place it anywhere; its party share isn't in the optimizer, so in a party put it with Battle Voice (as at 2.45 s)."],
     ["Palladion", "The third Minuet burst (4:01–4:06) ends before Athena leaves (4:41).", [[241.1, 281.6]]],
-    ["GCD", "2.50 s comes out ~0.6% above 2.49 s and ~1.6% above 2.45 s."]]],
+    ["GCD", "Over the phase, 2.50 s comes out ~0.9–1.5% above 2.45, 2.47 and 2.49 s."]]],
   Dragoon: ["Positionals are what the mechanics squeeze.", [
     ["Spot fixed", "Paradeigma I–III and Superchain I fix your spot (orange bands, 77 s): five or six True Norths (by GCD) keep the combo's positionals, with Chaotic Spring and Power Surge kept up through them.", ["pinned"]],
     ["Out of reach", "2.5 s on end between 2:53 and Paradeigma III's tethers, and 1.2 s before Palladion: Elusive Jump into an Enhanced Piercing Talon fills them.", ["away"]],
@@ -1281,20 +1281,20 @@ const ROT_CHALLENGES = {
     ["Smudge", "In the swap (0:38–0:39): it covers 15 y, room for a hard cast before the band ends.", [[37.6, 42.9]]],
     ["Starry Muse in Superchain I", "The second one (2:02–2:09) meets Superchain I: the 15 y run into the second doughnut (from 2:09.6) leaves its ~8 y landscape, so only one or two colour spells get Inspiration, against four at 0:02 and 4:05–4:10. Spend the stacks before that run.", [[122.3, 136.8]]],
     ["Motifs", "Spell Speed doesn't shorten them. Swiftcast goes on a motif (or a hard cast in a run); repaint pom or wings as soon as a Living Muse charge is back."],
-    ["GCD", "2.49 s comes out ~2% above 2.31 s: motifs don't speed up."],
+    ["GCD", "Over the phase, 2.49 s comes out ~2.5% above 2.31 s: motifs don't speed up."],
     ["Palladion", "Spend White Paint on Holy and Comet before Athena leaves (4:41).", [[261.4, 281.6]]],
     ["Cost", "~0.5% in R1 (~1% in R2), half of it Inspiration lost in Superchain I."]]],
   Machinist: ["All instant at 25 y: R1, R2 and standing still play the same rotation. Fit the burst and the Queen around Palladion.", [
     ["Wildfire", "With a Hypercharge every two minutes: 0:08 (on Barrel Stabilizer's), ~2:10 and 4:11–4:14.", [[8.0, 18.7], [130.9, 141.6], [254.1, 264.8]]],
     ["Queen", "~24 potency per battery point, whenever she goes: send her at 50+ before overcapping, but not in the last 17 s before Palladion. The last one goes ~4:00–4:08; hold the 50 that builds after it for Athena's return.", [[264.2, 281.6]]],
     ["Palladion", "The last Reassemble goes on a tool just before Athena leaves (4:41).", [[261.4, 281.6]]],
-    ["GCD", "2.41, 2.45 and 2.49 s come out within 0.2%."]]],
+    ["GCD", "Over the phase, 2.49 s comes out ~0.8% above 2.45 s and ~1.8% above 2.41 s."]]],
   Ninja: ["Nothing is a hard cast and ninjutsu reach 20 y: our runs cost ~0.4%, about the optimizer's noise. Keep the mudras turning and the burst inside Trick Attack.", [
     ["Opener", "Suiton at the pull, Trick Attack and Dokumori; Ten Chi Jin, Bunshin and Kassatsu into Hyosho Ranryu follow in an order that varies by GCD (near-ties), all inside Trick Attack.", [[0, 16.5]]],
     ["Spot fixed", "Paradeigma I–III and Superchain I fix your spot (orange bands, 77 s): five or six True Norths (by GCD) for Aeolian Edge, Armor Crush and Trick Attack.", ["pinned"]],
     ["Out of reach", "2.5 s on end between 2:53 and Paradeigma III's tethers, and 1.2 s before Palladion: mudras and their ninjutsu, or Phantom Kamaitachi, fill them.", ["away"]],
     ["Palladion", "The last burst (4:03–4:15) lands well before Athena leaves (4:41); end on a Raiton, and its Raiju where it fits.", [[243.0, 281.6]]],
-    ["GCD", "2.50 s comes out ~2% above 2.41 s."],
+    ["GCD", "Over the phase, 2.50 s comes out ~3% above 2.41 s."],
     ["Expected DPS", "None of ours plays Ninja: converted at the four clear Ninjas since 7.3 (three within 2%, one 13% lower, likely gear; one Echo kill divided by 1.2)."]]],
   Summoner: ["Ruin III slidecasts and the rest is instant: our runs cost next to nothing (0.05%, noise). Spend every Arcanum between demi-summons and fit the last cycle before Palladion.", [
     ["Demi-summons", "Spell Speed shortens their 60 s (58.8 s at 2.45, 55.4 s at 2.31): five by Palladion."],
@@ -1304,7 +1304,7 @@ const ROT_CHALLENGES = {
     ["Searing Light", "On cooldown: 0:02–0:05, 2:02–2:06 and 4:04–4:07.", [[2.1, 24.7], [122.5, 146.2], [243.8, 267.0]]],
     ["Out of reach", "Crimson Strike reaches only 3 y past Athena's hitbox: not at the red bands' far spots (0:37 in R1, 2:25 in Superchain I's spread).", ["away"]],
     ["Palladion", "After the ~4:00 trance, Titan and Ifrit fit before Athena leaves (4:41) but Garuda doesn't, or only just starts (2.41 s); with its earlier demi, 2.31 s fits all three.", [[239.1, 281.6]]],
-    ["GCD", "2.49 s comes out ~2% above 2.31 s."]]],
+    ["GCD", "Over the phase, the best-in-slot 2.10–2.14 s come out ~0.5% above 2.49 s and ~1.7% above 2.31 s."]]],
   Dancer: ["All instant at 15–25 y: our runs cost nothing. Keep the dances turning and pour Esprit and feathers into the two-minute windows.", [
     ["Opener", "Standard Step ~14 s before the pull, the finish at the pull, then Flourish, Devilment and Technical Step; the next Standard Step goes inside the window at 0:18.", [[0, 24.5]]],
     ["Technical Step", "On cooldown: 0:04, 2:04–2:07 and 4:06–4:07. Its window brings the whole party's Esprit: Saber Dances almost back to back.", [[3.9, 30.5], [124.0, 147.0], [246.6, 268.5]]],
@@ -1313,7 +1313,7 @@ const ROT_CHALLENGES = {
     ["Esprit", "The party's share is random; the optimizer counts its average (~0.7 a second from your partner, six times that from everyone under Technical Finish), so spend Saber Dance by your gauge, not its schedule."],
     ["Palladion", "Tillana and the last Saber Dances go before Athena leaves (4:41); in the downtime, dance the next Standard Step so its finish lands as she returns.", [[259.0, 281.6]]],
     ["GCD", "2.40, 2.45 and 2.49 s come out within 1.5%."],
-    ["Raid buffs", "Technical Finish, and Standard Finish and Devilment on your partner, add to others' damage: rDPS credits that to you (Expected rDPS); the rotation optimizes your own."]]],
+    ["Raid buffs", "Technical Finish, and Standard Finish and Devilment on your partner, add to others' damage: rDPS credits that to you (the rDPS column); the rotation optimizes your own."]]],
 };
 // the job's points against its fight: [[key, from, to]] for the timeline to draw hidden, one key per point
 function challengeFocus(job, f) {
@@ -1467,9 +1467,10 @@ function rotationsPage() {
   for (const j of jobs) rdps[j] = expectedRdps(j).value;
   jobs.sort((a, c) => rdps[c] - rdps[a]);
   app.append(heading("h1", "Optimized rotations", ROT_ABOUT),
-    el("p", { class: "lede" }, "The optimizer's best rotation per job, at our players' GCDs and a few more, grouped by role, highest expected rDPS first."));
+    el("p", { class: "lede" }, "The optimizer's best rotation per job, at our players' GCDs and a few more, grouped by role, highest rDPS to Palladion first."));
   if (!jobs.length) return app.append(el("p", { class: "empty" }, "No optimized rotations yet: run tools/rotation/dps.py --job <job> --site, then build_site.py."));
-  const head = ["Job", "GCDs", "Fastest", "Slowest", "Best-in-slot GCD", "Best expected nDPS", "Best expected rDPS", "Ceiling 0:00–2:00 (rDPS)", "Our players"], rows = [];
+  const w = `0:00–${mmss(bestRot(jobs[0]).window)}`;
+  const head = ["Job", "GCDs", "Fastest", "Slowest", "Best-in-slot GCD", `Best nDPS ${w}`, `Best rDPS ${w}`, "Best rDPS 0:00–2:00", "Our players"], rows = [];
   for (const role of ROLES) {   // the role's jobs, highest expected rDPS first
     const js = jobs.filter(j => (all[j].role || "Melee") === role);
     if (!js.length) continue;
@@ -1488,21 +1489,29 @@ const bestRot = job => Object.values(rotsOf(job)).reduce((a, x) => x.dps > a.dps
 // that stretch. That credit is our players' median over their clean 0:00-2:00 pulls (the clears' mean for a job none
 // of ours plays), scaled by how the clears' credit to Palladion compares with their 0:00-2:00 (given_ratio in the
 // benchmark: three bursts against one, steady buffs, a party spread at the later bursts; the median over every clear
-// player for a job without clears), all of it dealt before Athena leaves
-function expectedRdps(job, x = bestRot(job)) {   // x: one of the job's rotations (the credit is the same at every GCD)
+// player for a job without clears), all of it dealt before Athena leaves. `full`: over the whole phase instead, the
+// rotation's dps_full plus the credit scaled by the clears' whole-kill rate (given_ratio_full: Palladion's downtime
+// gives nothing)
+function expectedRdps(job, x = bestRot(job), full = false) {   // x: one of the job's rotations (the credit is the same at every GCD)
   const cl = DATA.benchmark.pools.clears, c = (cl.jobs || {})[job] || {}, given = [];
   for (const r of reports()) for (const p of r.players) if (p.job === job) for (const q of p.clean_pulls || []) given.push(q.given || 0);
   const from = given.length ? "ours" : c.given != null ? "clears" : null, g120 = given.length ? median(given) : c.given || 0;
+  if (full) {
+    const ratio = c.given_ratio_full != null ? c.given_ratio_full : cl.given_ratio_full_all || 1, credit = g120 ? g120 * ratio : 0;
+    return { value: x.dps_full != null ? x.dps_full + credit : null, ndps: x.dps_full, credit, g120, ratio, from, ratioAll: c.given_ratio_full == null, gcd: x.gcd, window: x.window_full };
+  }
   const ratio = c.given_ratio != null ? c.given_ratio : cl.given_ratio_all || 1, credit = g120 ? g120 * ratio * (cl.given_until || x.window) / x.window : 0;
   return { value: x.dps + credit, ndps: x.dps, credit, g120, ratio, from, ratioAll: c.given_ratio == null, gcd: x.gcd, window: x.window };
 }
 
-// under a job page's table: what its Expected rDPS column adds to the nDPS
-function rdpsNote(job) {
-  const e = expectedRdps(job);
+// under a job page's table: what its rDPS columns add to the nDPS
+function rdpsNote(job, w, wf) {
+  const e = expectedRdps(job), f = expectedRdps(job, bestRot(job), true), who = e.from === "ours" ? "our players' median" : "the clears' mean";
+  const all = x => x.ratioAll ? "; no clears of this job, so all clear players'" : "";
   return el("p", { class: "note" }, e.credit
-    ? `Expected rDPS adds ${num(e.credit)} for ${jobName(job)}'s raid buffs up to Palladion, at every GCD: ${e.from === "ours" ? "our players' median" : "the clears' mean"} credit over 0:00–2:00 (${num(e.g120)}) × ${e.ratio.toFixed(2)}, the clears' credit to Palladion against 0:00–2:00 (three bursts against one${e.ratioAll ? "; no clears of this job, so all clear players'" : ""}).`
-    : `${jobName(job)} gives no raid buffs, so its expected rDPS is its nDPS.`);
+    ? `The rDPS columns add ${jobName(job)}'s raid buffs at every GCD: ${who} credit over 0:00–2:00 (${num(e.g120)}) × the clears' credit over the window against their 0:00–2:00: ` +
+      `${wf}: +${num(f.credit)} (× ${f.ratio.toFixed(2)}, Palladion's downtime gives nothing${all(f)}); ${w}: +${num(e.credit)} (× ${e.ratio.toFixed(2)}, three bursts against one${all(e)}).`
+    : `${jobName(job)} gives no raid buffs, so its rDPS is its nDPS.`);
 }
 
 // the job's 0:00-2:00 ceiling as rDPS, the window our pulls and the clears' cover, plus our players' median 0:00-2:00
@@ -1639,18 +1648,26 @@ function rotationJobPage(code) {
   if (!rs) return notFound();
   crumbs([["Raid days", "#/"], ["Rotations", "#/rotations"], [code, null]]);
   const app = document.getElementById("app"), keys = Object.keys(rs).sort((a, c) => rs[a].gcd - rs[c].gcd || (rs[a].crit || 0) - (rs[c].crit || 0));
-  const best = Math.max(...keys.map(k => rs[k].dps)), crit = keys.some(k => rs[k].crit != null), n = rs[keys[0]].conv_players;
+  const full = x => x.dps_full != null ? x.dps_full : x.dps;   // (data written before dps_full: to Palladion)
+  const best = Math.max(...keys.map(k => full(rs[k]))), crit = keys.some(k => rs[k].crit != null), n = rs[keys[0]].conv_players;
   app.append(heading("h1", [jobIcon(job, "job-icon big"), `${jobName(job)} rotations`], `${ROT_ABOUT} Here: ${keys.length} GCD${keys.length > 1 ? "s" : ""}${crit ? " and crit rates" : ""}, Paradeigma I slot ${(fightOf(job) || {}).slot || "–"}, converted at ${convWho(job, n, code)} (${speedStat(job)} costs ~${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per 0.01 s of GCD).${offlineNote(job)}`),
     rotChallenges(job, fightOf(job)));
   if (fightOf(job)) app.append(fightCard(fightOf(job), null, challengeFocus(job, fightOf(job))));
   if (gearOf(job)) app.append(gearCard(job), el("p", { class: "note" }, el("a", { href: gearHref(job) }, "Its DPS by GCD tier, and every job's gear →")));
+  const w = `0:00–${mmss(rs[keys[0]].window)}`, wf = `0:00–${mmss(rs[keys[0]].window_full || rs[keys[0]].window)}`;
+  const whole = `the row's rotation over the whole phase, to the clears' median kill (${wf})`, cut = `the row's rotation, optimized over the whole phase, scored ${w} (to Palladion)`;
+  const head = [["GCD"], ...(crit ? [["Crit", "the crit rate the row is searched at"]] : []),
+    [`nDPS ${wf}`, `${whole}: your own damage, at the median of the players it's converted at`], [`rDPS ${wf}`, `${whole}: nDPS plus the credit for your raid buffs`],
+    [`nDPS ${w}`, `${cut}: your own damage`], [`rDPS ${w}`, `${cut}: nDPS plus the credit for your raid buffs`],
+    [`vs best nDPS ${wf}`, `${whole}, against the row with the most nDPS ${wf}`], ["Our players at it"]];
   app.append(el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, ["GCD", ...(crit ? ["Crit"] : []), `Potency 0:00–${mmss(rs[keys[0]].window)}`, "Potency/s", "Expected nDPS", "Expected rDPS", "vs best", "Ceiling 0:00–2:00 (nDPS)", "Our players at it"]
-      .map((h, i) => el("th", { class: i ? "num" : null }, h)))),
+    el("thead", {}, el("tr", {}, head.map(([h, title], i) => el("th", { class: i ? "num" : null, title: title || null }, h)))),
     el("tbody", {}, keys.map(k => { const x = rs[k];
-      return linkRow([[`${x.gcd.toFixed(2)} s`, bisAt(job, x) ? el("span", { class: "tag", title: "the best-in-slot set's GCD" }, "BiS") : null], ...(crit ? [x.crit != null ? pct(x.crit) : "–"] : []), num(x.potency), num(x.potency / x.window, 1),
-        num(x.dps), num(expectedRdps(job, x).value), x.dps === best ? "best" : signed(x.dps / best - 1, 1), num(x.ceiling_2min), String(x.players)], rotHref(job, k)); })))),
-    rdpsNote(job));
+      const rf = expectedRdps(job, x, true).value;
+      return linkRow([[`${x.gcd.toFixed(2)} s`, bisAt(job, x) ? el("span", { class: "tag", title: "the best-in-slot set's GCD" }, "BiS") : null], ...(crit ? [x.crit != null ? pct(x.crit) : "–"] : []),
+        x.dps_full != null ? num(x.dps_full) : "–", rf != null ? num(rf) : "–", num(x.dps), num(expectedRdps(job, x).value),
+        full(x) === best ? "best" : signed(full(x) / best - 1, 1), String(x.players)], rotHref(job, k)); })))),
+    rdpsNote(job, w, wf));
 }
 
 function rotationPage(code, key) {
@@ -1672,9 +1689,9 @@ function rotationPage(code, key) {
   if (bisAt(job, x)) app.append(el("p", { class: "note" }, "The best-in-slot set's GCD: ", el("a", { href: gearHref(job) }, "its gear →")));
   if (f) app.append(fightCard(f, rot));
   app.append(tiles([
-    [el("span", {}, "Expected nDPS", help(`nDPS: your own damage, without others' buffs and without credit for yours. The median of ${convWho(job, x.conv_players, code)}, each moved to ${x.gcd.toFixed(2)} s (~${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per 0.01 s of ${speedStat(job)}); ${num(x.dps_lo)}–${num(x.dps_hi)} across them.${offlineNote(job)}`)), num(x.dps)],
-    ["Potency", num(x.potency), `${num(x.potency / x.window, 1)} per second`],
-    [el("span", {}, "Ceiling 0:00–2:00 (nDPS)", help("The best rotation for 0:00–2:00 alone (the scorecard's window), nDPS. Player pages and the Rotations chart add the buff credit to compare it with rDPS.")), num(x.ceiling_2min)],
+    [el("span", {}, `nDPS 0:00–${mmss(x.window)}`, help(`nDPS: your own damage, without others' buffs and without credit for yours. The median of ${convWho(job, x.conv_players, code)}, each moved to ${x.gcd.toFixed(2)} s (~${(DATA.rotations[job].speed_cost || 0.4).toFixed(2)}% damage per 0.01 s of ${speedStat(job)}); ${num(x.dps_lo)}–${num(x.dps_hi)} across them.${offlineNote(job)}`)), num(x.dps)],
+    [`Potency 0:00–${mmss(x.window)}`, num(x.potency), `${num(x.potency / x.window, 1)} per second`],
+    [el("span", {}, "nDPS 0:00–2:00", help("A different rotation: the best for 0:00–2:00 alone (the scorecard's window), nDPS. Player pages and the Rotations chart add the buff credit to compare it with rDPS.")), num(x.ceiling_2min)],
     ["GCDs", String(nG), `with ${rot.length - nG} oGCDs · ${nRun} while running`],
     ["Resources wasted", waste.length ? String(waste.reduce((s2, [, v]) => s2 + v, 0)) : "none", waste.length ? waste.map(([w, v]) => `${w} ×${v}`).join(" · ") : "nothing overcapped or dropped"],
   ]));
@@ -1731,7 +1748,8 @@ const itemIcon = (id, cls) => { const src = ((DATA.gear || {}).icons || {})[id];
   return src ? el("img", { class: cls, src, alt: "", draggable: "false" }) : el("span", { class: `${cls} noicon` }); };
 // a set at this rotation's GCD (and hasted GCD, where its key has one); the rotations' GCDs are before a trait's haste
 const bisAt = (job, x) => { const g = gearOf(job);
-  return !!g && g.sets.some(s => Math.abs(s.stats.base_gcd - x.gcd) < 0.005 && (x.hasted == null || s.tier.length < 2 || Math.abs(s.tier[1] - x.hasted) < 0.005)); };
+  return !!g && g.sets.some(s => Math.abs(s.stats.base_gcd - x.gcd) < 0.005 && (x.hasted == null || s.tier.length < 2 || Math.abs(s.tier[1] - x.hasted) < 0.005)
+    && (x.crit == null || Math.abs(s.stats.crit_rate - x.crit) < 0.005)); };   // (Monk: searched at the set's own crit rate)
 const GEAR_ABOUT = "The best gear, materia and food per job for P12S phase 1, without tinctures. The fight syncs you to level 90: level-100 gear is cut to item level 660 (every stat at the slot's cap, materia off), level-90 gear keeps its stats and materia (the 665 weapons too). A set is worth what the job's whole-phase rotation deals with it, so gear and rotation are optimized together, one GCD tier at a time (tools/gear/bis.py). Relic: Mandervillous, or the synced Phantom Occultum for jobs without a Mandervillous weapon. GCD tiers within 0.4% of the best are ties (the rotation search moves that much between runs) and get a tab each.";
 
 function matChip(g, m) {   // a materia slot: its stat's colour and short name (IX marked); dashed where the item's cap cuts it
@@ -1808,41 +1826,51 @@ function gearCard(job) {
   if (tabs) f.insertBefore(tabs, f.querySelector(".chart"));   // above the set and its table alike
   return f;
 }
-// DPS per GCD tier relative to the best set: the potency fitted over a grid of GCDs (every tier) and the tiers searched
-// on their own; whole phase, no raid buffs, the job's own constant multipliers left out (compare within the job only)
+// DPS per GCD tier against the fitted curve's peak: the potency fitted over a grid of GCDs (every tier), the grid's own
+// one-round searches and the tiers searched to the end, with the search's noise as a ribbon around the fit, so a
+// searched tier off the curve reads as noise; whole phase, no raid buffs, the job's own constant multipliers left out
+// (compare within the job only). The table and "best" stay against the best searched set
 function tierCard(job) {
-  const g = gearOf(job), best = g.sets[0].dps;
-  const pts = g.tiers.map(t => ({ t, x: t.tier[0], f: t.fitted != null ? t.fitted / best - 1 : null, s: t.searched != null ? t.searched / best - 1 : null }));
+  const g = gearOf(job), best = g.sets[0].dps, fits = g.tiers.filter(t => t.fitted != null);
+  const ref = fits.length ? Math.max(...fits.map(t => t.fitted)) : best, rel = v => v != null ? v / ref - 1 : null;
+  const pts = g.tiers.map(t => ({ t, x: t.tier[0], f: rel(t.fitted), s: rel(t.searched), gr: rel(t.grid) }));
+  const curve = pts.filter(p => p.f != null).sort((a, c) => a.x - c.x);
   const draw = width => {
     const H = 210, L = 52, R = 16, T = 30, B = 28, w = width - L - R, h = H - T - B;
-    const xs = pts.map(p => p.x), ys = pts.flatMap(p => [p.f, p.s]).filter(v => v != null);
+    const xs = pts.map(p => p.x), ys = [...pts.flatMap(p => [p.s, p.gr]), ...curve.flatMap(p => [p.f + g.tie, p.f - g.tie])].filter(v => v != null);
     const x0 = Math.min(...xs) - 0.01, x1 = Math.max(...xs) + 0.01, step = 0.005;
     const y0 = Math.floor(Math.min(...ys, -g.tie) / step) * step, y1 = Math.max(0.001, Math.ceil(Math.max(...ys) / step) * step);
     const X = v => L + (v - x0) / (x1 - x0) * w, Y = v => T + (y1 - v) / (y1 - y0) * h;
-    const svg = sv("svg", { viewBox: `0 0 ${width} ${H}`, role: "img", "aria-label": "DPS per GCD tier against the best set" });
-    svg.append(sv("rect", { class: "ceil-band", x: L, y: Y(0), width: w, height: Y(-g.tie) - Y(0) }));   // the ties
+    const svg = sv("svg", { viewBox: `0 0 ${width} ${H}`, role: "img", "aria-label": "DPS per GCD tier against the fitted curve's peak" });
+    if (curve.length > 1)   // the search's noise around the fit
+      svg.append(sv("polygon", { class: "ceil-band", points: [...curve.map(p => `${X(p.x)},${Y(p.f + g.tie)}`), ...[...curve].reverse().map(p => `${X(p.x)},${Y(p.f - g.tie)}`)].join(" ") }));
+    else svg.append(sv("rect", { class: "ceil-band", x: L, y: Y(g.tie), width: w, height: Y(-g.tie) - Y(g.tie) }));
     for (let v = y0; v <= y1 + 1e-9; v += step)
       svg.append(sv("line", { class: "gridline", x1: L, x2: L + w, y1: Y(v), y2: Y(v) }), sv("text", { x: L - 6, y: Y(v) + 4, "text-anchor": "end" }, signed(v, 1)));
     const xstep = (x1 - x0) / 0.05 > Math.max(2, w / 70) ? 0.1 : 0.05;
     for (let v = Math.ceil(x0 / xstep) * xstep; v <= x1; v += xstep) svg.append(sv("text", { x: X(v), y: H - 8, "text-anchor": "middle" }, `${v.toFixed(2)} s`));
     for (const p of pts) {
-      const hit = sv("circle", { class: "hit", cx: X(p.x), cy: Y(p.s ?? p.f), r: 9 });
-      hover(hit, `${tierLabel(g, p.t.tier)} GCD`, [...(p.s != null ? [[signed(p.s, 2), `searched: ${num(p.t.searched)} DPS`, "k-tier-s"]] : []),
-        ...(p.f != null ? [[signed(p.f, 2), `fitted: ${num(p.t.fitted)} DPS`, "k-tier-f"]] : [])]);
+      const hit = sv("circle", { class: "hit", cx: X(p.x), cy: Y(p.s ?? p.gr ?? p.f), r: 9 });
+      hover(hit, `${tierLabel(g, p.t.tier)} GCD`, [...(p.s != null ? [[signed(p.t.searched / best - 1, 2), `searched: ${num(p.t.searched)} DPS, against the best set`, "k-tier-s"]] : []),
+        ...(p.gr != null ? [[signed(p.t.grid / best - 1, 2), `grid search (one round): ${num(p.t.grid)} DPS`, "k-tier-g"]] : []),
+        ...(p.f != null ? [[signed(p.t.fitted / best - 1, 2), `fitted: ${num(p.t.fitted)} DPS`, "k-tier-f"]] : [])]);
       svg.append(hit);
     }
     for (const p of pts) if (p.f != null) svg.append(sv("circle", { class: "tier-f", cx: X(p.x), cy: Y(p.f), r: 4 }));
+    for (const p of pts) if (p.gr != null) svg.append(sv("circle", { class: "tier-g", cx: X(p.x), cy: Y(p.gr), r: 4.5 }));
     for (const p of pts) if (p.s != null) svg.append(sv("circle", { class: "tier-s", cx: X(p.x), cy: Y(p.s), r: 5.5 }));
-    const b = pts.find(p => p.s === 0);
-    if (b) svg.append(sv("text", { class: "lbl", x: X(b.x), y: Y(0) - 10, "text-anchor": X(b.x) > L + w - 30 ? "end" : "middle" }, "best"));
+    const b = pts.find(p => p.t.searched === best);
+    if (b) svg.append(sv("text", { class: "lbl", x: X(b.x), y: Y(b.s) - 10, "text-anchor": X(b.x) > L + w - 30 ? "end" : "middle" }, "best"));
     return svg;
   };
-  return card("DPS by GCD tier", info("Each GCD tier's best set with its own rotation, against the best set, over the whole phase without raid buffs. Grey: the rotation's potency fitted over a grid of GCDs (every tier); blue: the tiers whose rotation was searched at their own set's GCD, speed and rates. The band: within 0.4% of the best, the search's noise, so ties. On Samurai, Viper and Black Mage a GCD can come with two hasted GCDs (hover for both)."),
-    draw, () => tableOf(["GCD", "Fitted DPS", "Searched DPS", "Against the best"], pts.map(p => [tierLabel(g, p.t.tier),
-      p.t.fitted != null ? num(p.t.fitted) : "–", p.t.searched != null ? num(p.t.searched) : "–", signed(p.s ?? p.f, 2)])),
+  return card("DPS by GCD tier", info(`Each GCD tier's best set with its own rotation, over the whole phase without raid buffs, against the peak of the fitted curve. Grey: the rotation's potency fitted over a grid of GCDs (every tier); hollow: the grid's own searches (one round of set and rotation); blue: tiers searched to the end at their own set's GCD, speed and rates (the fit's best three, and any grid tier within ${pct(g.tie, 1)} of them or above). The band: ±${pct(g.tie, 1)} around the fit, the search's noise, so a point inside it is the curve plus noise. "best" marks the best searched set; sets within ${pct(g.tie, 1)} of it are ties. On Samurai, Viper and Black Mage a GCD can come with two hasted GCDs (hover for both).`),
+    draw, () => tableOf(["GCD", "Fitted DPS", "Grid search", "Searched DPS", "Against the best set"], pts.map(p => [tierLabel(g, p.t.tier),
+      p.t.fitted != null ? num(p.t.fitted) : "–", p.t.grid != null ? num(p.t.grid) : "–", p.t.searched != null ? num(p.t.searched) : "–",
+      signed((p.t.searched ?? p.t.grid ?? p.t.fitted) / best - 1, 2)])),
     [el("span", {}, el("i", { style: "width:8px;height:8px;border-radius:50%;background:var(--muted)" }), "fitted"),
+     el("span", {}, el("i", { style: "width:8px;height:8px;border-radius:50%;border:1.5px solid var(--series)" }), "grid search"),
      el("span", {}, el("i", { style: "width:10px;height:10px;border-radius:50%;background:var(--series)" }), "searched"),
-     el("span", {}, el("i", { class: "ceil-band-key", style: "width:16px;height:10px;border-radius:2px" }), `ties: within ${pct(g.tie, 1)} of the best`)]);
+     el("span", {}, el("i", { class: "ceil-band-key", style: "width:16px;height:10px;border-radius:2px" }), `noise: ±${pct(g.tie, 1)} around the fit`)]);
 }
 
 function gearPage() {
