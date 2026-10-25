@@ -69,7 +69,10 @@ stat are left out.
 of GCDs, slowest first (every 0.03 s; Samurai and Viper on their hasted GCD; Black Mage every tier, `GRID_STEP`), fits
 the potency over the grid (quadratic, as the search moves ~0.4% between runs, `tools/rotation/README.md`; Black Mage
 takes each tier's own) and interpolates the mix, finds each tier's set at its fitted mix, and searches the top three
-tiers again. The grid covers the tiers that could still win (`span_of`): a set's multipliers times the most a faster
+tiers again, and every grid tier whose own grid search came within 0.4% of them or above (`TIE`: a lucky grid point
+lifts the fit's peak, but it is a searched set and rotation; Monk's 1.94 s grid point beat the fit's best three by
+1.1% on 2026-10-25). The site's chart shows all three against the fit's peak, with the search's noise as a band
+around the fit. The grid covers the tiers that could still win (`span_of`): a set's multipliers times the most a faster
 GCD can add to the potency, the GCDs' ratio plus 2% (`SLACK`), at least the best set's. It stops once 0.05 s of it in
 a row stayed 1.5% under its best grid point (`STOP`, `STOP_SPAN`), each priced at its tier's set. Until 2026-10-24 the
 grid took a flat cut, the tiers with at least 93% of the best set's multipliers; the best is the slowest tier's, so
@@ -125,25 +128,26 @@ so Monk's and Ninja's sets carry that GCD too (`base_gcd`) for the Rotations pag
 
 DPS over the whole phase without raid buffs, the job's own constant multipliers left out (Black Mage's Enochian), so
 compare tiers within a job, not across jobs. Logs in `.cache/<job>_combined.log`, sets in `.cache/bis_<job>.json`
-(2026-10-24, after the GCD rounding, own-rate, DoT and Red Mage changes). The rest of each set is 660 savage and
+(2026-10-25, after the status timings of tools/rotation/README.md's Checks, with grid tiers as candidates; Summoner's
+first run since the 2026-10-24 grid rule, which reaches its 2.10-2.14 s tiers). The rest of each set is 660 savage and
 tomestone gear melded to the tier. Pictomancer and Viper have no Mandervillous weapon (Dawntrail jobs): their
 relic is the synced Phantom Occultum. The site ceiling (`ceiling.py`) is in each job's potency unit (Black Mage x1.22).
 
 | Job | Best tier (searched) | Tied within 0.4% | Weapon (relic substats) | Armour and accessories | Food | Site ceiling 0:00-2:00, nDPS +- luck |
 |---|---|---|---|---|---|---|
-| BLM | 2.38/2.02 | - | Mandervillous Rod (crit/det +sps) | 2 synced (780, 780) | Popoto Potage | 15,337 +-551 (3.6%) |
-| BRD | 2.50 | 2.49 | Mandervillous Compound Bow (crit/det +dh) | 2 synced (780, 780) | Caramel Popcorn | 10,160 +-282 (2.8%) |
+| BLM | 2.13/1.81 | 2.12/1.80, 2.17/1.85, 2.15/1.83, 2.21/1.88, 2.20/1.87 | Mandervillous Rod (det/sps +dh) | 2 synced (780, 790) | Rroneek au Gratin | 15,608 +-280 (1.8%) |
+| BRD | 2.47 | 2.50 | Mandervillous Compound Bow (crit/dh +sks) | 2 synced (780, 780) | Caramel Popcorn | 10,053 +-280 (2.8%) |
 | DNC | 2.50 | - | Mandervillous Chakrams (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 10,354 +-373 (3.6%) |
-| DRG | 2.50 | - | Mandervillous Trident (crit/det +dh) | 2 synced (780, 790) | Caramel Popcorn | 12,945 +-385 (3.0%) |
+| DRG | 2.50 | 2.49 | Mandervillous Trident (crit/det +dh) | 2 synced (780, 790) | Caramel Popcorn | 12,923 +-383 (3.0%) |
 | MCH | 2.49 | 2.47 | Mandervillous Revolver (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 13,230 +-309 (2.3%) |
-| MNK | 1.99 | 1.97 | Mandervillous Fists (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 14,018 +-391 (2.8%) |
+| MNK | 1.94 | - | Mandervillous Fists (crit/dh +sks) | 2 synced (780, 780) | Caramel Popcorn | 14,141 +-386 (2.7%) |
 | NIN | 2.12 | - | Mandervillous Knives (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 13,364 +-431 (3.2%) |
-| PCT | 2.47 | 2.46 | Phantom Round Brush Occultum (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 14,396 +-479 (3.3%) |
-| RDM | 2.50 | - | Mandervillous Rapier (crit/det +dh) | 3 synced (780, 780, 790) | Caramel Popcorn | 12,201 +-407 (3.3%) |
-| RPR | 2.47 | - | Mandervillous Zaghnal (crit/dh +sks) | 2 synced (780, 780) | Caramel Popcorn | 13,577 +-427 (3.1%) |
-| SAM | 2.50/2.17 | 2.48/2.15, 2.49/2.16 | Mandervillous Samurai Blade (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 14,663 +-309 (2.1%) |
-| SMN | 2.42 | 2.41 | Mandervillous Index (crit/det +sps) | 2 synced (780, 780) | Caramel Popcorn | 12,255 +-413 (3.4%) |
-| VPR | 2.48/2.10 | 2.50/2.12, 2.47/2.09 | Phantom Twinfangs Occultum (crit/det +dh) | 2 synced (780, 780) | Caramel Popcorn | 14,523 +-432 (3.0%) |
+| PCT | 2.49 | 2.47, 2.50 | Phantom Round Brush Occultum (crit/det +dh) | 4 synced (780, 780, 790, 795) | Caramel Popcorn | 14,335 +-483 (3.4%) |
+| RDM | 2.50 | 2.49 | Mandervillous Rapier (crit/det +dh) | 3 synced (780, 780, 790) | Caramel Popcorn | 12,622 +-424 (3.4%) |
+| RPR | 2.47 | 2.44, 2.49 | Mandervillous Zaghnal (crit/dh +sks) | 2 synced (780, 780) | Caramel Popcorn | 13,579 +-427 (3.1%) |
+| SAM | 2.50/2.17 | 2.49/2.16, 2.48/2.15 | Mandervillous Samurai Blade (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 14,374 +-306 (2.1%) |
+| SMN | 2.12 | 2.14, 2.11, 2.10 | Mandervillous Index (det/sps +dh) | 2 synced (780, 790) | Rroneek au Gratin | 12,837 +-217 (1.7%) |
+| VPR | 2.48/2.10 | 2.50/2.12, 2.47/2.09 | Phantom Twinfangs Occultum (crit/det +dh) | 3 synced (780, 780, 795) | Caramel Popcorn | 14,523 +-432 (3.0%) |
 
 Not modelled: cast and recast times other than the GCD in the continuously scaled job models (round to 0.01 s in
 game); pets use the owner's weapon-damage job modifier.

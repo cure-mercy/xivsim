@@ -361,6 +361,7 @@ def setting(jobkey, t, s):
 
 SLACK = 0.02          # potency can beat the GCD's ratio a little: a fixed timeline fits casts unevenly (Red Mage's 2.50 s)
 STOP, STOP_SPAN = 0.015, 0.05     # the grid stops once STOP_SPAN s of it in a row stayed STOP under its best so far
+TIE = 0.004       # the search's noise: a grid search this close to the best searched tier (or better) is searched too
 GRID_STEP = {"BLM": 0.01}         # every tier, unfitted: Black Mage's potency jumps at some GCDs (2.18 s, 2.32 s),
                                   # which a fit smooths out (the 2026-10-24 grid every 0.03 s missed 2.18-2.24 s)
 
@@ -382,8 +383,10 @@ def combined(jobkey, step=0.03, top=3, log=print):
     (span_of), until STOP_SPAN s of grid in a row stay STOP under the best grid value so far (each grid point priced
     at its tier's set with its own mix); the potency fitted over the grid (search noise ~0.4%; GRID_STEP jobs take
     the grid's own) and the mix's shares interpolated; every tier's set again at its fitted mix; the `top` tiers then
-    searched at their own GCD. Returns (cands, {tier: (fitted dps, food name, food, pick, mix)},
-    {tier: searched (dps, ...)}, grid {gcd: mix})."""
+    searched at their own GCD, and so is every grid tier whose one-round grid search came within TIE of the best of
+    them or above it (a lucky grid point lifts the fit, but it is a set and a rotation that were searched: Monk's 1.94 s
+    grid point beat the three fitted best by 1.1%, 2026-10-25). Returns (cands, {tier: (fitted dps, food name, food,
+    pick, mix)}, {tier: searched (dps, ...)}, {tier: grid search (dps, ...)}, grid {gcd: mix})."""
     job, dps = jobkey.upper(), _rot()
     cands, W = candidates(job), dps.FULL
     jm = dps.JOBS[jobkey][0]
@@ -396,11 +399,12 @@ def combined(jobkey, step=0.03, top=3, log=print):
     order = sorted(span, key=x, reverse=True)
     log(f"  span {'/'.join(f'{v:.2f}' for v in order[0])} to {'/'.join(f'{v:.2f}' for v in order[-1])} "
         f"({len(order)} tiers), grid every {step:.2f} s")
-    mixes, vals, last, below = {}, {}, None, None
+    mixes, vals, last, below, grid = {}, {}, None, None, {}
     for t in order:
         if not (last is None or last - x(t) >= step - 1e-9 or t == order[-1]): continue
         mixes[x(t)], r = tier_rotation(jobkey, cands, t, first[t], rounds=1)
         vals[x(t)], last = r[0], x(t)
+        grid[t] = (r[0] / W, r[1], r[2], r[3], mixes[x(t)])
         log(f"  grid {'/'.join(f'{v:.2f}' for v in t)}: {r[0] / W:,.0f}  {mixes[x(t)]}")
         below = None if r[0] >= (1 - STOP) * max(vals.values()) else below if below is not None else x(t)
         if below is not None and below - x(t) >= STOP_SPAN - 1e-9:
@@ -421,13 +425,20 @@ def combined(jobkey, step=0.03, top=3, log=print):
         m, r = tier_rotation(jobkey, cands, t, sets[t])
         searched[t] = (r[0] / W, r[1], r[2], r[3], m)
         log(f"  searched {'/'.join(f'{v:.2f}' for v in t)}: {searched[t][0]:,.0f} (fitted {fitted[t][0]:,.0f})  {r[1]}")
-    return cands, fitted, searched, mixes
+    for t, g in sorted(grid.items(), key=lambda kv: -kv[1][0]):      # grid points that tie or beat them: searched too
+        if t in searched or g[0] < (1 - TIE) * max(v[0] for v in searched.values()): continue
+        m, r = tier_rotation(jobkey, cands, t, (g[0] * W, g[1], g[2], g[3]))     # from its grid set
+        searched[t] = (r[0] / W, r[1], r[2], r[3], m)
+        log(f"  searched {'/'.join(f'{v:.2f}' for v in t)}: {searched[t][0]:,.0f} (grid {g[0]:,.0f}, fitted "
+            f"{fitted[t][0] if t in fitted else float('nan'):,.0f})  {r[1]}")
+    return cands, fitted, searched, grid, mixes
 
 
-def save(jobkey, cands, fitted, searched):
+def save(jobkey, cands, fitted, searched, grid=None):
     """The combined optimum to .cache/bis_<job>.json: the best searched tier's set (items, fills, food, final stats), the
     speed factor and rates its rotation is searched at, its mix, every searched tier's set (`sets`, best first: the site
-    shows the ties, sheets.py) and every tier's fitted DPS (tools/gear/ceiling.py reads it)."""
+    shows the ties, sheets.py), every tier's fitted DPS (tools/gear/ceiling.py reads it) and the grid's one-round
+    searches (`grid`, the site's chart)."""
     job = jobkey.upper()
     t, (d, fname, fb, pick, m) = max(searched.items(), key=lambda x: x[1][0])
     s = Stats(job, _total(cands, pick), fb)
@@ -443,7 +454,8 @@ def save(jobkey, cands, fitted, searched):
                rates=dict(crit_rate=s.crit_rate, crit_dmg=s.crit_dmg, dh_rate=s.dh_rate), speed=speed, params=rt,
                mix=dict(normal=m.normal, dot=m.dot, sure=m.sure, auto=m.auto),
                searched={"/".join(f"{v:.2f}" for v in k): r[0] for k, r in searched.items()},
-               fitted={"/".join(f"{v:.2f}" for v in k): r[0] for k, r in fitted.items()})
+               fitted={"/".join(f"{v:.2f}" for v in k): r[0] for k, r in fitted.items()},
+               grid={"/".join(f"{v:.2f}" for v in k): r[0] for k, r in (grid or {}).items()})
     (CACHE / f"bis_{jobkey}.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
 
 
@@ -456,13 +468,13 @@ if __name__ == "__main__":
     a = ap.parse_args()
     job = a.job.upper()
     if a.combined:
-        cands, fitted, searched, grid = combined(a.job, top=a.top)
-        save(a.job, cands, fitted, searched)
+        cands, fitted, searched, grid, _ = combined(a.job, top=a.top)
+        save(a.job, cands, fitted, searched, grid)
         print(f"\n{job}: DPS per GCD tier over the whole phase (no raid buffs; the job's own constant multipliers out)")
         print("  fitted:", "  ".join(f"{'/'.join(f'{v:.2f}' for v in t)} {r[0]:,.0f}"
                                      for t, r in sorted(fitted.items(), reverse=True)))
         for t, (d, fname, fb, pick, m) in sorted(searched.items(), key=lambda x: -x[1][0]):
-            print(f"\n  {'/'.join(f'{v:.2f}' for v in t)}  {d:,.0f} searched ({fitted[t][0]:,.0f} fitted)  {fname}  {m}\n"
+            print(f"\n  {'/'.join(f'{v:.2f}' for v in t)}  {d:,.0f} searched ({fitted[t][0] if t in fitted else float('nan'):,.0f} fitted)  {fname}  {m}\n"
                   f"{describe(job, cands, fb, pick)}")
     else:
         dps = _rot()

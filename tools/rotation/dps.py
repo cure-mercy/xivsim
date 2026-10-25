@@ -373,23 +373,35 @@ def site_rotation(job, s, until=ROT_UNTIL):
 
 
 def _spec(g):
-    """A --gcds entry as (GCD, hasted GCD or None)."""
-    return (g, None) if isinstance(g, (int, float)) else (g[0], g[1] if len(g) > 1 else None)
+    """A --gcds entry as (GCD, hasted GCD or None, crit rate or None)."""
+    return (g, None, None) if isinstance(g, (int, float)) else (g[0], g[1] if len(g) > 1 else None, g[2] if len(g) > 2 else None)
+
+
+def _parse_gcds(arg):
+    """--gcds / --bis-gcds: GCD[/hasted][-cNN] entries, comma-separated (NN: the crit rate in %, for a job whose
+    resources come from crits: Monk's best-in-slot set at its own rate, not the job's default)."""
+    out = []
+    for g in (arg.split(",") if arg else ()):
+        g, _, c = g.partition("-c")
+        v = [float(x) for x in g.split("/")]
+        out.append((v[0], v[1] if len(v) > 1 else None, int(c) / 100 if c else None))
+    return out
 
 
 def rotations(job, rows, width, extra=(), ours=None, bis=()):
     """The site's optimized rotations for a job, {fight: timeline, rotations: {key: ...}}: at every GCD (and crit rate)
     searched for our players' ceilings, plus the extra GCDs (at the job's default crit rate), the best whole-phase
-    rotation up to ROT_UNTIL, with its expected DPS there at the median of our players' conversions and their range, and the 0:00-2:00
-    ceiling's at the median. Each player is moved to the rotation's GCD first (SPEED_PTS, STAT_PT): a faster GCD costs
+    rotation up to ROT_UNTIL, with its expected DPS there at the median of our players' conversions and their range, the
+    same over the whole phase (FULL: `dps_full`), and the 0:00-2:00 ceiling's at the median. Each player is moved to the rotation's GCD first (SPEED_PTS, STAT_PT): a faster GCD costs
     them damage per potency, so GCDs compare at what a player would have there. `ours`: the players counted as playing
     at each GCD, when `rows` (the conversions) are someone else's (the clears', for a job none of ours plays). `bis`:
     more GCDs, searched as the extra ones, that are there for the gear model's best-in-slot sets (tools/gear): their
     rotations are marked `bis_gcd`, so a later run can drop them once no set is at that GCD (scratch/gear/rerun_all.py)."""
     more = []
     for g in [*extra, *bis]:   # a GCD, or (GCD, hasted GCD) where the tier holds two (Samurai's 2.48 s: 2.15 or 2.16 s under Fuka)
-        g, h = _spec(g)
-        more.append(ceiling_key(job, g, getattr(job, "CRIT", None), speed=calibrate.speed_for(job, round(g, 2), h) if h else None))
+        g, h, c = _spec(g)     # (and the crit rate, where the job's resources come from crits: the job's default without)
+        crit = getattr(job, "CRIT", None) if c is None or not hasattr(job, "CRIT") else c
+        more.append(ceiling_key(job, g, crit, speed=calibrate.speed_for(job, round(g, 2), h) if h else None))
     short = [k for k in _ceiling if k[0] == job.__name__ and k[3] == WINDOW] + more
     ceilings(job, width, short + [ceiling_key(job, k[1], k[2], FULL, k[4]) for k in short])    # all in one go
     def conv(s, r, gcd, w=ROT_UNTIL):
@@ -405,13 +417,16 @@ def rotations(job, rows, width, extra=(), ours=None, bis=()):
         s = upto(job, whole, site_fight(job, FULL)[1], gcd, crit, speed=speed)
         hl = calibrate.hasted_label(job, speed)
         key, each = rot_key(gcd, crit, hl), [conv(s, r, gcd) for r in rows]
+        each_full = [conv(whole, r, gcd, FULL) for r in rows]           # the whole phase, to the clears' median kill
         rot = site_rotation(job, whole)
         out[key] = dict(gcd=gcd, **({"hasted": hl} if hl is not None else {}), crit=crit, window=ROT_UNTIL, potency=round(s.dmg), dps=round(st.median(each)), dps_lo=round(min(each)),
                         ceiling_2min=round(st.median(conv(s2, r, gcd, WINDOW) for r in rows)),
-                        dps_hi=round(max(each)), players=sum(r["key"] == key for r in (rows if ours is None else ours)),
+                        dps_hi=round(max(each)), window_full=FULL, dps_full=round(st.median(each_full)),
+                        dps_full_lo=round(min(each_full)), dps_full_hi=round(max(each_full)), players=sum(r["key"] == key for r in (rows if ours is None else ours)),
                         conv_players=len(rows),
                         waste={w: round(n, 1) for w, n in zip(job.WASTE, s.waste) if n}, rotation=rot)
-        at = lambda gs: any(abs(gcd - g) < 0.005 and (h is None or hl is None or abs(hl - h) < 0.005) for g, h in map(_spec, gs))
+        at = lambda gs: any(abs(gcd - g) < 0.005 and (h is None or hl is None or abs(hl - h) < 0.005)
+                            and (c is None or crit is None or abs(crit - c) < 0.005) for g, h, c in map(_spec, gs))
         if at(bis) and not at(extra): out[key]["bis_gcd"] = True     # an extra asked for on its own stays
     return dict(fight=timeline(job), rotations=out, speed_cost=round(100 * STAT_PT * SPEED_PTS * 0.01, 2))
 
@@ -435,7 +450,8 @@ def main():
     ap.add_argument("--site", action="store_true", help=f"save our players' ceilings and the optimized rotations for the scorecard site "
                     f"({SITE_FILE.name}, {ROT_FILE.name})")
     ap.add_argument("--gcds", help="with --site: also optimize at these GCDs (comma-separated), for the site's rotation pages; "
-                    "GCD/hasted (2.48/2.15) picks the hasted GCD under Fuka, Swiftscaled or Ley Lines where the tier holds two")
+                    "GCD/hasted (2.48/2.15) picks the hasted GCD under Fuka, Swiftscaled or Ley Lines where the tier holds two; "
+                    "-cNN the crit rate in %% (2.43-c28) for a job whose resources come from crits (Monk)")
     ap.add_argument("--bis-gcds", help="with --site: as --gcds, for the gear model's best-in-slot sets: marked so a later run "
                     "can drop them once no set is at that GCD (scratch/gear/rerun_all.py)")
     ap.add_argument("--offline", action="store_true", help="our players' logs from the scorecard's acts caches, not FFLogs "
@@ -468,8 +484,7 @@ def main():
             days = {(k["code"], k["fight"]): k["day"] for k in json.loads(logs.BENCH.read_text())["kills"]}
             conv = player_rows(job, [p for p in logs.clears(jobname) if days[(p["code"], p["fight"])] >= since], a.width)
             show(conv, f"None of our players on {jobname}: the site converts at the benchmark clears' since {since} (DPS)")
-        gcds = lambda arg: [tuple(float(v) for v in g.split("/")) for g in arg.split(",")] if arg else ()
-        mine = rotations(job, conv, a.width, gcds(a.gcds), ours=rows, bis=gcds(a.bis_gcds))
+        mine = rotations(job, conv, a.width, _parse_gcds(a.gcds), ours=rows, bis=_parse_gcds(a.bis_gcds))
         if conv is not rows:                              # the site says whose conversion it is
             mine.update(converted_from="clears", converted_since=since)
         if a.offline: mine["offline"] = True              # the site says its DPS comes from the acts caches
