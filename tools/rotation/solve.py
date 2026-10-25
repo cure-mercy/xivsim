@@ -2,7 +2,7 @@
 
     python tools/rotation/solve.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch|nin|smn|dnc] [--gcd 2.32] [--until 449] [--slot R1] [--var para2=debuff]
                                    [--party AST,SCH,DRG,DNC] [--still] [--move 30-36] [--pot] [--carry] [--width 1000]
-                                   [--layers time|gcd] [--no-polish] [--compare]
+                                   [--layers time|gcd] [--no-polish] [--no-restarts] [--compare]
 
 Damage is in potency (Xenoglossy 890, Communio 1,100), multiplied by the raid buffs active when each hit lands. By default there are none:
 it is the job's own potency, whatever party it plays in. The fight is P12S P1's fixed timeline (p12s.py): Athena can't
@@ -108,6 +108,8 @@ def main():
     ap.add_argument("--layers", default="time", choices=["time", "gcd"], help="compare states at the same time (engine.sweep, "
                     "default) or after the same number of GCDs (engine.beam, the search before 2026-10-22)")
     ap.add_argument("--no-polish", action="store_true", help="skip the local search on the search's best rotation (polish.py)")
+    ap.add_argument("--no-restarts", action="store_true", help="polish without its restarts (searching the rest of the fight "
+                    "afresh from points along the rotation when single edits find nothing): faster, ~0-1%% less")
     ap.add_argument("--compare", action="store_true", help="replay the clears' logged rotations under the same buffs, against the standing-still optimum at each one's GCD")
     a = ap.parse_args()
     job, jobname = JOBS[a.job]
@@ -129,7 +131,7 @@ def main():
           f"(spread {min(v for _, v in scores):,.0f}-{max(v for _, v in scores):,.0f})")
     if not a.no_polish:
         t0, before = time.time(), job.final(best, fight)
-        best, passes = polish.polish(a.job, fight, best, setting, job.SPEED, params=params)
+        best, passes = polish.polish(a.job, fight, best, setting, job.SPEED, params=params, restarts=not a.no_restarts)
         print(f"polished in {time.time() - t0:.0f} s over {passes} passes: {before:,.0f} -> {job.final(best, fight):,.0f} "
               f"({job.final(best, fight) / before - 1:+.2%})")
     show(best, job, fight)
@@ -148,7 +150,8 @@ def main():
             if k not in ceil:
                 t0 = time.time()
                 s, setting, _ = engine.search(a.job, free, width=a.width, speed=speed, params=params, layers=a.layers)
-                if not a.no_polish: s, _ = polish.polish(a.job, free, s, setting, speed, params=params, log=lambda m: None)
+                if not a.no_polish: s, _ = polish.polish(a.job, free, s, setting, speed, params=params, log=lambda m: None,
+                                                        restarts=not a.no_restarts)
                 ceil[k] = s.dmg
                 print(f"  standing-still optimum at GCD {calibrate.gcd_at(job, speed):.2f}: {s.dmg:,.0f} "
                       f"({time.time() - t0:.0f} s)", flush=True)

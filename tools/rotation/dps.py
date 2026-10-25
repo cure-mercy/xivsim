@@ -1,7 +1,7 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
     python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch|nin|smn|dnc] [--clears] [--site [--gcds 2.30,2.40]] [--offline]
-                                 [--no-polish]
+                                 [--no-polish] [--restarts]
 
 Per player, from their clean pulls (alive through 2:00):
   damage per potency   their plain hits (no crit, no direct hit), external buffs divided out, over the model potency
@@ -194,6 +194,7 @@ def convert(s, k, e, et, ec=None, window=WINDOW):
 
 _ceiling, _fight = {}, {}
 POLISH = True                                   # polish each search's best rotation (polish.py); --no-polish turns it off
+RESTARTS = False                                # ...with its restarts (--restarts: ~0-1% more, minutes a search)
 ROT_UNTIL = p12s.load()["untargetable"][0][0]   # the site's rotations: shown until Palladion takes Athena away (281.65 s)
 FULL = p12s.load()["kill_median"]               # ...and searched over the whole phase (449 s)
 
@@ -261,7 +262,7 @@ def ceilings(job, width, keys):
         if POLISH:
             job.SPEED, fight = k[4], site_fight(job, k[3])[1]
             before = job.final(s, fight)
-            s, passes = polish.polish(name, fight, s, setting, k[4], params=params(k), log=lambda m: None)
+            s, passes = polish.polish(name, fight, s, setting, k[4], params=params(k), log=lambda m: None, restarts=RESTARTS)
             print(f"  {rot_key(k[1], k[2], calibrate.hasted_label(job, k[4]))} until {k[3]:.0f}s: polished {before:,.0f} -> {job.final(s, fight):,.0f} "
                   f"in {passes} passes", flush=True)
         _ceiling[k] = s
@@ -440,9 +441,11 @@ def main():
     ap.add_argument("--offline", action="store_true", help="our players' logs from the scorecard's acts caches, not FFLogs "
                     "(logs.ours_offline, flag_hits): for when FFLogs is down; 'logged' then misses the hits left out")
     ap.add_argument("--no-polish", action="store_true", help="skip the local search on each search's best rotation (polish.py)")
+    ap.add_argument("--restarts", action="store_true", help="polish with restarts (the rest of the fight searched afresh from "
+                    "points along the rotation): ~0-1%% more, 2-15 minutes a whole-phase search")
     a = ap.parse_args()
-    global POLISH
-    POLISH = not a.no_polish
+    global POLISH, RESTARTS
+    POLISH, RESTARTS = not a.no_polish, a.restarts
     job, jobname = JOBS[a.job]
     calibrate.use(a.job)
     pulls = flag_hits(job, logs.ours_offline(jobname, getattr(job, "own_factor", lambda p, h: 1.0))) if a.offline else logs.ours(jobname)

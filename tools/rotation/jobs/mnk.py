@@ -31,6 +31,7 @@ windows only True North gets it. Reach: every weaponskill and The Forbidden Chak
 meditations and Form Shift work from anywhere. See jobs/rpr.py for the away windows.
 """
 import itertools, math
+import engine
 from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, recast, settle
 
 POTENCY = {"Bootshine": (220, 420), "True Strike": (300, 500), "Snap Punch": (270, 420),      # (plain, with Fury)
@@ -140,7 +141,9 @@ def advance(s, fight, to):
         s.auto_next = a + AUTO_DELAY * (0.5 if s.wind_until > a else 1)
     if to > s.ct:
         d = min(to, s.bh_until) - max(s.ct, s.bh_until - BH_S)
-        if d > 0: add_chakra(s, min(to, s.bh_until) - 1e-6, PARTY_CHAKRA * d)
+        if d > 0:
+            at, n = min(to, s.bh_until) - 1e-6, PARTY_CHAKRA * d
+            add_chakra(s, at, n if engine.DRAW is None else engine.drawn_count(n, at, "party chakra"))
         s.ct = to
     if s.pb and s.pb_until <= to: wasted(s, 2, s.pb); s.pb = 0
 
@@ -242,7 +245,10 @@ def potency(s, fight, name, at):
 
 
 def crit_chance(at):
+    """A weaponskill's chakra from its own crit: the log's in a replay, drawn (engine.DRAW: montecarlo.py), else the
+    expected CRIT."""
     if LOG_CRIT is not None: return float(LOG_CRIT.get(round(at, 1), False))
+    if engine.DRAW is not None: return float(engine.drawn(CRIT, at, "crit"))
     return CRIT
 
 
