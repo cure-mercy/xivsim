@@ -590,8 +590,11 @@ values (`VALUE`) instead was tried too, by regression on sweep states (confounde
 and by tuning each entry against the search (within noise of the portfolio): `scratch/values`.
 
 Procs (`montecarlo.py`, 2026-10-25): the search counts random procs at their expectation; `engine.DRAW` draws them
-instead (Red Mage's Verfire / Verstone Ready, Bard's Repertoire and Hawk's Eye, Dancer's Silken procs, Threefold and
-feathers, Monk's crits and party chakra; the party's Esprit stays expected). The site's whole-phase rotation, replayed
+instead (Red Mage's Verfire / Verstone Ready, Bard's Repertoire and Hawk's Eye, Dancer's Silken procs, Threefold,
+feathers and the party's Esprit, Monk's crits and party chakra). The party's Esprit is drawn as 10 or none on each
+member's GCD, on a fixed 2.5 s grid at the chance that gives the expected rate (`dnc.party_drawn`; the table below
+predates it; with it, a plan-following Dancer lost 2.21% on the current plan, 48 draws). `tools/gear/ceiling.py` uses the same replays
+(`montecarlo.draws`) for the site ceiling's proc luck. The site's whole-phase rotation, replayed
 under drawn procs by a player who follows it (the planned step, else its oGCDs with another GCD in its place, a planned
 oGCD not up yet woven in the next four steps) and by one who re-plans 20 s ahead before every step:
 

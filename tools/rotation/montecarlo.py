@@ -19,6 +19,8 @@ as the search ranks them. The replay with nothing drawn is the plan itself (chec
 --replan H plays a player who re-plans instead: before each step, a sweep (at --replan-width) over the next H seconds
 from the state they are in, procs ahead at their expectation and what is held at its end at the job's values, and the
 first step of its best. Played with nothing drawn too, it shows what the short horizon costs on its own.
+
+draws() is the same replay for other callers: tools/gear/ceiling.py's proc luck on the 0:00-2:00 ceilings.
 """
 import argparse, dataclasses, multiprocessing, pickle, statistics as st, sys, time
 from pathlib import Path
@@ -32,8 +34,18 @@ CARRY = 4                   # a planned oGCD not up yet is tried with this many 
 _W = {}
 
 
-def _init(jobname, speed, setting, fight, steps, times, replan=None):
-    _W.update(job=engine.configure(jobname, speed, setting), fight=fight, steps=steps, times=times, replan=replan)
+def _init(jobname, speed, setting, params, fight, hist, replan=None):
+    try:
+        job = engine.configure(jobname, speed, setting, params)
+        steps, states = polish.split(job, fight, job.State.initial(fight), hist)
+    except Exception as e:      # raised from _plan: a pool whose initializer fails respawns its workers forever
+        _W.update(error=e); return
+    _W.update(job=job, fight=fight, steps=steps, plan=job.final(states[-1], fight), replan=replan)
+
+
+def _plan(_):
+    if "error" in _W: raise _W["error"]
+    return _W["plan"], len(_W["steps"])
 
 
 def actions(s, c):
@@ -102,9 +114,9 @@ def realize(job, fight, s, child, seed):
 
 
 def play(seed):
-    """(final score, planned steps played as planned, other steps, steps changed by a draw) of the plan replayed with
-    the procs drawn from `seed` (None: as the search counts them)."""
-    job, fight, steps, times, rp = _W["job"], _W["fight"], _W["steps"], _W["times"], _W["replan"]
+    """(final score, planned steps played as planned, other steps, steps changed by a draw, the history played) of the
+    plan replayed with the procs drawn from `seed` (None: as the search counts them)."""
+    job, fight, steps, rp = _W["job"], _W["fight"], _W["steps"], _W["replan"]
     s, k, planned, filler, changed, carry = job.State.initial(fight), 0, 0, 0, 0, {}
     while s.t < fight.until:
         engine.DRAW = None
@@ -121,7 +133,18 @@ def play(seed):
         s, k, changed = c, k + used, changed + (not exact)
         if as_planned: planned += 1
         else: filler += 1
-    return job.final(s, fight), planned, filler, changed
+    return job.final(s, fight), planned, filler, changed, s.history()
+
+
+def draws(jobname, fight, hist, setting, speed, params=None, seeds=200, replan=None):
+    """The plan (a history searched at `setting`, `params` the job constants it was searched with) replayed with
+    nothing drawn and under draws 1..seeds, by a player who follows it or re-plans (`replan`: (horizon, width)):
+    dict(plan: its score, steps, ev: play(None), the replay with nothing drawn, runs: [play(seed)])."""
+    with multiprocessing.Pool(initializer=_init, initargs=(jobname, speed, setting, params, fight, hist, replan)) as pool:
+        plan, n = pool.apply(_plan, (None,))
+        ev = pool.apply(play, (None,))
+        runs = pool.map(play, range(1, seeds + 1))
+    return dict(plan=plan, steps=n, ev=ev, runs=runs)
 
 
 def main():
@@ -145,20 +168,16 @@ def main():
             best, _ = polish.polish(a.job, fight, best, setting, mod.SPEED, log=lambda m: None, restarts=a.restarts)
         hist = best.history()
         if a.cache: Path(a.cache).write_bytes(pickle.dumps((setting, hist)))
-    job = engine.configure(a.job, mod.SPEED, setting)
-    steps, states = polish.split(job, fight, job.State.initial(fight), hist)
-    plan = job.final(states[-1], fight)
-    print(f"{a.job} {slot}, whole phase: plan {plan:,.1f} in {len(steps)} steps ({time.time() - t0:.0f} s)", flush=True)
+    print(f"{a.job} {slot}, whole phase: plan searched ({time.time() - t0:.0f} s)", flush=True)
     rp = (a.replan, a.replan_width) if a.replan else None
-    times = [x.t for x in states[:-1]]               # when each planned step was to start
-    with multiprocessing.Pool(initializer=_init, initargs=(a.job, mod.SPEED, setting, fight, steps, times, rp)) as pool:
-        ev, _, fill, _ = pool.apply(play, (None,))
-        if rp:
-            print(f"  re-planning {a.replan:.0f} s ahead (width {a.replan_width}), nothing drawn: {ev:,.1f} ({ev / plan - 1:+.2%} on the plan)", flush=True)
-        elif abs(ev - plan) > 1e-6:
-            print(f"  the plan replays at {ev:,.1f}, not {plan:,.1f}: the replay is off")
-        t0 = time.time()
-        res = pool.map(play, range(1, a.seeds + 1))
+    t0 = time.time()
+    d = draws(a.job, fight, hist, setting, mod.SPEED, seeds=a.seeds, replan=rp)
+    plan, ev, res, steps = d["plan"], d["ev"][0], d["runs"], range(d["steps"])
+    print(f"  plan {plan:,.1f} in {len(steps)} steps")
+    if rp:
+        print(f"  re-planning {a.replan:.0f} s ahead (width {a.replan_width}), nothing drawn: {ev:,.1f} ({ev / plan - 1:+.2%} on the plan)", flush=True)
+    elif abs(ev - plan) > 1e-6:
+        print(f"  the plan replays at {ev:,.1f}, not {plan:,.1f}: the replay is off")
     v = sorted(r[0] for r in res)
     q = lambda f: v[min(len(v) - 1, int(f * len(v)))]
     m, sd = st.mean(v), st.stdev(v) if len(v) > 1 else 0.0

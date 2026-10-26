@@ -84,7 +84,7 @@ LOG_CRIT = None                                 # a replay: {cast time (0.1 s): 
 class State(SlotState):
     __slots__ = ("t", "gcd", "form", "form_until", "formless_until", "pb", "pb_until", "beast", "lunar", "solar",
                  "opo", "raptor", "coeurl", "chakra", "ct", "fire_until", "bh_until", "wind_until", "tn_until", "cds",
-                 "auto_next", "dmg", "critp", "waste", "pot_at", "first", "hist", "mvi", "acc", "free", "spot", "ai",
+                 "auto_next", "dmg", "critp", "plainp", "waste", "pot_at", "first", "hist", "mvi", "acc", "free", "spot", "ai",
                  "mlast", "near")
 
     @classmethod
@@ -98,7 +98,7 @@ class State(SlotState):
         s.chakra, s.ct = 5.0, 0.0                   # meditated to five before the pull
         s.fire_until = s.bh_until = s.wind_until = s.tn_until = -1.0
         s.cds = {k: (n, None) for k, (_, n) in CDS.items()}
-        s.auto_next, s.dmg, s.critp, s.pot_at, s.first, s.hist = 0.0, 0.0, 0.0, None, True, None
+        s.auto_next, s.dmg, s.critp, s.plainp, s.pot_at, s.first, s.hist = 0.0, 0.0, 0.0, 0.0, None, True, None
         s.waste = (0, 0.0, 0)
         s.mvi, s.acc, s.free, s.spot = 0, 0.0, -30.0, 0
         s.ai, s.mlast, s.near = 0, -30.0, False
@@ -178,13 +178,17 @@ def cd_name(name):
     return "Chakra" if name in ("The Forbidden Chakra", "Enlightenment") else name
 
 
-def hit(s, fight, at, potency, name, crit=False):
+def hit(s, fight, at, potency, name, crit=False, drawn=None):
+    """`drawn`: with procs drawn, the weaponskill's own crit (its chakra's, crit_chance): the damage stays expected, but
+    the hit is booked as a sure crit (critp) or a plain one (plainp), so tools/gear/ceiling.py prices the luck that
+    gave the chakra with it."""
     land = at + DELAY.get(name, 0.6)
     if 0 <= land < fight.until and fight.targetable(land):
         d = potency * mult(s, fight, at)
         if crit: d *= fight.sure(at)                        # raid crit buffs turn into damage on a sure crit
         s.dmg += d
-        if crit: s.critp += d
+        if crit or drawn: s.critp += d
+        elif drawn is not None: s.plainp += d
 
 
 def flank_rear(s, fight, at):
@@ -284,7 +288,9 @@ def do_gcd(s, fight, name):
     crit = False
     if harm:
         p, crit = potency(s, fight, name, snap)
-        hit(s, fight, snap, p, name, crit)
+        drawn = (engine.drawn(CRIT, snap, "crit") if engine.DRAW is not None and LOG_CRIT is None and not crit
+                 and name != "Six-Sided Star" else None)
+        hit(s, fight, snap, p, name, crit, drawn)
     if name in KIND:
         k = KIND[name]
         if name == "Bootshine": s.opo = 0
