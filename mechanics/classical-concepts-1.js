@@ -1,7 +1,7 @@
 /* The Classical Concepts I: block your shape's tether, dodge Implode, then bait Palladian Ray. */
 (function(T){
 
-  const { showFeedback } = T;
+  const { showFeedback, el } = T;
 
   const STYLES = /* css */ `
     .cc-mark{
@@ -229,11 +229,6 @@
     }
 
     /* ---------- drawing helpers ---------- */
-    function el(name, attrs){
-      const n = document.createElementNS(SVGNS, name);
-      for(const k in attrs) n.setAttribute(k, attrs[k]);
-      return n;
-    }
     function layer(id){
       const g = document.getElementById(id);
       g.innerHTML = '';

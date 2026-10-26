@@ -1,7 +1,7 @@
 /* Caloric Theory I: pair fire with wind on the waymarks, spread the wind, restack the fire, then Ekpyrosis. */
 (function(T){
 
-  const { shared, showFeedback } = T;
+  const { shared, showFeedback, el, pick, dist } = T;
 
   const STYLES = /* css */ `
     .ct-slot{
@@ -82,7 +82,6 @@
   `;
 
   function initCaloric1(){
-    const SVGNS = 'http://www.w3.org/2000/svg';
     // The floor is 40 by 30 yalms, drawn at 15 units a yalm. The Caloric grid lines sit 7 yalms apart
     // across and 4 down, centred on the waymark diamond at (20, 13).
     const U = 15;
@@ -123,7 +122,6 @@
 
     /* ---------- the mechanic ---------- */
     function startRound(){
-      const pick = arr => arr[Math.floor(Math.random() * arr.length)];
       st.me = shared.slot;
       st.beaconSup = pick(['T1', 'T2', 'H1', 'H2']);
       st.beaconDps = pick(['M1', 'M2', 'R1', 'R2']);
@@ -234,11 +232,6 @@
     }
 
     /* ---------- drawing helpers ---------- */
-    function el(name, attrs){
-      const n = document.createElementNS(SVGNS, name);
-      for(const k in attrs) n.setAttribute(k, attrs[k]);
-      return n;
-    }
     function layer(id){
       const g = document.getElementById(id);
       g.innerHTML = '';
@@ -609,7 +602,6 @@
     }
 
     /* ---------- the wind walk out, judged by the rules ---------- */
-    const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
     function windPlayerAt(m){ return SLOTS.find(q => isWind(q) && markOf(q) === m); }
 
     // A wind spot is safe if it clips nobody when the wind goes off and the walk stays one stack.

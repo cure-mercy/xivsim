@@ -25,22 +25,22 @@ python tools/rotation/dps.py --job nin --site --restarts      # ...with polish's
 | `--job` | Job | Default GCD | Slot | Best over the phase | Standing still | Search |
 |---|---|---|---|---|---|---|
 | `blm` | Black Mage | 2.32 s | R1 / R2 | 100,021 / 99,881 | 100,358 | ~70 s |
-| `rpr` | Reaper | 2.49 s | M1 = M2 | 132,687 | 133,399 | |
-| `mnk` | Monk | 1.94 s (2.43 s before Greased Lightning) | M1 / M2 | 135,217 / 133,392 | 135,805 | ~2.5 min |
+| `rpr` | Reaper | 2.49 s | M1 = M2 | 132,687 | 133,165 | |
+| `mnk` | Monk | 1.94 s (2.43 s before Greased Lightning) | M1 / M2 | 135,217 / 134,833 | 137,203 | ~2.5 min |
 | `brd` | Bard | 2.49 s | R1 = R2 = still | 84,780 | | ~2 min |
-| `drg` | Dragoon | 2.49 s | M1 = M2 | 127,315 | 127,694 | ~70 s |
+| `drg` | Dragoon | 2.49 s | M1 = M2 | 127,315 | 127,909 | ~70 s |
 | `rdm` | Red Mage | 2.50 s | R1 / R2 | 93,948 / 92,856 | 93,376 | ~35 s |
-| `vpr` | Viper | 2.49 s (2.12 s under Swiftscaled) | M1 = M2 | 145,194 | 145,694 | ~55 s |
-| `sam` | Samurai | 2.40 s (2.09 s under Fuka) | M1 = M2 | 130,980 | 134,424 | ~2 min |
+| `vpr` | Viper | 2.49 s (2.12 s under Swiftscaled) | M1 = M2 | 145,194 | 145,736 | ~55 s |
+| `sam` | Samurai | 2.40 s (2.09 s under Fuka) | M1 = M2 | 130,980 | 132,418 | ~2 min |
 | `pct` | Pictomancer | 2.45 s | R1 / R2 | 93,782 / 93,146 (103,194 / 102,558 \*) | 94,243 (103,725 \*) | ~30 s |
 | `mch` | Machinist | 2.45 s | R1 = R2 = still | 107,858 (111,688 \*) | | ~30 s |
-| `nin` | Ninja | 2.09 s (2.46 s before Increase Attack Speed) | M1 = M2 | 131,531 | 131,773 | ~50 s |
+| `nin` | Ninja | 2.09 s (2.46 s before Increase Attack Speed) | M1 = M2 | 131,531 | 131,976 | ~50 s |
 | `smn` | Summoner | 2.45 s | R1 / R2 | 94,559 / 94,556 | 94,602 | ~20 s |
 | `dnc` | Dancer | 2.49 s | R1 = R2 = still | 84,431 (86,750 \*) | | ~40 s |
 
 Potency without raid buffs, over 0:00-449 s, as each job's section last recorded it. \* with sure critical (direct)
-hits at their expected worth, which is what the search ranks by. For Monk, Reaper, Dragoon, Viper, Samurai and Ninja
-the second slot's and standing still's figures predate the status timings of 2026-10-25 (see Checks).
+hits at their expected worth, which is what the search ranks by (the melee jobs' second slot and standing still:
+2026-10-26, with restarts).
 
 | Option | Meaning |
 |---|---|
@@ -108,13 +108,12 @@ view of the player's own statuses) against the log just before every cast, both 
 - from the logs alone: a hard-cast Fire III from Umbral Ice III costs no MP (4 of 4 casts), and the Polyglot timer
   starts when the first fire or ice spell lands (Fire III's 1.29 s flight), not when it resolves.
 
-Over the whole phase in R1 the best rotation deals 100,021 potency (2026-10-25, Ley Lines timed from its landing: 100,556
-before on the same code; R2 99,881 and standing still 100,358 predate it); so our strategy's
-~59 s of running costs 0.4-0.5%, about the search's noise (2026-10-24, at speed factor 0.930, calibrate.speed_for's
-pick for 2.32 s: 2.0 s casts take 1.86 s as logged; at 0.928 they took 1.85 s, standing still read 100,774 and R1 99,670,
-a 1% cost): instants, slidecasts and weaves cover most of it. The best clear's own rotation, replayed with its own
-movement (`--compare`), deals 99,731 at the same 2.32 s GCD, 99.4% of the standing-still optimum; the other clears
-replay at 84-98% of the optimum at their own GCD.
+Over the whole phase the best rotation deals 100,021 potency in R1 and 99,881 in R2 (2026-10-25); standing still
+100,358, so our strategy's ~59 s of running costs 0.4-0.5%, about the search's noise: instants, slidecasts and weaves
+cover most of it (at speed factor 0.930, `calibrate.speed_for`'s pick for 2.32 s, 2.0 s casts take 1.86 s as logged;
+a factor one step off moves the figures by ~1%). The best clear's own rotation, replayed with its own movement
+(`--compare`), deals 99,731 at the same 2.32 s GCD, 99.4% of the standing-still optimum; the other clears replay at
+84-98% of the optimum at their own GCD.
 
 ## Reaper
 
@@ -132,9 +131,8 @@ enhanced), Lemure's Slice 240, Unveiled 400, Harvest Moon 600, Gluttony 560 (7.5
 
 Every cast in the 15 benchmark logs and our 79 clean pulls replays legal. The search needs width 3,000 (at 1,000 the
 settings spread 3%); its ranking gives no credit for running banked toward a run (`move_credit`), which made it burn
-Enshroud early. Over the phase 132,687 in M1 and M2 (2026-10-25, no enhanced reaping carried past its Enshroud:
-132,905 before, and 132,598 before Arcane Circle from its landing; noise); standing still 133,399 (-1.3%, earlier): five True Norths for the fixed
-spots, ranged GCDs in the stretches out of reach. Over 0:00-380 s standing still the clears' own rotations replay at
+Enshroud early. Over the phase 132,687 in M1 and M2 (2026-10-25); standing still 133,165 (-0.4%): five True Norths for
+the fixed spots, ranged GCDs in the stretches out of reach. Over 0:00-380 s standing still the clears' own rotations replay at
 79-93% of the best (they hold Soul Slice and Enshroud for raid buffs, lose uptime, some die).
 
 ## Monk
@@ -160,10 +158,9 @@ Forbidden Chakra 400 (the reference); from the logs Phantom Rush 1,400, Six-Side
   each player's ceiling at their crit rate.
 
 Six-Sided Star about ties the rotation per second, so it is only offered before Palladion and at the window's end.
-Over the phase 135,217 in M1 (2026-10-25, Riddle of Fire and Wind as long as logged, Brotherhood from its landing:
-133,873 before, and 134,255 before no form after Perfect Balance) and 133,392 in M2 (tuned settings, 2026-10-22);
-standing still 135,805 (-1.3% / -1.8%): the fixed spots' positionals take True Norths and the
-away stretches can't be filled (out of reach a Monk can only meditate, Form Shift or use Enlightenment).
+Over the phase 135,217 in M1 and 134,833 in M2 (2026-10-25 / 26); standing still 137,203 (-1.4% / -1.7%): the fixed
+spots' positionals take True Norths and the away stretches can't be filled (out of reach a Monk can only meditate,
+Form Shift or use Enlightenment).
 
 ## Bard
 
@@ -175,8 +172,8 @@ Radiant Finale's damage status is 2964.
 
 - Songs: every 3 s on the song's own clock (from its cast, not the server tick; no DoT needed) gives Repertoire 80% of
   the time; the search counts the expected 0.8 (Pitch Perfect stacks under the Minuet, 7.5 s off Bloodletter under the
-  Ballad, 4% haste under the Paeon plus Army's Muse after it), also while Athena is away (2026-10-25; before, ticks
-  were the server's with a bite up and none in downtime). The clock is xivintheshell's (songTick); in our logs Army's
+  Ballad, 4% haste under the Paeon plus Army's Muse after it), also while Athena is away. The clock is
+  xivintheshell's (songTick); in our logs Army's
   Paeon stacks are gained on it (a tick in 86% of the GCD pairs that gained one, 62-69% of those that didn't; the song
   status's own refresh clock shows no such contrast), and a Pitch Perfect went off with no DoT up. In every P12S kill
   with a Bard (FFLogs, 8 pulls) the first Apex Arrow after Palladion was at 80+ Soul Voice, which only ticks during it
@@ -190,9 +187,8 @@ Radiant Finale's damage status is 2964.
 - DoTs snapshot, tick on the server tick and count when applied; Iron Jaws refreshes late, or early under fresh buffs.
 - Every action is instant and reaches 25 y, so R1, R2 and standing still give the same rotation.
 
-Over the phase 84,780 (2026-10-25, the raid buffs from their landing, Barrage and Blast Arrow Ready as long as logged:
-84,398 before; song clock, ticking through Palladion; 84,504 without downtime ticks, 84,651 on the server tick: within
-the search's noise of each other): Raging Strikes and Battle Voice on the Minuet, Ballad and Paeon in either order,
+Over the phase 84,780 (2026-10-25; 84,504 without the downtime ticks, 84,651 on the server tick: within the
+search's noise of each other): Raging Strikes and Battle Voice on the Minuet, Ballad and Paeon in either order,
 Blast Arrow after every Apex Arrow at 80+; Radiant Finale goes anywhere, since its worth to the party isn't counted.
 
 ## Dragoon
@@ -218,9 +214,8 @@ Every cast in our pulls replays legal, and in the clears all but second tincture
   for it: Disembowel is offered only when the DoT would be nearly out by its Chaotic Spring, or Power Surge is low.
 - Out of reach, Elusive Jump buys an Enhanced Piercing Talon (350).
 
-Over the phase 127,315 in M1 and M2 (2026-10-25, Power Surge and the Ready statuses as long as logged: 126,980
-before); standing still 127,694 (2026-10-24): six True Norths, three Piercing
-Talons. Life Surge goes on seven Drakesbanes and five Heavens' Thrusts.
+Over the phase 127,315 in M1 and M2 (2026-10-25); standing still 127,909: six True Norths, three Piercing Talons.
+Life Surge goes on seven Drakesbanes and five Heavens' Thrusts.
 
 ## Red Mage
 
@@ -255,11 +250,10 @@ Every cast (24,041, ours and the clears) replays legal but one Verraise after a 
   swap (+0.8%); R2's Displacement comes after the GCD it could have freed, so it gains nothing. P12S's arena edge is a
   drop (a 40 y square), so a backstep may only overshoot its stretch as far as the floor goes (`p12s.ARENA_HALF`).
 
-Over the phase 93,948 in R1 (2026-10-25, with MP: the same as without, three Lucid Dreamings in free weave slots;
-the same again with Manafication and Lucid Dreaming as long as logged) and
-92,856 in R2; standing still 93,376 (2026-10-24, after the in-game rules; R1 over standing still is search noise). What is left is Paradeigma I's swap through the
-middle while the opener's cooldowns recharge, filled with Enchanted Reprise. The clears' rotations, replayed standing
-still over 0:00-380 s, deal 93-97% of the best.
+Over the phase 93,948 in R1 and 92,856 in R2 (2026-10-25; MP costs nothing: three Lucid Dreamings go in free weave
+slots); standing still 93,376 (R1 over standing still is search noise). What is left is Paradeigma I's swap through
+the middle while the opener's cooldowns recharge, filled with Enchanted Reprise. The clears' rotations, replayed
+standing still over 0:00-380 s, deal 93-97% of the best.
 
 ## Viper
 
@@ -288,10 +282,8 @@ Every cast replays legal. Swiftscaled is up nearly all fight, so `calibrate.gcd_
   Coils and Offerings (-5%). Held values fade over the window's last 15 s. Rates below the filler's own (~275 a second)
   made time look cheap (-1.5%).
 
-Over the phase 145,194 in M1 and M2 (2026-10-25, statuses from the hit: 145,280 before, and 145,196 before the
-twinblade combo unbroken; noise); standing still
-145,694 (-0.4%, the least of the melee jobs; 2026-10-24): six True Norths
-cover ten positionals, Uncoiled Fury and the 3 s twinblade gaps cover the stretches out of reach.
+Over the phase 145,194 in M1 and M2 (2026-10-25); standing still 145,736 (-0.4%, the least of the melee jobs): six
+True Norths cover ten positionals, Uncoiled Fury and the 3 s twinblade gaps cover the stretches out of reach.
 
 ## Samurai
 
@@ -306,8 +298,7 @@ the full logs. Way of the Samurai III (94) raises most potencies in the guide; a
 
 From the logs:
 
-- Gekko and Kasha give the guide's 10 Kenki; replays fell short at 10 only through two timings, fixed below (a wrong
-  15 used to cover them, 136 spenders short without it);
+- Gekko and Kasha give the guide's 10 Kenki (replays fell short only through the two status timings below);
 - statuses logged at the cast run ~0.6 s past their tooltip: True North 10.5 s, Tengentsu 4.65 (its hits come up to
   4.60 s after the cast), Meikyo Shisui 20.7 (one expired at 20.76, spent up to 20.62), Ogi Namikiri Ready and
   Tsubame-gaeshi 30.6; Fugetsu and Fuka, applied with the hit, last their 40;
@@ -327,9 +318,8 @@ Every cast in our pulls replays legal, and in the clears all but a second tinctu
 - Held Tsubame-gaeshi Ready is valued at its Kaeshi less a 2.09 s GCD (valued whole, the beam held it 16 s and
   overwrote Sen).
 
-Over the phase 130,980 in M1 and M2 (2026-10-25, Gekko and Kasha at 10 Kenki with Tengentsu's and Meikyo's logged
-lengths: 133,320 at 15); standing still 134,424 (2026-10-24, at 15), nearly all of it the stretches
-out of reach, where Enpi fills in (the 6-10 y Iaijutsu and Shoha are assumed not to reach there; +0.3% if they do).
+Over the phase 130,980 in M1 and M2 (2026-10-25); standing still 132,418 (-1.1%), nearly all of it the stretches out of
+reach, where Enpi fills in (the 6-10 y Iaijutsu and Shoha are assumed not to reach there; +0.3% if they do).
 
 ## Pictomancer
 
@@ -430,8 +420,8 @@ Ready, slower mudras, ninjutsu or Ten Chi Jin, no haste trait) shows each as ill
   is left to replays. `check.py`'s melee control (a standing-still rotation must break an away window) can't fail a
   Ninja, whose ninjutsu leave 2.5-4 s without a melee action anyway, so it uses the windows at twice their length.
 
-Over the phase 131,531 potency in M1 and M2 (2026-10-25, True North 10.5 s: 131,182 before); standing still 131,773
-(2026-10-24), so our strategy costs a Ninja about the search's noise: five True Norths cover the fixed spots and ninjutsu fill the stretches out of reach. It opens on
+Over the phase 131,531 potency in M1 and M2 (2026-10-25); standing still 131,976, so our strategy costs a Ninja
+about the search's noise: five True Norths cover the fixed spots and ninjutsu fill the stretches out of reach. It opens on
 the pre-pull Suiton with Trick Attack, Dokumori and Ten Chi Jin (Meisui into Bhavacakra), then Raiton, Bunshin,
 Kassatsu -> Hyosho Ranryu and the Raijus inside Trick Attack, and over the phase makes 22 Raitons, 10 Suitons, seven
 Hyosho Ranryus, four Ten Chi Jins, five Bunshins and 27 Bhavacakras. Settings from `tune.py` (rates 300-340 at
@@ -530,7 +520,8 @@ Finish, half the Esprit or feathers) shows each as illegal or early casts (`scra
 - While Athena is away the steps are danced so that the finish comes as she returns.
 
 Every action is instant and reaches the plan's spots, so R1, R2 and standing still find the same 84,431 potency over the
-phase (86,750 weighted; 2026-10-25, Technical Finish 20.15 s from its landing: 83,902 before): Technical Step every two minutes with Devilment, Starfall Dance and Tillana in its window,
+phase (86,750 weighted; 2026-10-25): Technical Step every two minutes with Devilment, Starfall Dance and Tillana in
+its window,
 Standard Step every ~32 s (13 finishes), seven Flourishes, 29 Saber Dances. Devilment lands just before Technical Step
 rather than after its finish, a near-tie for the Dancer's own damage (what it gives the partner isn't counted).
 Settings from `tune.py` (scales 0.25-0.35 tie, as Summoner's); a search takes ~40 s. The clears' rotations, replayed
@@ -623,7 +614,7 @@ ticks had looked 8-13% above their tooltips: the earlier Thunder III 63 and bite
 Timing: `engine.recast(base, SPEED, haste)` times a recast or cast as the game does (xivgear's `sksToGcd`): the speed
 stat's per-mille factor (`SPEED`, e.g. 0.962) in whole milliseconds, then the haste in whole hundredths of a second.
 Black Mage (Ley Lines), Samurai (Fuka), Viper (Swiftscaled), Monk and Ninja (their traits) go through it, so a 2.40 s
-Samurai is 2.08 s or 2.09 s under Fuka by the factor (the engine took 2.088 s before; 2026-10-23); the other jobs still
+Samurai is 2.08 s or 2.09 s under Fuka by the factor; the other jobs still
 scale continuously, exact at `SPEED` = GCD / 2.5. A job's own crit and direct-hit buffs and sure-hit weights are built
 from its `CRIT_RATE` / `CRIT_DMG` / `DH_RATE` in `derive()`, which `engine.configure` reruns after `params` set them
 (the gear model passes each set's own: `tools/gear`).
@@ -682,23 +673,19 @@ Summoner's trances, pets, attunement and favors, Dancer's dances, procs, feather
 A log replay only shows that a model is no stricter than the game. For the other direction each job's whole-phase plan
 is replayed through [xivintheshell](https://github.com/xivintheshell/xivintheshell) at level 90 with every proc granted
 (the most lenient case, so a refusal is a rule difference, not luck): the harness and how to run it are in the
-repository's `scratch/xits/`. Each refusal was then settled from our logs or the guide. On 2026-10-25 that fixed the
-Bard's song clock and downtime ticks, Monk's forms after Perfect Balance, Viper's twinblade combo, Red Mage's MP, and
-the landing of Black Mage's Ley Lines and Reaper's Arcane Circle, and (its 10 Kenki for Gekko and Kasha, against the
-model's 15) Samurai's Tengentsu and Meikyo Shisui lengths. Where xivintheshell disagrees with the logs, the logs win:
-Machinist's Drill recast shortens with skill speed (its is a fixed 20 s), Red Mage's Verthunder / Veraero III cost
-300 MP (its 400).
+repository's `scratch/xits/`. Each refusal is settled from our logs or the guide, and where the two disagree the logs
+win (Machinist's Drill recast shortens with skill speed, xivintheshell's is a fixed 20 s; Red Mage's Verthunder /
+Veraero III cost 300 MP, not its 400). The 2026-10-25 pass found the rules each job's section now states (Bard's song
+clock, Monk's forms after Perfect Balance, Viper's twinblade combo, Samurai's 10 Kenki, statuses timed from their
+landing).
 
-`calibrate.py`'s status check (each job's `STATUSES`, model against log just before every cast; 2026-10-25) found
-the rest of that class: statuses timed from the cast at their tooltip (Monk's Riddle of Fire 20 -> 20.75 s and Riddle
-of Wind, Brotherhood landing 0.76 s late; Bard's Raging Strikes, Battle Voice and Radiant Finale landing 0.53-0.62 s
-late; Dragoon's Power Surge 31.6 s, Dive and Nastrond Ready; Red Mage's Manafication and Lucid Dreaming; Viper's
-Honed, Venom, Hunter's Instinct and Swiftscaled from the hit; Dancer's Technical Finish; True North 10.5 s in every
-melee job) and three rules: Reaper's last reaping of an Enshroud grants no enhanced reaping and its end clears one,
-Monk's Form Shift takes the form, every Machinist weaponskill under Overheated takes a stack. It also showed Red
-Mage's Manafication was six GCD stacks before 7.5 (the 2025 clears); every log since is a plain 30 s. What it still
-shows is noted per job: pre-pull statuses a replay doesn't cast (Summoner's Searing Light), Black Mages leaving their
-Ley Lines, Immortal Sacrifice coming with the party's hits.
+`calibrate.py`'s status check (each job's `STATUSES`, model against log just before every cast) catches what a legality
+replay can't: a damage buff that ends early or lands too soon. It found the status timings of the same pass (a status
+timed from the cast at its tooltip ran 0.5-0.8 s short, True North's 10.5 s in every melee job among them), three
+rules (Reaper's last reaping of an Enshroud grants no enhanced reaping, Monk's Form Shift takes the form, every
+Machinist weaponskill under Overheated takes a stack) and that Red Mage's Manafication was six GCD stacks before 7.5
+and a plain 30 s since. What it still shows is noted per job: pre-pull statuses a replay doesn't cast (Summoner's
+Searing Light), Black Mages leaving their Ley Lines, Immortal Sacrifice coming with the party's hits.
 
 ## Files
 
@@ -706,6 +693,8 @@ Ley Lines, Immortal Sacrifice coming with the party's hits.
 |---|---|
 | `engine.py` | timing (GCD, casts, slidecast, weaving), raid buffs, move windows and dashes, downtime, beam and sweep search |
 | `jobs/<job>.py` | a job: its resources, actions, potencies, the search's choices and ranking, and the calibration hooks |
+| `jobs/_common.py` | what the jobs share: cooldown charges and capped-charge costs, a melee's reach and positionals, trivial hooks |
+| `jobs/__init__.py` | `JOBS`, the registry the command lines pick a job from |
 | `p12s.py`, `p12s_p1.json` | the fight: timeline, downtime, our strategy's runs, the clears' runs elsewhere, melee reach |
 | `solve.py` | command line |
 | `polish.py` | local search on a found rotation (and restarts of the search along it) |

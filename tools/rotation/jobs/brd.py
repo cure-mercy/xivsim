@@ -38,6 +38,7 @@ and a refresh (Iron Jaws, or the bite again) loses the ticks the old one still h
 import itertools, math
 import engine
 from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, settle
+from jobs._common import cast_label, cooldowns, no_cast as cast_time, wasted
 
 # Burst Shot, Refulgent Arrow, Empyreal Arrow, Sidewinder and Apex Arrow from the logs (plain hits scaled to Bloodletter:
 # 199 / 260 / 241 / 318 / 5 a Soul Voice), below Ranged Mastery's level-94 values (220 / 280 / 260 / 400 / 140-700);
@@ -103,6 +104,7 @@ CDS = {"The Wanderer's Minuet": (120, 1), "Mage's Ballad": (120, 1), "Army's Pae
        "Raging Strikes": (120, 1), "Battle Voice": (120, 1), "Radiant Finale": (110, 1), "Barrage": (120, 1),
        "Empyreal Arrow": (15, 1), "Sidewinder": (60, 1), "Bloodletter": (15, 3), "Pitch Perfect": (1, 1),
        "Tincture": (270, 1)}
+charges, use_cd, full_since, capped, ready, at = cooldowns(__name__)
 GCDS = ["Burst Shot", "Refulgent Arrow", "Caustic Bite", "Stormbite", "Iron Jaws", "Apex Arrow", "Blast Arrow",
         "Shadowbite", "Ladonsbite"]
 OGCD_ORDER = ["Tincture", "The Wanderer's Minuet", "Mage's Ballad", "Army's Paeon", "Raging Strikes", "Battle Voice",
@@ -149,10 +151,6 @@ class State(SlotState):
 
 
 WASTE = ("Repertoire overcapped", "Soul Voice overcapped", "Pitch Perfect stacks dropped")
-
-
-def wasted(s, i, n=1):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
 
 
 # --- time passing --------------------------------------------------------------------------------------------------
@@ -223,22 +221,6 @@ def advance(s, fight, to):
         else:
             if 0 <= a + 0.5 < fight.until and fight.targetable(a): s.dmg += AUTO * mult(s, fight, a)
             s.auto_next = a + AUTO_DELAY * (1 - haste(s, a))
-
-
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = CDS[name]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = CDS[name]
-    if n == mx: nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
 
 
 def cd_name(name):
@@ -480,20 +462,11 @@ REFERENCE = ("Bloodletter", 130)                    # no trait touches it (Heart
 CAST = {}
 
 
-def cast_time(s, name, at):
-    return 0.0, None
-
-
 def prepare(p):
     """A replay of log p fires Refulgent Arrow whenever the log does (its own Hawk's Eye procs) and so counts no
     expected procs."""
     global LOG
     LOG = True
-
-
-def at(s, fight, t):
-    c = s.copy(); advance(c, fight, t)
-    return c
 
 
 STATUSES = {"Raging Strikes": lambda s, t: buff(s.rs_until, t), "Battle Voice": lambda s, t: buff(s.bv_until, t),
@@ -534,10 +507,6 @@ def label(s, fight, name, t):
     if name in ("Raging Strikes", "Battle Voice", "Radiant Finale", "Barrage", "Tincture") or name in SONGS: return None
     if name in POTENCY: return "", POTENCY[name]
     return None
-
-
-def cast_label(s, name, t):
-    return ""
 
 
 def own_factor(p, h):

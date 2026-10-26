@@ -38,6 +38,7 @@ reach from anywhere. Out of reach the search may jump back with Elusive Jump for
 """
 import itertools, math
 from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, settle
+from jobs._common import away_soon, cast_label, cooldowns, flank_rear, no_cast as cast_time, out_of_reach, reach, wasted
 
 # level-90 potencies from the logs (see above). (out of combo, in combo) for combo actions.
 POTENCY = {"True Thrust": 230, "Raiden Thrust": 280, "Vorpal Thrust": (130, 280), "Heavens' Thrust": (100, 400),
@@ -80,6 +81,7 @@ CDS = {"Life Surge": (40, 2), "Lance Charge": (60, 1), "Battle Litany": (120, 1)
        "Nastrond": (2, 1), "Stardiver": (30, 1), "High Jump": (30, 1), "Mirage Dive": (1, 1),
        "Dragonfire Dive": (120, 1), "Wyrmwind Thrust": (10, 1), "True North": (45, 2), "Elusive Jump": (30, 1),
        "Tincture": (270, 1)}
+charges, use_cd, full_since, capped, ready, at = cooldowns(__name__)
 CRIT, CRIT_DMG = 0.25, 1.60                     # the player's crit rate (dps.py sets it) and crit damage
 # combo steps: what each one follows, and the step it leaves the combo at when it lands in combo
 FOLLOWS = {"Vorpal Thrust": "1", "Disembowel": "1", "Heavens' Thrust": "v", "Chaotic Spring": "d", "Fang and Claw": "h",
@@ -134,10 +136,6 @@ class State(SlotState):
 WASTE = ("Firstminds' Focus overcapped", "Life Surge lapsed", "Dive Ready or Nastrond Ready lapsed")
 
 
-def wasted(s, i, n=1):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
-
-
 # --- time passing --------------------------------------------------------------------------------------------------
 
 def mult(s, fight, at):
@@ -171,22 +169,6 @@ def advance(s, fight, to):
     lapse(s, "ls_until", to, 1); lapse(s, "dr_until", to, 2); lapse(s, "nr_until", to, 2)
 
 
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = CDS[name]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = CDS[name]
-    if n == mx: nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
-
-
 def cd_name(name):
     return name
 
@@ -217,37 +199,6 @@ def apply_dot(s, fight, land, m):
     gain = ticks(fight, land, land + DOT_S) * dot_tick() * m
     s.dmg += gain; s.dotp += gain
     s.dot = (land, m)
-
-
-def flank_rear(s, fight, at):
-    """Can the player take a positional: True North, or a spot the strategy doesn't fix."""
-    return s.tn_until > at or not any(a <= at < b for a, b in fight.pinned)
-
-
-def reach(s, fight, t, commit=True):
-    """May a melee action land at t (see rpr.reach)."""
-    W, i = fight.away, s.ai
-    while i < len(W) and W[i].lo < t:
-        w = W[i]
-        if min(t, w.hi) - max(s.mlast, w.lo) >= w.need - 1e-9: i += 1; continue
-        if w.hi - max(t, w.lo) >= w.need - 1e-9: break
-        return False
-    if commit: s.ai, s.mlast = i, t
-    return True
-
-
-def out_of_reach(s, fight, t):
-    for w in fight.away[s.ai:]:
-        if w.lo > t: break
-        a = max(s.mlast, w.lo)
-        if a <= t < a + w.need: return True
-    return False
-
-
-def away_soon(s, fight, t, ahead=5.0):
-    for w in fight.away[s.ai:]:                     # a loop, not any() over a generator: called for every action
-        if w.lo <= t + ahead and w.hi > t: return True
-    return False
 
 
 # --- actions -------------------------------------------------------------------------------------------------------
@@ -459,15 +410,6 @@ REFERENCE = ("High Jump", 400)                      # no trait or patch touches 
 CAST = {}
 
 
-def cast_time(s, name, at):
-    return 0.0, None
-
-
-def at(s, fight, t):
-    c = s.copy(); advance(c, fight, t)
-    return c
-
-
 STATUSES = {"Draconian Fire": lambda s, t: s.df_until > t, "Power Surge": lambda s, t: s.ps_until > t,
             "Lance Charge": lambda s, t: s.lc_from <= t < s.lc_until, "Battle Litany": lambda s, t: s.bl_from <= t < s.bl_until,
             "Life of the Dragon": lambda s, t: s.lotd_until > t, "Nastrond Ready": lambda s, t: s.nr_until > t,
@@ -515,10 +457,6 @@ def label(s, fight, name, t):
         return g, v
     if isinstance(p, tuple): return "", p[0]
     return "", p
-
-
-def cast_label(s, name, t):
-    return ""
 
 
 def own_factor(p, h):

@@ -45,6 +45,7 @@ Out of reach, Hissatsu: Yaten buys an Enhanced Enpi.
 """
 import itertools, math
 from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, SlotState, cd_key, gcd_times, recast, settle, stand
+from jobs._common import away_soon, cast_label, cooldowns, flank_rear, out_of_reach, reach, wasted
 
 # level-90 potencies from the logs (see above). (out of combo, in combo) for combo actions.
 POTENCY = {"Hakaze": 200, "Jinpu": (120, 280), "Shifu": (120, 280), "Gekko": (110, 320), "Kasha": (110, 320),
@@ -85,6 +86,7 @@ CDS = {"Meikyo Shisui": (55, 2), "Ikishoten": (120, 1), "Hissatsu: Senei": (120,
        "Hissatsu: Shinten": (1, 1), "Tengentsu": (15, 1), "True North": (45, 2), "Hissatsu: Gyoten": (5, 1),
        "Hissatsu: Yaten": (10, 1), "Hagakure": (5, 1), "Meditate": (60, 1), "Tincture": (270, 1),
        "Hissatsu: Kyuten": (1, 1), "Hissatsu: Guren": (120, 1)}
+charges, use_cd, full_since, capped, ready, at = cooldowns(__name__)
 SHARED = {"Hissatsu: Guren": "Hissatsu: Senei"}
 KENKI_COST = {"Hissatsu: Shinten": 25, "Hissatsu: Senei": 25, "Hissatsu: Gyoten": 10, "Hissatsu: Yaten": 10,
               "Hissatsu: Kyuten": 25, "Hissatsu: Guren": 25}
@@ -174,10 +176,6 @@ class State(SlotState):
 WASTE = ("Kenki overcapped", "Sen overwritten", "Meditation overcapped", "Meikyo Shisui stacks lapsed")
 
 
-def wasted(s, i, n=1):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
-
-
 # --- time passing --------------------------------------------------------------------------------------------------
 
 def mult(s, fight, at):
@@ -200,22 +198,6 @@ def advance(s, fight, to):
         s.auto_next = a + (AUTO_DELAY_FUKA if s.fuka_until > a else AUTO_DELAY)
     if s.ten_hit is not None and s.ten_hit <= to: gain(s, 10); s.ten_hit = None
     if s.meikyo and s.ms_until <= to: wasted(s, 3, s.meikyo); s.meikyo = 0
-
-
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = CDS[name]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = CDS[name]
-    if n == mx: nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
 
 
 def cd_name(name):
@@ -251,37 +233,6 @@ def apply_dot(s, fight, land, m):
     g = ticks(fight, land, land + DOT_S) * dot_tick() * m
     s.dmg += g; s.dotp += g
     s.dot = (land, m)
-
-
-def flank_rear(s, fight, at):
-    """Can the player take a positional: True North, or a spot the strategy doesn't fix."""
-    return s.tn_until > at or not any(a <= at < b for a, b in fight.pinned)
-
-
-def reach(s, fight, t, commit=True):
-    """May a melee action land at t (see rpr.reach)."""
-    W, i = fight.away, s.ai
-    while i < len(W) and W[i].lo < t:
-        w = W[i]
-        if min(t, w.hi) - max(s.mlast, w.lo) >= w.need - 1e-9: i += 1; continue
-        if w.hi - max(t, w.lo) >= w.need - 1e-9: break
-        return False
-    if commit: s.ai, s.mlast = i, t
-    return True
-
-
-def out_of_reach(s, fight, t):
-    for w in fight.away[s.ai:]:
-        if w.lo > t: break
-        a = max(s.mlast, w.lo)
-        if a <= t < a + w.need: return True
-    return False
-
-
-def away_soon(s, fight, t, ahead=5.0):
-    for w in fight.away[s.ai:]:                     # a loop, not any() over a generator: called for every action
-        if w.lo <= t + ahead and w.hi > t: return True
-    return False
 
 
 def hit_coming(at):
@@ -623,11 +574,6 @@ def cast_time(s, name, at):
     return CAST.get(name, 0.0), None
 
 
-def at(s, fight, t):
-    c = s.copy(); advance(c, fight, t)
-    return c
-
-
 def status(s, t):
     return dict(combo=step(s, t), sen=sorted(s.sen), kenki=s.kenki, med=s.med, meikyo=s.meikyo if meikyo(s, t) else 0,
                 tsubame=s.tsubame_until > t, ogi=s.ogi_until > t, namikiri=s.kn_until > t)
@@ -673,10 +619,6 @@ def label(s, fight, name, t):
             tn = s.tn_until > t; g += " TN" if tn else ""; v += POSITIONAL * tn
         return g, v
     return "", p
-
-
-def cast_label(s, name, t):
-    return ""
 
 
 def own_factor(p, h):

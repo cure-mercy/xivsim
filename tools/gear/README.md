@@ -70,13 +70,12 @@ of GCDs, slowest first (every 0.03 s; Samurai and Viper on their hasted GCD; Bla
 the potency over the grid (quadratic, as the search moves ~0.4% between runs, `tools/rotation/README.md`; Black Mage
 takes each tier's own) and interpolates the mix, finds each tier's set at its fitted mix, and searches the top three
 tiers again, and every grid tier whose own grid search came within 0.4% of them or above (`TIE`: a lucky grid point
-lifts the fit's peak, but it is a searched set and rotation; Monk's 1.94 s grid point beat the fit's best three by
-1.1% on 2026-10-25). The site's chart shows all three against the fit's peak, with the search's noise as a band
-around the fit. The grid covers the tiers that could still win (`span_of`): a set's multipliers times the most a faster
-GCD can add to the potency, the GCDs' ratio plus 2% (`SLACK`), at least the best set's. It stops once 0.05 s of it in
-a row stayed 1.5% under its best grid point (`STOP`, `STOP_SPAN`), each priced at its tier's set. Until 2026-10-24 the
-grid took a flat cut, the tiers with at least 93% of the best set's multipliers; the best is the slowest tier's, so
-the cut stopped Black Mage at 2.31 s while its 2.18-2.24 s rotations gain 8-9% potency over 2.38 s. Each search takes
+lifts the fit's peak, but it is a searched set and rotation: Monk's 1.94 s grid point beat the fit's best three by
+1.1%). The site's chart shows all three against the fit's peak, with the search's noise as a band around the fit. The
+grid covers the tiers that could still win (`span_of`): a set's multipliers times the most a faster GCD can add to the
+potency, the GCDs' ratio plus 2% (`SLACK`), at least the best set's. It stops once 0.05 s of it in a row stayed 1.5%
+under its best grid point (`STOP`, `STOP_SPAN`), each priced at its tier's set (a flat cut by the sets' multipliers
+alone stopped Black Mage at 2.31 s, while its 2.18-2.24 s rotations gain 8-9% potency over 2.38 s). Each search takes
 the set's own:
 
 - **speed factor** where the job model times everything through `engine.recast` (Black Mage, Samurai, Viper, Monk,
@@ -128,8 +127,7 @@ cap) and its source, and the set with its final stats, rates and food. Nothing i
 the item, materia and food icons (XIVAPI, cached in the scorecard's `.cache/icons/`).
 
 A job shows the best searched tier's set and, as tabs, the other searched tiers within 0.4% of it (`TIE`: the search's
-noise). `bis.py --combined` saves every searched tier's set as `sets` (since the 2026-10-24 rerun: ties for Bard,
-Machinist, Monk, Pictomancer, Samurai, Summoner and Viper). The same grade's melds are shown in a fixed order (crit, DH,
+noise). `bis.py --combined` saves every searched tier's set as `sets`. The same grade's melds are shown in a fixed order (crit, DH,
 Det, speed): the search keeps an arbitrary one of the equivalent orders, which changes between runs. The rotations' GCDs are before a trait's haste,
 so Monk's and Ninja's sets carry that GCD too (`base_gcd`) for the Rotations pages' BiS tag.
 
@@ -137,8 +135,7 @@ so Monk's and Ninja's sets carry that GCD too (`base_gcd`) for the Rotations pag
 
 DPS over the whole phase without raid buffs, the job's own constant multipliers left out (Black Mage's Enochian), so
 compare tiers within a job, not across jobs. Logs in `.cache/<job>_combined.log`, sets in `.cache/bis_<job>.json`
-(2026-10-25, after the status timings of tools/rotation/README.md's Checks, with grid tiers as candidates; Summoner's
-first run since the 2026-10-24 grid rule, which reaches its 2.10-2.14 s tiers). The rest of each set is 660 savage and
+(2026-10-25). The rest of each set is 660 savage and
 tomestone gear melded to the tier. Pictomancer and Viper have no Mandervillous weapon (Dawntrail jobs): their
 relic is the synced Phantom Occultum. The site ceiling (`ceiling.py`) is in each job's potency unit (Black Mage x1.22).
 

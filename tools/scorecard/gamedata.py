@@ -45,10 +45,15 @@ def actions(ids):
 SEARCH = "https://v2.xivapi.com/api/search?sheets=Action&query={}&fields=Name,Icon,IsPvP,ClassJob.Abbreviation,ClassJobCategory.Name"
 ASSET = "https://v2.xivapi.com/api/asset?path={}&format=png"
 ICONS = fflogs.CACHE / "icons"
-ABBR = {"Paladin": "PLD", "Warrior": "WAR", "DarkKnight": "DRK", "Gunbreaker": "GNB", "WhiteMage": "WHM", "Scholar": "SCH",
-        "Astrologian": "AST", "Sage": "SGE", "Monk": "MNK", "Dragoon": "DRG", "Ninja": "NIN", "Samurai": "SAM", "Reaper": "RPR",
-        "Viper": "VPR", "Bard": "BRD", "Machinist": "MCH", "Dancer": "DNC", "BlackMage": "BLM", "Summoner": "SMN",
-        "RedMage": "RDM", "Pictomancer": "PCT"}
+# FFLogs' job names, with the game's abbreviation and the role the scorecard compares within
+JOBS = {"Paladin": ("PLD", "Tank"), "Warrior": ("WAR", "Tank"), "DarkKnight": ("DRK", "Tank"), "Gunbreaker": ("GNB", "Tank"),
+        "WhiteMage": ("WHM", "Healer"), "Scholar": ("SCH", "Healer"), "Astrologian": ("AST", "Healer"), "Sage": ("SGE", "Healer"),
+        "Monk": ("MNK", "Melee"), "Dragoon": ("DRG", "Melee"), "Ninja": ("NIN", "Melee"), "Samurai": ("SAM", "Melee"),
+        "Reaper": ("RPR", "Melee"), "Viper": ("VPR", "Melee"), "Bard": ("BRD", "Ranged"), "Machinist": ("MCH", "Ranged"),
+        "Dancer": ("DNC", "Ranged"), "BlackMage": ("BLM", "Caster"), "Summoner": ("SMN", "Caster"), "RedMage": ("RDM", "Caster"),
+        "Pictomancer": ("PCT", "Caster")}
+ABBR = {name: abbr for name, (abbr, _) in JOBS.items()}
+ROLE = {name: role for name, (_, role) in JOBS.items()}
 
 
 def _icon_path(name, abbr):

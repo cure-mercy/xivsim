@@ -16,6 +16,7 @@ window.Twelfth = (function(){
   const AUTO_DELAY = 1100;
   // the slot you last had in each group, so switching group and back lands where you were
   const lastInGroup = { support:'H1', dps:'M1' };
+  const heldPrompts = {};   // id -> every step text a pull can show, and the width they were last measured at
 
   try{
     const savedSlot = localStorage.getItem('twelfth-slot');
@@ -221,8 +222,6 @@ window.Twelfth = (function(){
   // below it up or down just as you go to click. A drill hands over every text a pull can show, and the box
   // keeps the height of the tallest: measured once the drill is on screen, and again if the width or the
   // hints setting changes.
-  // var, not const: the hints setting asks for a re-measure while the page is still starting up
-  var heldPrompts = {};
   const nativeHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
   // On wide screens the step text sits in a column beside the arena, where its height moves nothing, so
   // it is only held when that column sits above the arena.
@@ -251,7 +250,6 @@ window.Twelfth = (function(){
     measurePrompt(id);
   }
   function remeasurePrompts(){
-    if(!heldPrompts) return;
     Object.keys(heldPrompts).forEach(id => { if(heldPrompts[id]) heldPrompts[id].width = 0; measurePrompt(id); });
   }
   window.addEventListener('resize', remeasurePrompts);
@@ -278,11 +276,10 @@ window.Twelfth = (function(){
     row.insertAdjacentElement('afterend', box);
     if(card && !card.querySelector('.instr-text')) card.remove();
     // the split happens as the drill writes, so a replayed pull rebuilds exactly the same markup
-    const native = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
     Object.defineProperty(p, 'innerHTML', {
       configurable: true,
-      get(){ return native.get.call(p); },
-      set(v){ native.set.call(p, splitAsk(String(v))); }
+      get(){ return nativeHTML.get.call(p); },
+      set(v){ nativeHTML.set.call(p, splitAsk(String(v))); }
     });
   }
 
@@ -402,6 +399,22 @@ window.Twelfth = (function(){
     nb.setAttribute('aria-label', next ? 'Next mechanic: ' + next.label : 'No next mechanic');
     pb.title = prev ? prev.label : ''; nb.title = next ? next.label : '';
   }
+
+  /* ---------- small helpers the drills share ---------- */
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function el(name, attrs){
+    const n = document.createElementNS(SVGNS, name);
+    for(const k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  // the shape legend of the Superchain drills
+  const SHAPE_LEGEND = `
+          <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--good)"><use href="#icon-orb"/></svg><span><b>Green orb</b> — point-blank<span class="hint">, stay out</span></span></div>
+          <div class="legend-item"><svg viewBox="0 0 24 24" fill="none" stroke="var(--umbral-soft)"><use href="#icon-donut"/></svg><span><b>Blue donut</b> — ring<span class="hint">, get in close</span></span></div>
+          <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--shape-orange)"><use href="#icon-add"/></svg><span><b>Orange spiked ball</b> — cones everyone<span class="hint">, spread</span></span></div>
+          <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--shape-purple)"><use href="#icon-jack"/></svg><span><b>Purple jack</b> — cones one role<span class="hint">, pair up</span></span></div>`;
 
   function shuffle(arr){
     const a = arr.slice();
@@ -733,8 +746,7 @@ window.Twelfth = (function(){
   // Where you should have been, shown when an answer fails: the rest of the floor dims, with a ring on
   // the right spot and, if you were somewhere else, a dashed line from there to it. Both spots stay lit.
   function drawTarget(host, at, from){
-    const NS = 'http://www.w3.org/2000/svg';
-    const mk = (name, attrs) => { const n = document.createElementNS(NS, name); for(const k in attrs) n.setAttribute(k, attrs[k]); return n; };
+    const mk = el;
     const [x, y] = at.map(v => +v.toFixed(1));
     const g = mk('g', { class:'target-mark', 'pointer-events':'none' });
     const hole = (cx, cy, r) => `M${(cx - r).toFixed(1)} ${cy.toFixed(1)}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0Z`;
@@ -761,13 +773,12 @@ window.Twelfth = (function(){
   }
 
   function playBeams(host, beams, bounds){
-    const NS = 'http://www.w3.org/2000/svg';
+    const mk = el;
     const W = 44, PULSE = 26, TRAIL = 70, h = W / 2;
     const b = Object.assign({ x0:60, y0:60, x1:540, y1:540 }, bounds || {});
     host.innerHTML = '';
     clearTimeout(beamTimers.get(host));
     if(replaying) return;
-    const mk = (name, attrs) => { const n = document.createElementNS(NS, name); for(const k in attrs) n.setAttribute(k, attrs[k]); return n; };
     beams.forEach(({ from, through }) => {
       const dx = through[0] - from[0], dy = through[1] - from[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
       const exits = [];
@@ -907,23 +918,10 @@ window.Twelfth = (function(){
     if(isOpen(linked())) initialTab = linked();
     addEventListener('hashchange', () => { if(isOpen(linked())) selectTab(linked()); });
     selectTab(initialTab);
-
-    function boot(data){
-      if(data && data.slot){ setSlot(data.slot); }
-      else if(data && data.role){ choose(data.role); }
-      if(data && typeof data.auto === 'boolean'){ setAutoAdvance(data.auto); }
-      if(data && data.tab){ selectTab(data.tab); }
-    }
-    function snapshot(){ return { slot: shared.slot, tab: currentTab, auto: shared.autoAdvance }; }
-
-    if(window.claude && window.claude.hot){
-      window.claude.hot.snapshot(snapshot);
-      window.claude.hot.ready ? window.claude.hot.ready(boot) : boot(window.claude.hot.data || {});
-    }
   }
 
   return {
-    shared, shuffle, showFeedback, trackRounds,
+    shared, shuffle, el, pick, dist, SHAPE_LEGEND, showFeedback, trackRounds,
     isReplaying: () => replaying, playBeams, freePoint, zoomAdd, unzoomAdd, drawTarget, holdPrompt, castRows, leadBeside,
     aspectColor, aspectSoft, aspectLabel, tiltIcon, soulIcon,
     register, start

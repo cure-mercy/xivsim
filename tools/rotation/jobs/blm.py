@@ -8,6 +8,7 @@ replays as legal (calibrate.py).
 import itertools, math
 from engine import (ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, SlotState, cd_key, gcd_times, move_credit, open_move, recast,
                     settle, stand)
+from jobs._common import cooldowns
 
 # Fire III and Blizzard III were raised from 280 to 290 in patch 7.2 (its notes; the job guide and the clears agree)
 POTENCY = {"Fire III": 290, "Fire IV": 300, "Despair": 350, "Paradox": 540, "Blizzard III": 290, "Blizzard IV": 300,
@@ -45,6 +46,7 @@ PROC_S = math.inf                                   # Thunderhead and Firestarte
                                                     # they are only lost by being granted again while held
 CDS = {"Triplecast": (60, 2), "Swiftcast": (60, 1), "Ley Lines": (120, 2), "Manafont": (100, 1), "Amplifier": (120, 1),
        "Transpose": (5, 1), "Tincture": (270, 1), "Between the Lines": (3, 1)}
+charges, use_cd = cooldowns(__name__)[:2]           # `at` is the job's own: its advance takes no fight
 OGCD_ORDER = ["Tincture", "Manafont", "Transpose", "Amplifier", "Ley Lines", "Between the Lines", "Triplecast", "Swiftcast"]
 SPEED = 0.930                                       # spell speed factor on casts and GCDs: 2.32 s GCD, the clears since 7.2;
                                                     # calibrate.speed_for's pick in its tier: 2.0 s casts are 1.86 s as logged
@@ -98,22 +100,6 @@ def advance(s, to):
     while s.poly_next is not None and s.poly_next <= to:
         if s.poly == POLY_MAX: wasted(s, 0)
         s.poly = min(POLY_MAX, s.poly + 1); s.poly_next += POLY_S
-
-
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = CDS[name]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = CDS[name]
-    if n == mx: nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
 
 
 def set_element(s, el, at):

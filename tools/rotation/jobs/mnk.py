@@ -35,6 +35,7 @@ meditations and Form Shift work from anywhere. See jobs/rpr.py for the away wind
 import itertools, math
 import engine
 from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, recast, settle
+from jobs._common import away_soon, cast_label, cooldowns, flank_rear, no_cast as cast_time, out_of_reach, reach, wasted
 
 POTENCY = {"Bootshine": (220, 420), "True Strike": (300, 500), "Snap Punch": (270, 420),      # (plain, with Fury)
            "Dragon Kick": 280, "Twin Snakes": 380, "Demolish": 320,
@@ -65,6 +66,7 @@ CRIT = 0.25                                     # the player's critical-hit rate
 PARTY_CHAKRA = 7 * 0.20 / 2.45                  # seven party members, a GCD each ~2.45 s, 20% each (logs: 0.51-0.57)
 CDS = {"Perfect Balance": (40, 2), "Riddle of Fire": (60, 1), "Brotherhood": (120, 1), "Riddle of Wind": (90, 1),
        "True North": (45, 2), "Chakra": (1, 1), "Tincture": (270, 1)}
+charges, use_cd, full_since, capped, ready, at = cooldowns(__name__)
 KIND = {"Bootshine": "o", "Dragon Kick": "o", "Shadow of the Destroyer": "o", "True Strike": "r", "Twin Snakes": "r",
         "Four-point Fury": "r", "Snap Punch": "c", "Demolish": "c", "Rockbreaker": "c"}
 NEXT = {"o": "r", "r": "c", "c": "o"}
@@ -119,10 +121,6 @@ class State(SlotState):
 WASTE = ("Fury overcapped", "chakra overcapped", "Perfect Balance stacks dropped")
 
 
-def wasted(s, i, n=1):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
-
-
 def brotherhood(s, at):
     return s.bh_until - BH_S <= at < s.bh_until
 
@@ -158,22 +156,6 @@ def advance(s, fight, to):
     if s.pb and s.pb_until <= to: wasted(s, 2, s.pb); s.pb = 0
 
 
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = CDS[name]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = CDS[name]
-    if n == mx: nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
-
-
 def cd_name(name):
     return "Chakra" if name in ("The Forbidden Chakra", "Enlightenment") else name
 
@@ -189,37 +171,6 @@ def hit(s, fight, at, potency, name, crit=False, drawn=None):
         s.dmg += d
         if crit or drawn: s.critp += d
         elif drawn is not None: s.plainp += d
-
-
-def flank_rear(s, fight, at):
-    """Can the player take a positional: True North, or a spot the strategy doesn't fix."""
-    return s.tn_until > at or not any(a <= at < b for a, b in fight.pinned)
-
-
-def reach(s, fight, t, commit=True):
-    """May a melee action land at t (see rpr.reach)."""
-    W, i = fight.away, s.ai
-    while i < len(W) and W[i].lo < t:
-        w = W[i]
-        if min(t, w.hi) - max(s.mlast, w.lo) >= w.need - 1e-9: i += 1; continue
-        if w.hi - max(t, w.lo) >= w.need - 1e-9: break
-        return False
-    if commit: s.ai, s.mlast = i, t
-    return True
-
-
-def out_of_reach(s, fight, t):
-    for w in fight.away[s.ai:]:
-        if w.lo > t: break
-        a = max(s.mlast, w.lo)
-        if a <= t < a + w.need: return True
-    return False
-
-
-def away_soon(s, fight, t, ahead=5.0):
-    for w in fight.away[s.ai:]:                     # a loop, not any() over a generator: called for every action
-        if w.lo <= t + ahead and w.hi > t: return True
-    return False
 
 
 # --- actions -------------------------------------------------------------------------------------------------------
@@ -470,10 +421,6 @@ REFERENCE = ("The Forbidden Chakra", 400)           # set at level 84 by Melee M
 CAST = {}
 
 
-def cast_time(s, name, at):
-    return 0.0, None
-
-
 def prepare(p):
     """A replay of log p opens chakra on the log's own critical weaponskills."""
     global LOG_CRIT
@@ -492,11 +439,6 @@ def unprepare():
     """Forget the log (calibrate.prepared): searches and rebuilt rotations use the expected crit rate."""
     global LOG_CRIT
     LOG_CRIT = None
-
-
-def at(s, fight, t):
-    c = s.copy(); advance(c, fight, t)
-    return c
 
 
 STATUSES = {"Opo-Opo Form": lambda s, t: s.form == "o" and s.form_until > t,
@@ -554,10 +496,6 @@ def label(s, fight, name, t):
     if name == "Six-Sided Star": return f"{s.chakra:.0f} chakra", potency(s, fight, name, t)[0]
     if name in POTENCY: return "", POTENCY[name]
     return None
-
-
-def cast_label(s, name, t):
-    return ""
 
 
 def own_factor(p, h):

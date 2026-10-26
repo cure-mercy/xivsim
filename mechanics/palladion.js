@@ -1,7 +1,7 @@
 /* Palladion (limit cut): follow Athena dash by dash and take, dodge or bait each one. */
 (function(T){
 
-  const { showFeedback } = T;
+  const { showFeedback, el, dist } = T;
 
   const MARKUP = /* html */ `
   <div class="layout" id="panel-palladion" role="tabpanel" aria-labelledby="tabBtn-palladion" hidden>
@@ -77,7 +77,6 @@
   `;
 
   function initPalladion(){
-    const SVGNS = 'http://www.w3.org/2000/svg';
     const RAD = Math.PI / 180;
     // The octagon wall is drawn at 240 so it fills the board. Players walk a ring just inside it, and
     // puddles are allowed to spill over the wall and off the board.
@@ -120,7 +119,6 @@
       return [300 + Math.cos(a)*r, 300 + Math.sin(a)*r];
     }
     function relOf(i){ return REL[(i - st.boss + 8) % 8]; }
-    const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
     function inward(p, r){
       const dx = p[0] - 300, dy = p[1] - 300, len = Math.hypot(dx, dy) || 1;
       return [300 + dx / len * r, 300 + dy / len * r];
@@ -426,11 +424,6 @@
     }
 
     /* ---------- drawing helpers ---------- */
-    function el(name, attrs){
-      const n = document.createElementNS(SVGNS, name);
-      for(const k in attrs) n.setAttribute(k, attrs[k]);
-      return n;
-    }
     function layer(id){
       const g = document.getElementById(id);
       g.innerHTML = '';

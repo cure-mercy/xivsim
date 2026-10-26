@@ -1,7 +1,7 @@
 /* Pangenesis: sort out of the conga line, then soak three sets of Pantheos towers while mixing Unstable Factor away. */
 (function(T){
 
-  const { shared, showFeedback } = T;
+  const { shared, showFeedback, el, pick } = T;
 
   const STYLES = /* css */ `
     .pg-slot{
@@ -94,7 +94,6 @@
   `;
 
   function initPangenesis(){
-    const SVGNS = 'http://www.w3.org/2000/svg';
     const U = 15;
     const X = x => x * U, Y = y => y * U;
 
@@ -130,7 +129,6 @@
 
     let st = {};
     const fb = document.getElementById('pg-feedback');
-    const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
     /* ---------- the mechanic ---------- */
     function mix(a, b){
@@ -285,11 +283,6 @@
     }
 
     /* ---------- drawing ---------- */
-    function el(name, attrs){
-      const n = document.createElementNS(SVGNS, name);
-      for(const k in attrs) n.setAttribute(k, attrs[k]);
-      return n;
-    }
     function layer(id){
       const g = document.getElementById(id);
       g.innerHTML = '';
