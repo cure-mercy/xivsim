@@ -14,8 +14,10 @@ Suites:
     undo                        step by step: undo and redo give back exactly the page they should
     steady                      the real-time solvers again, checking the arena never moves on the page,
                                 in a stacked layout (800 px) and with three columns (1400 px)
+    blame                       the scorecard's mistake classifier against pulls checked by hand (tests/blame.py; no
+                                Chrome, needs the scorecard's caches and the git-ignored tests/blame_cases.json)
 
-Chrome is looked for on the usual paths; set CHROME to its executable to choose one. The probe pages are
+Chrome is looked for on the usual paths (only when a drill suite runs); set CHROME to its executable to choose one. The probe pages are
 written to tests/out/, which git ignores. Exits non-zero if a solver crashed, the page threw an error or a
 check logged FAIL.
 """
@@ -64,6 +66,8 @@ SUITES = {
                                                          ('para3', PARA3, 'H1', 'p3-arena', 900_000)]
                for w, size in [('narrow', NARROW), ('wide', WIDE)]],
 }
+# suites run in Python, not in Chrome: name -> run() returning (log, failed)
+PY_SUITES = {'blame': lambda: __import__('blame').run()}
 
 
 def find_chrome():
@@ -117,17 +121,22 @@ def play(chrome, path, budget, window):
 def main():
     # the logs carry ✓ and ✕, which a Windows console's default encoding cannot print
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-    picked = sys.argv[1:] or list(SUITES)
-    unknown = [s for s in picked if s not in SUITES]
+    picked = sys.argv[1:] or list(SUITES) + list(PY_SUITES)
+    unknown = [s for s in picked if s not in SUITES and s not in PY_SUITES]
     if unknown:
-        sys.exit(f'Unknown suite {", ".join(unknown)}: pick from {", ".join(SUITES)}.')
+        sys.exit(f'Unknown suite {", ".join(unknown)}: pick from {", ".join(list(SUITES) + list(PY_SUITES))}.')
     OUT.mkdir(parents=True, exist_ok=True)
-    chrome = find_chrome()
     pages = [(name, build(name, drill, slot, solvers, extra), budget, extra.get('window', WIDE))
-             for suite in picked for name, drill, slot, solvers, extra, budget in SUITES[suite]]
+             for suite in picked if suite in SUITES for name, drill, slot, solvers, extra, budget in SUITES[suite]]
+    chrome = find_chrome() if pages else None
     with ThreadPoolExecutor(max_workers=4) as pool:
         logs = list(pool.map(lambda p: play(chrome, *p[1:]), pages))
     bad = False
+    for suite in picked:
+        if suite not in PY_SUITES: continue
+        log, failed = PY_SUITES[suite]()
+        print(f'== {suite}\n{log}\n')
+        bad |= failed
     for (name, *_), log in zip(pages, logs):
         print(f'== {name}\n{log}\n')
         if 'CRASH' in log or 'NO LOG' in log or ' FAIL' in log or 'ERRORS=[]' not in log:

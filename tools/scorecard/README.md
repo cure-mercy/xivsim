@@ -98,7 +98,7 @@ appears (the page only asks when `data.json` is missing and `data.enc.json` is t
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
 | Rotations | The optimizer's rotations (`#/rotations`, linked in the header): a chart and a table of every job it covers, then each job's GCDs and each GCD's rotation on the fight timeline (see Rotation ceiling) |
 | Gear | The best-in-slot sets (`#/gear`, linked in the header): a table of each job's set and, per job, the set drawn like the game's character window with its DPS per GCD tier (see Best-in-slot gear) |
-| Player | Mistakes per pull, wipes, damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull, with the rotation ceiling for jobs the optimizer covers and how far their pulls are from it, linking to its rotation (see below); every mistake with its pull and time; every death with its pull and time, the hit that killed them, the classifier's cause and the culprit (self, another player, or none found), marked when it decided the wipe or came after it (`death_list` on each pull); the player across raid days (mistakes per pull and per minute in pulls) |
+| Player | Mistakes per pull and wipes (weighted by confidence, with their counts by confidence), damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull, with the rotation ceiling for jobs the optimizer covers and how far their pulls are from it, linking to its rotation (see below); every mistake with its pull, time and confidence; every death with its pull and time, the hit that killed them, the classifier's cause and the culprit (self, another player, or none found) with its confidence, marked when it decided the wipe or came after it (`death_list` on each pull); the player across raid days (mistakes per pull and per minute in pulls) |
 
 The player page's "What their mistakes cost" card (boss HP lost to deaths they caused, by cause) is hidden for now: set `SHOW_MISTAKE_COST` in `site/app.js` to `true` to bring it back.
 
@@ -112,8 +112,8 @@ link).
 
 | Column | Meaning |
 |---|---|
-| Mistakes/pull | The player's mistakes per pull: every death or Damage Down they caused, not just a pull's first. A mistake that kills several players counts once, and deaths that are only fallout of the player's own earlier mistake are not counted again. Being killed by someone else's error does not count. Mistakes are counted until the pull is lost; the collapse after that is not. |
-| Wipes | Share of the player's pulls where their mistake is what lost the pull (see below). |
+| Mistakes/pull | The player's mistakes per pull: every death or Damage Down they caused, not just a pull's first. A mistake that kills several players counts once, and deaths that are only fallout of the player's own earlier mistake are not counted again. Being killed by someone else's error does not count. Mistakes are counted until the pull is lost; the collapse after that is not. Each counts by the classifier's confidence in its culprit (see Confidence below): high in full, medium 0.75, low 0.5. Deaths/pull and DD/pull split it the same way. |
+| Wipes | Share of the player's pulls where their mistake is what lost the pull (see below), each wipe counted by the confidence of the entry that decided it, as mistakes are. |
 | vs Clears | rDPS over 0:00–2:00, averaged over the player's best quarter of clean pulls, against the average player on the same job in the benchmark's clears without The Echo; * when only 1–2 clearers played the job. |
 | Uptime | Active GCD time over 0:00–2:00, against clearers of the same role. |
 
@@ -127,16 +127,25 @@ or two clearers, which is rough.
 | red | more | more | more | more |
 
 With eight players and one wipe a pull, a fair share of the wipes is 12.5%. The thresholds are constants at the
-top of `scorecard.py` (`G_MIST`, `G_WIPE`, `G_DMG`, `G_UP`). Damage over 0:00–2:00 is only measured on pulls
+top of `scorecard.py` (`G_MIST`, `G_WIPE`, `G_DMG`, `G_UP`), and so are the confidence weights (`CONF_WEIGHT`). The
+group and day pages' mistakes per pull are weighted the same way. Damage over 0:00–2:00 is only measured on pulls
 with no death or Damage Down before 2:00, so every player is compared on the same opener and mechanics.
 
 ### Who lost the pull
 
-Pulls run until the whole party is dead, so every pull that is not a kill is a wipe. The collapse is the last run
-of deaths with less than 15 seconds between them (`CASCADE_GAP`); earlier deaths the group recovered from do not
-count. A mass death in the collapse (four or more players to one ability within 3 seconds, such as a tower
-explosion or Electrify) decides the wipe; otherwise the collapse's first death with a culprit does. When a tower
-went unsoaked because its soaker was already dead, the wipe goes to whoever caused that death.
+Pulls run until the whole party is dead, so every pull that is not a kill is a wipe. A death without a hit in the
+last 20 seconds of a pull (`JUMP_S`; above half HP after any hit in the 5 seconds before) is a player jumping off the
+arena once the wipe is called: only deaths before the first jump count, and a pull with none before it was called
+without one ("Wipe called", no culprit). 419 of the 427 deaths without a hit come that close to the end; the other
+eight, single players mid-pull, stay ordinary deaths without a culprit. The collapse is the last run of deaths with
+less than 15 seconds between them (`CASCADE_GAP`); earlier deaths the group recovered from do not count. A mass death
+in the collapse (four or more players to one ability within 3 seconds, such as a tower explosion or Electrify)
+decides the wipe; otherwise the collapse's first death does, or a death with a culprit within 1.5 seconds of it (the
+same hit). When no rule explains that first death and no mistake came before it in the pull, the wipe has no culprit
+("No culprit found") rather than going to a later death that may be its fallout; when it follows an earlier mistake,
+the collapse's first death with a culprit decides. When a tower went unsoaked because its soaker was already dead,
+the wipe goes to whoever caused that death. A collapse in a mechanic not blamed yet (see the rule book below) has no
+culprit ("Not blamed yet").
 
 ### Boss HP checkpoints
 
@@ -401,10 +410,13 @@ any others within 1.5 seconds.
 
 | Mechanic | What is checked |
 |---|---|
-| Paradeigma I | Which light party baits each White Flame wave is learned from the group's own pulls. A missing baiter is blamed, not the players their laser hits instead. Trinity of Souls hits are the victim's. |
-| Paradeigma II | The quadrant sweep (supports clockwise from north-east, DPS counter-clockwise from north-west) says where each Soul should drop its tower. Checks wrong quadrant, two towers stacked, a tower nobody soaked, the wrong soaker, unstretched tethers, and players standing in a tether laser or Soul AoE. Ray of Light hits are the victim's. |
-| Superchain I | Purple pairs and orange cones, the two laser groups (by Soul and Tilt), the Heavensflame spread, and the final towers. Green orb and donut hits are the victim's. |
-| Paradeigma III | Support towers: a support missing from their tower, or two supports in one, leaves a tower empty and Electrify wipes the raid; the support who does not belong on that platform is blamed (Quartered north, X-Marked south, bright Souls in the middle). The + and X: dropped from the wrong platform, or the owner not stepping out of their own arms. DPS tether lasers that are unstretched or clip a support. Whether each bright tower went to the centre corner or its own tile, the White Flame baits (the + and X supports and the same-colour DPS pair), and the opposite-colour soakers. |
+| Paradeigma I | Which light party baits each White Flame wave is learned from the group's own pulls. A missing baiter is blamed, not the players their laser hits instead; when the baiter was already dead, whoever caused that death is. Trinity of Souls hits are the victim's. Athena's auto-attacks are magical and a White Flame leaves Magic Vulnerability Up for 6 s, so whoever holds her at ~50.5 s must not have been hit by wave 2: light party 1's tank baits wave 1 and keeps her (in 708 pulls), light party 2's baits wave 2. A death to that auto-attack through wave 2's vulnerability goes to whoever caused the other tank's death when they were already dead (most of them), to the victim when they provoked Athena while carrying it or, as light party 1's tank, took a wave 2 laser, to the other tank when they shirked aggro onto them, and to both tanks otherwise (medium). |
+| Paradeigma II | The quadrant sweep (supports clockwise from north-east, DPS counter-clockwise from north-west) says where each Soul should drop its tower. Checks wrong quadrant, two towers stacked, a tower nobody soaked, the wrong soaker, unstretched tethers, and players standing in a tether laser or Soul AoE. Ray of Light hits are the victim's. The four players without a Soul hold the tethers: a laser that hit only Soul holders lost its holder, so when its holder was already dead the blame goes to whoever caused that death, and otherwise the Soul holder it hit stood in its line (or took the tether; medium). |
+| Glaukopis | The tank swap. The first hit goes to the tank holding aggro when the cast begins and leaves Magic Vulnerability Up; the second goes to whoever holds aggro 1.2 s after the first (`SNAPSHOT`); a heavy auto-attack (~290k unmitigated) 3.2 s later goes to whoever holds it 1.2 s after the second. Our groups' swap: the second tank provokes during the cast, the first provokes back as the second hit lands. Only a death counts (a tank taking both and living meant to). The same tank killed by both hits: the first tank provoked back too early (from their casts: up to +1.1 s from the first hit put the second on them, from +1.2 s it did not), or the second tank never provoked, or, when the second tank's provoke came during the cast and the first held aggro anyway, both share it (medium). The second tank killed by the auto-attack: the first tank provoked back after +1.2 s from the second hit, or not at all (494 provokes back by +1.2 s took the auto-attack; every death to it came from +1.3 s or never). Casts come from the acts cache. |
+| Superchain I | Purple pairs and orange cones, the two laser groups (by Soul and Tilt), the Heavensflame spread, and the final towers. Green orb and donut hits are the victim's. The first resolution's spots: the cluster with two short chains sits on an intercardinal (`CLUSTER`, 8.25 y out on each axis, fitted to clean spreads) and the party stands in a ring around it (7.9 y), seat by seat: facing Athena from the cluster, the tanks either side of the line to her, then melee, healers, and ranged at the back, the 1s on the right, the 2s on the left (`SPOT_ANGLE`, measured in clean spreads: tanks 17 degrees off that line, melee 50, healers 98, ranged 146). Orange fires a cone from the cluster at each player, so players sharing one stood at the same angle: the one at least 20 degrees (`SPOT_MARGIN`) further off their spot is blamed (high from 40), all of them when each is that far off (a swap, medium), and otherwise they share it (low). A pull whose whole party fits its seats better mirrored (1s on the left) is read mirrored: it happens in rVkKM2 (6 of 7 spreads) and NjF16Q (6 of 14), early reports from before the groups followed one strategy. Purple fires at all DPS or all supports, each shared with the seat partner beside them (M1 with T1, M2 with T2, R1 with H1, R2 with H2): three or more in one pair blames whoever's partner is not in it, or, failing that, those who are not of the pair whose spot (midway between its two seats) the crowd stood at. There are always 8 orange cones and 4 purple ones, so a dead player's goes to someone else (orange: a player hit twice; purple: someone at random): with a player already dead, the extra hits are blamed on whoever caused that death. The bright Souls' small AoE as they drop their towers is the owner's alone: a Strong Soul in it stepped in too early, a Heavensflame player in it did not spread away (a Heavensflame player left low by it and killed by their own Theos's Holy counts as this too, unless another Holy hit them), two bright Souls in each other's mean their towers dropped together (both, medium), and a bright Soul that took the wrong laser group dropped its tower on the wrong side. |
+| Dialogos | Apodialogos or Peridialogos is a hit the two tanks share (one tank alone takes twice the damage) and Dialogos, about 0.6 s later, a stack the rest of the party shares. Athena stands at the centre: Peridialogos aims the tanks' hit at the closest player and the stack at the farthest, Apodialogos the other way round, so the tanks belong at the centre for Peridialogos and out for Apodialogos, the party the opposite. Each player's place is read from their position at either hit, against the bands of clean pulls (`CENTRE_R`: Peridialogos tanks within 5.6 y of the centre, party from 7.7; Apodialogos party within 8.4, tanks from 9.8). A non-tank in the tanks' hit is blamed (standing in the tanks' place, or in line with them), unless the hit was aimed at a non-tank standing where the party belongs: then the tanks were out of place and are blamed. A living tank not in the hit is blamed for leaving it to the other. A stack aimed at a tank blames that tank; a stack aimed at the party blames whoever of the party is not in it. |
+| Paradeigma III | Support towers: a support missing from their tower, or two supports in one, leaves a tower empty and Electrify wipes the raid; the support who does not belong on that platform is blamed (Quartered north, X-Marked south, bright Souls in the middle). The + and X: dropped from the wrong platform, or the owner not stepping out of their own arms. DPS tether lasers that are unstretched or clip a support. Whether each bright tower went to the centre corner or its own tile, the White Flame baits (the + and X supports and the same-colour DPS pair), and the opposite-colour soakers. Dying with a destroyed tile as its platform falls (`Sample`, like `Unnatural Enchainment`) is the victim's mistake. |
+| Palladion | Not blamed yet (see the rule book). |
 | Later mechanics | Generic rules only: standing in an avoidable AoE is the victim's mistake. |
 
 A death that follows the same player's earlier mistake is counted as part of that mistake. When a mechanic
@@ -413,9 +425,43 @@ someone else), the blame passes to whoever caused that death. A player who dies 
 take is marked as healing or mitigation, with no culprit. Anything the rules cannot explain is left
 unattributed rather than guessed.
 
+**Confidence.** Every blame carries how sure its rule is of the culprit: *high* (the rule says who: an avoidable hit,
+a missing baiter, a Soul in the wrong quadrant), *medium* (inferred: who stood in whose line, both tanks for a swap that
+neither cast explains, a crowd joining a pair) or *low* (shared between players the rule cannot tell apart, mostly
+orange cones). Blame passed on through an earlier death (an unsoaked tower whose soaker was dead) is as sure as the
+least sure of the deaths it comes from; blame for a death after the player's own earlier mistake is medium. Mistakes per
+pull and Wipes count each by `CONF_WEIGHT` in `scorecard.py`: high 1, medium 0.75, low 0.5. On the hand-checked pulls
+(below), counted mistakes were right 83% of the time at high (all 52 avoidable hits, 76% of the rule-based ones), 77%
+at medium (48) and in 2 of 3 at low; wipes 72% at high against 44-58% at medium, counting a wipe that names part of its
+culprits as half. So medium mistakes are about as reliable as rule-based high ones, while medium wipes are clearly
+weaker; 0.75 sits between the two. Low is too rare to measure (19 counted mistakes over all reports) and is weighted
+as blame split between two.
+
+**Testing a change.** `python tests/run.py blame` checks the classifier against 35 pulls checked by hand, every
+incident's expected culprits and each pull's wipe (`tests/blame.py`; the cases, in `tests/blame_cases.json`, name
+players, so they are git-ignored like `site/data.json`, and the suite needs the caches). It fails when a hand-checked
+verdict changes. Verdicts the classifier is known to get wrong are recorded with the right answer and why (`python
+tests/blame.py run --known` lists them; a fix that gets one right shows as FIXED). `python tools/scorecard/blame_diff.py`
+then prints every attribution that changed over all cached pulls between the working tree and a git revision
+(`--rev`, default HEAD) or saved copies (`--old-dir`), and totals of counted mistakes by mechanic, cause and confidence
+and of wipes by what lost them, old against new, so a fix in one mechanic that moves counts in another shows up.
+`python tests/blame.py show CODE FIGHT` lays a pull out for checking by hand, and `add` appends one to the cases.
+
 The classifier assumes the group plays the strategy in the briefs: the line-up for Paradeigma I rather than
 tank invulnerabilities, the quadrant sweep, and the Paradeigma III placements. A group that plays a mechanic
 differently will see players blamed wrongly for it.
+
+**The rule book** (`RULEBOOK` in `classifier.py`) says which rules judge each mechanic from which raid day (the report's
+date, as the site groups raid days). A pull is judged by the latest entry dated on or before its day, so a strategy
+change is a new dated entry and older pulls keep the rules they were played under; run `build_site.py --reanalyse`
+after changing it. An entry is a rule function, `GENERIC` (only the generic rules; also any mechanic not listed) or
+`NOT_YET`, which blames no one for anything in the mechanic: its deaths and Damage Downs are listed with their cause
+and "not blamed", for a mechanic the groups are still learning. Fallout of an earlier mistake keeps its blame.
+
+| Mechanic | Entries |
+|---|---|
+| Paradeigma III | From the start: two bright Souls in one middle tower share the blame. From 2026-10-26: the priority H1 > T1 > T2 > H2, west to east, says which of them belongs on the other platform, and only they are blamed. The seats come from the light parties learned in Paradeigma I (light party 1 is T1, H1, M1, R1). |
+| Palladion | `NOT_YET`. To start blaming it, add `("YYYY-MM-DD", GENERIC)` or a rule. |
 
 ## The benchmark
 
@@ -470,7 +516,8 @@ resumed. Run `build_site.py --reanalyse` afterwards so the site picks up the new
 |---|---|
 | `build_site.py` | The command: adds reports to the website's data (`site/data.json`); `--publish` writes the passphrase-protected copy to `stats/` |
 | `scorecard.py` | The analysis: fetching, mistakes and wipes, damage against clearers, damage lost to deaths, damage per phase |
-| `classifier.py` | Mistake attribution |
+| `classifier.py` | Mistake attribution, and the rule book of which rules apply from which raid day |
+| `blame_diff.py` | Every attribution that changes between two versions of the classifier, over every cached report |
 | `checks.py` | Rotation checks against the clears |
 | `acts.py` | Casts, begun casts and outgoing damage per pull, cached |
 | `gamedata.py` | Action data (GCD or not, base recast, charges) and action icons from XIVAPI, cached |

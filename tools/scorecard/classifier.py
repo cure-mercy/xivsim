@@ -2,12 +2,15 @@
 
 Finds every Damage Down and lethal hit in a pull, then attributes it using the party strategy
 from xivsim's briefs.html (Paradeigma I light-party baits, Paradeigma II quadrant sweep,
-Superchain I laser groups / pairs / towers). Anything the rules cannot explain falls back to
-"avoidable AoE -> victim" or stays unattributed.
+Superchain I laser groups / pairs / towers, Paradeigma III platforms) and the tank swap and shares
+the logs show (Glaukopis, Dialogos). Which rules judge a mechanic depends on the raid day (RULEBOOK).
+Anything the rules cannot explain falls back to "avoidable AoE -> victim" or stays unattributed.
 """
 import collections, math
 
-SUPPORT_JOBS = {"Paladin", "Warrior", "DarkKnight", "Gunbreaker", "WhiteMage", "Scholar", "Astrologian", "Sage"}
+TANK_JOBS = {"Paladin", "Warrior", "DarkKnight", "Gunbreaker"}
+HEALER_JOBS = {"WhiteMage", "Scholar", "Astrologian", "Sage"}
+SUPPORT_JOBS = TANK_JOBS | HEALER_JOBS
 AVOIDABLE = {  # standing in it is the victim's own mistake
     "Trinity of Souls": "stood on the cleaved side (Trinity of Souls)",
     "Ray of Light": "stood in a Ray of Light column",
@@ -15,6 +18,7 @@ AVOIDABLE = {  # standing in it is the victim's own mistake
     "Superchain Coil": "stood in a donut",
     "Clear Cut": "stood in a Clear Cut cone",
     "Unnatural Enchainment": "stood on a destroyed tile",
+    "Sample": "stood on a destroyed tile as its platform fell (Sample)",
     "Palladian Ray": "stood in a Palladion puddle",
 }
 MECH = [(15, 50, "Paradeigma I"), (50, 92, "Paradeigma II"), (92, 110, "Glaukopis"), (110, 160, "Superchain I"),
@@ -22,6 +26,7 @@ MECH = [(15, 50, "Paradeigma I"), (50, 92, "Paradeigma II"), (92, 110, "Glaukopi
         (280, 345, "Palladion"), (345, 395, "Superchain IIA"), (395, 470, "Superchain IIB")]
 mech_at = lambda t: next((m for lo, hi, m in MECH if lo <= t < hi), "other")
 OPP = {"Astral": "Umbral", "Umbral": "Astral"}
+JUMP_S = 20   # a death without a hit this close to the pull's end is a jump off the arena (a wipe call)
 
 
 def quad(p):
@@ -30,13 +35,16 @@ def quad(p):
 
 
 class Pull:
-    def __init__(self, code, fight, rep, ev):
+    def __init__(self, code, fight, rep, ev, acts=None):
+        """acts: the pull's entry in the acts cache (acts.py), for the players' casts; without it the rules that read
+        casts (the Glaukopis swap) say less about why."""
         self.code, self.fid = code, fight["id"]
         self.s, self.e = fight["startTime"], fight["endTime"]
         self.ab = {int(k): v for k, v in ev["abilities"].items()}
-        act = {a["id"]: a for a in rep["masterData"]["actors"]}
+        act = {a["id"]: a for a in rep["masterData"]["actors"] if a["subType"] != "LimitBreak"}   # FFLogs lists the Limit Break as a player
         self.players = {pid: act[pid]["name"] for pid in fight["friendlyPlayers"] if pid in act}
         self.job = {act[pid]["name"]: act[pid]["subType"] for pid in fight["friendlyPlayers"] if pid in act}
+        self.casts = None if acts is None else [(t, acts["players"][str(pid)][0], acts["names"].get(str(ab))) for t, pid, ab in acts["casts"]]
         inf = lambda e: e.get("fight") == self.fid and self.s - 30000 <= e["timestamp"] <= self.e + 3000
         self.dmg = [e for e in ev["dmg"] if inf(e) and e["type"] == "damage" and e.get("targetID") in self.players]
         self.deb = [e for e in ev["debuffs"] if inf(e) and e.get("targetID") in self.players]
@@ -56,6 +64,10 @@ class Pull:
     def holders(self, debuff, lo, hi):
         return [e["who"] for e in self.deb if e["name"] == debuff and e["type"] == "applydebuff" and lo <= e["t"] <= hi]
 
+    def cast_at(self, who, action, lo, hi):
+        """Times `who` cast `action` between lo and hi."""
+        return [t for t, w, n in self.casts or [] if w == who and n == action and lo <= t <= hi]
+
     def has_debuff_at(self, debuff, t):
         st = {}
         for e in sorted((e for e in self.deb if e["name"] == debuff and e["t"] <= t), key=lambda e: e["t"]):
@@ -64,13 +76,14 @@ class Pull:
 
     def dead_by(self, t):
         """Players dead at time t: a death (its lethal hit lands ~2 s before the death event) and no sign of a raise
-        since, i.e. no hit taken with HP left over after it."""
+        since: no hit taken with HP left over after it, and no Weakness or Brink of Death (a raise's debuff)."""
         out = set()
         for w in self.job:
             ds = [d["t"] - 2 for d in self.deaths if d["who"] == w and d["t"] - 2 < t]
             if not ds: continue
             last = max(ds)
-            if not any(e["who"] == w and last + 2.5 < e["t"] < t and (e.get("targetResources") or {}).get("hitPoints", 0) > 0 for e in self.dmg):
+            if not any(e["who"] == w and last + 2.5 < e["t"] < t and (e.get("targetResources") or {}).get("hitPoints", 0) > 0 for e in self.dmg) \
+               and not any(e["who"] == w and e["name"] in ("Weakness", "Brink of Death") and e["type"] == "applydebuff" and last < e["t"] < t for e in self.deb):
                 out.add(w)
         return out
 
@@ -79,7 +92,15 @@ class Pull:
         for d in self.deaths:   # the death event is the truth; the lethal hit lands ~2 s earlier
             lethal = [e for e in self.dmg if e["who"] == d["who"] and d["t"] - 4 <= e["t"] <= d["t"] and (e.get("targetResources") or {}).get("hitPoints") == 0]
             if lethal: e = lethal[-1]; inc.append(dict(t=e["t"], kind="death", victim=d["who"], ability=e["name"], pos=e["pos"]))
-            else: inc.append(dict(t=d["t"] - 2, kind="death", victim=d["who"], ability=self.ab.get(d.get("killingAbilityGameID"), "?"), pos=None))
+            else:
+                ab = self.ab.get(d.get("killingAbilityGameID"), "?")
+                # no lethal hit, above half HP after the last hit in the 5 s before (if any) and the pull over within
+                # JUMP_S: a player jumping off the arena once a wipe is called (419 of 427 such deaths end that close).
+                # Lower HP, the lethal hit is more likely missing from the log; earlier, the pull went on without them.
+                last = next((e for e in reversed(self.dmg) if e["who"] == d["who"] and d["t"] - 5 <= e["t"] <= d["t"]), None)
+                tr = (last or {}).get("targetResources") or {}
+                jump = ab == "?" and (last is None or tr.get("hitPoints", 0) > tr.get("maxHitPoints", 0) / 2) and (self.e - self.s) / 1000 - d["t"] <= JUMP_S
+                inc.append(dict(t=d["t"] - 2, kind="death", victim=d["who"], ability=ab, pos=None, jump=jump))
         for d in self.deb:
             if d["name"] == "Damage Down" and d["type"] in ("applydebuff", "refreshdebuff"):
                 src = [e for e in self.dmg if e["who"] == d["who"] and abs(e["t"] - d["t"]) <= 0.2]
@@ -87,9 +108,10 @@ class Pull:
         return sorted(inc, key=lambda i: i["t"])
 
 
-def fault(t, mech, culprits, victims, rule, conf, chain=None):
-    """chain: players whose earlier death caused this; their death's culprits are blamed instead when there is one."""
-    return dict(t=t, mechanic=mech, culprits=list(dict.fromkeys(culprits)), victims=set(victims), rule=rule, confidence=conf, chain=chain or [])
+def fault(t, mech, culprits, victims, rule, conf, chain=None, ability=None):
+    """chain: players whose earlier death caused this; their death's culprits are blamed instead when there is one.
+    ability: the hit the fault is about; a death to it goes to this fault before an earlier one that hit the victim."""
+    return dict(t=t, mechanic=mech, culprits=list(dict.fromkeys(culprits)), victims=set(victims), rule=rule, confidence=conf, chain=chain or [], ability=ability)
 
 
 # ---------- Paradeigma I: White Flame light-party baits ----------
@@ -115,13 +137,48 @@ def para1(p, lp):
         t = min(e["t"] for e in hs); dead = p.dead_by(t - 0.5)
         cnt = collections.Counter(e["who"] for e in hs)
         exp = {x for x in lp[w - 1] if x in p.job and x not in dead}
+        gone = sorted(x for x in lp[w - 1] if x in p.job and x in dead)
         missing = [x for x in sorted(exp) if x not in cnt]
         extra = [x for x in cnt if x not in exp] + [x for x, n in cnt.items() if n >= 2 and x in exp]
         if missing:
             out.append(fault(t, "Paradeigma I", missing, extra, f"not in the White Flame line-up (wave {w}); the laser went to {', '.join(extra) or 'someone else'}", "high" if extra else "medium"))
+        elif extra and len(extra) <= len(gone):   # a baiter was already dead, so their laser found someone else
+            out.append(fault(t, "Paradeigma I", gone, extra, f"White Flame (wave {w}) went to {', '.join(extra)} because {'its baiter' if len(gone) == 1 else 'its baiters'} {', '.join(gone)} {'was' if len(gone) == 1 else 'were'} already dead", "consequence", chain=gone))
         elif extra:
             for x in extra:
                 out.append(fault(t, "Paradeigma I", [x], [x], f"took a White Flame meant for wave {w} baiters (stood in a laser line)", "medium"))
+    return out
+
+
+def para1_auto(p, lp):
+    """Athena's auto-attacks are magical, and a White Flame leaves Magic Vulnerability Up for 6 s. The light party 1 tank
+    baits wave 1 next to her and keeps her; wave 2's baiters, the light party 2 tank among them, carry the vulnerability
+    into her auto-attack at ~50.5 s, so whoever holds her then must not have been hit by wave 2 (in 708 pulls the
+    light party 1 tank took it, in none a wave 2 baiter who lived). A death to that auto-attack is blamed on what put
+    the vulnerable player there: the living tanks' provokes, or a tank already dead."""
+    out = []
+    au = next((e for e in p.dmg if e["name"] == "attack" and 48 <= e["t"] <= 53), None)
+    if not au or (au.get("targetResources") or {}).get("hitPoints") != 0: return out
+    v, t = au["who"], au["t"]
+    if v not in {e["who"] for e in p.hits("White Flame", 42, 46.5)}: return out     # no wave 2 vulnerability: other rules
+    dead = p.dead_by(t - 0.3)
+    tanks = [w for w, j in p.job.items() if j in TANK_JOBS]
+    gone, others = [w for w in tanks if w in dead], [w for w in tanks if w != v and w not in dead]
+    why = f"Athena's auto-attack after Paradeigma I (magical) killed {v} through wave 2's White Flame vulnerability"
+    if not others:
+        if gone: out.append(fault(t, "Paradeigma I", gone, [v], f"{why}: {', '.join(gone)} {'was' if len(gone) == 1 else 'were'} already dead, so {v} had to hold her", "consequence", chain=gone))
+        return out
+    if v not in tanks: return out
+    provoked = p.cast_at(v, "Provoke", 40, t)
+    shirk = [w for w in others if p.cast_at(w, "Shirk", 40, t)]
+    if provoked:
+        out.append(fault(t, "Paradeigma I", [v], [v], f"{why}: they provoked her at {provoked[-1]:.1f} s while carrying it", "high"))
+    elif v in lp[0]:   # light party 1's tank keeps Athena, and baits wave 1, not 2
+        out.append(fault(t, "Paradeigma I", [v], [v], f"{why}: tanking her, they took a wave 2 White Flame", "high"))
+    elif shirk:
+        out.append(fault(t, "Paradeigma I", shirk, [v], f"{why}: {', '.join(shirk)} shirked aggro to them", "high"))
+    else:
+        out.append(fault(t, "Paradeigma I", [v] + others, [v], f"{why}: {v} held her aggro ({', '.join(others)} did not keep it)", "medium"))
     return out
 
 
@@ -133,18 +190,34 @@ def para2(p):
         for w in p.holders(f"{asp}bright Soul", 60, 72): souls[w] = asp
     if not souls: return out
     # tether lasers: Searing Radiance -> Umbral Tilt, Shadowsear -> Astral Tilt
+    # the four players without a Soul hold the tethers, so a laser that hit only Soul holders lost its holder: dead
+    # (the tether went to someone else) or not where the line ran (the Soul holder stood in it, or took the tether)
     teth, by = {}, collections.defaultdict(list)
-    for e in p.hits(("Searing Radiance", "Shadowsear"), 74, 78.5): by[(e["name"], e.get("sourceInstance"))].append(e)
+    las = p.hits(("Searing Radiance", "Shadowsear"), 74, 78.5)
+    for e in las: by[(e["name"], e.get("sourceInstance"))].append(e)
+    tethered = [w for w in p.job if w not in souls]
+    gone = sorted(w for w in tethered if w in p.dead_by(las[0]["t"] - 0.3)) if las else []
+    unhit = [w for w in tethered if w not in gone and w not in {e["who"] for e in las}]
     for (nm, inst), es in by.items():
         es = [e for e in es if e["pos"]]
         if not es: continue
-        holder = max(es, key=lambda e: math.hypot(*e["pos"]))           # the stretched player is furthest out
-        teth[holder["who"]] = ("Umbral" if nm == "Searing Radiance" else "Astral", holder["pos"])
-        if (holder.get("targetResources") or {}).get("hitPoints") == 0:
-            out.append(fault(holder["t"], "Paradeigma II", [holder["who"]], [holder["who"]], "died to their own tether laser (not stretched far enough)", "high"))
+        held = [e for e in es if e["who"] not in souls]
+        holder = max(held, key=lambda e: math.hypot(*e["pos"])) if held else None   # the stretched player is furthest out
+        # the sweep reads the laser's quadrant and colour, and whoever it hit took its Tilt, holder or not
+        far = holder or max(es, key=lambda e: math.hypot(*e["pos"]))
+        teth[far["who"]] = ("Umbral" if nm == "Searing Radiance" else "Astral", far["pos"])
+        if holder:
+            if (holder.get("targetResources") or {}).get("hitPoints") == 0:
+                out.append(fault(holder["t"], "Paradeigma II", [holder["who"]], [holder["who"]], "died to their own tether laser (not stretched far enough)", "high"))
         for e in es:
-            if e is not holder:
+            if e is holder: continue
+            if holder:
                 out.append(fault(e["t"], "Paradeigma II", [e["who"]], [e["who"]], f"stood in {holder['who']}'s tether laser", "medium"))
+            elif gone and not unhit:
+                out.append(fault(e["t"], "Paradeigma II", gone, [e["who"]], f"a tether laser hit {e['who']} because its holder was already dead ({', '.join(gone)})", "consequence", chain=gone))
+            else:
+                out.append(fault(e["t"], "Paradeigma II", [e["who"]], [e["who"]], "holding a Soul, stood in a tether laser's line (or took the tether)" +
+                                 (f"; {', '.join(unhit)}'s laser hit no one else" if unhit else ""), "medium"))
     tq = {quad(pos): (w, tilt) for w, (tilt, pos) in teth.items()}
     # where each Soul dropped (own Glow hit) and where it should have dropped
     glow = p.hits(("Astral Glow", "Umbral Glow"), 76, 79)
@@ -187,7 +260,7 @@ def para2(p):
             out.append(fault(t, "Paradeigma II", [w], {e["who"] for e in expl} | {w}, f"tower unsoaked: dropped in {quad(sp[w])}, sweep says {expq[w]}", "high"))
         elif expq.get(w) in tq:
             sk = tq[expq[w]][0]
-            if sk in p.dead_by(80): out.append(fault(t, "Paradeigma II", [], {e["who"] for e in expl}, f"tower unsoaked because {sk} was already dead", "consequence"))
+            if sk in p.dead_by(80): out.append(fault(t, "Paradeigma II", [sk], {e["who"] for e in expl}, f"tower unsoaked because {sk} was already dead", "consequence", chain=[sk]))
             else: out.append(fault(t, "Paradeigma II", [sk], {e["who"] for e in expl} | {sk}, f"did not soak {w}'s tower in {expq[w]}", "high"))
         else:
             out.append(fault(t, "Paradeigma II", [], {e["who"] for e in expl}, f"{w}'s tower unsoaked; soaker could not be determined", "low"))
@@ -215,7 +288,72 @@ def para2(p):
 
 
 # ---------- Paradeigma III: platforms, support towers, DPS tethers, bright towers, + / X, White Flame ----------
-def para3(p):
+# ---------- Glaukopis: the tank swap ----------
+SNAPSHOT = 1.2   # the boss picks its next target this long after a hit: the provoke has to land by then
+def glaukopis(p, lo, hi):
+    """Glaukopis hits the tank holding aggro when its cast begins and gives them Magic Vulnerability Up; 3.1 s later
+    it hits whoever holds aggro SNAPSHOT s after the first hit, and 3.2 s after that a heavy auto-attack (~290k
+    unmitigated) lands on whoever holds aggro SNAPSHOT s after the second. Our groups' swap: the second tank provokes
+    during the cast, the first provokes back as the second hit lands. Measured on our pulls: a provoke back up to 1.1 s
+    after the first hit put the second hit on the same tank, from 1.2 s it did not; after the second hit, 494 provokes
+    back by 1.2 s took the auto-attack, in every death to it the provoke came from 1.3 s or never. A tank who takes both
+    hits and lives meant to (invulnerability), so only a death is a mistake."""
+    out = []
+    g = p.hits("Glaukopis", lo, hi)
+    h1 = g[0] if g else None
+    h2 = next((e for e in g if e["t"] > h1["t"] + 1.5), None) if g else None
+    if not h2 or p.job.get(h1["who"]) not in TANK_JOBS: return out   # a tank already dead: the fallout rules cover it
+    a, mech = h1["who"], mech_at(h1["t"])
+    b = next((w for w, j in p.job.items() if j in TANK_JOBS and w != a), None)
+    if b is None: return out
+    lethal = lambda e: (e.get("targetResources") or {}).get("hitPoints") == 0
+    if h2["who"] == a:
+        if not lethal(h2): return out
+        t, snap = h2["t"], h1["t"] + SNAPSHOT
+        if b in p.dead_by(t - 0.3):
+            out.append(fault(t, mech, [b], [a], f"{a} took both Glaukopis hits because {b} was already dead", "consequence", chain=[b]))
+        elif p.casts is None:
+            out.append(fault(t, mech, [a, b], [a], "no tank swap between the Glaukopis hits: the second hit the vulnerable tank", "medium"))
+        elif back := p.cast_at(a, "Provoke", h1["t"] - 1, snap):
+            out.append(fault(t, mech, [a], [a], f"provoked back {back[-1] - h1['t']:+.1f} s from the first Glaukopis, before the second "
+                             f"(from +{SNAPSHOT} s): it hit them again with the vulnerability", "high"))
+        elif not (pb := p.cast_at(b, "Provoke", h1["t"] - 10, snap)):
+            out.append(fault(t, mech, [b], [a], f"did not provoke for the Glaukopis swap; {a} took the second hit with the vulnerability", "high"))
+        else:
+            out.append(fault(t, mech, [a, b], [a], f"{b} provoked {pb[-1] - h1['t']:+.1f} s from the first Glaukopis, but {a} held aggro "
+                             "for the second (the provoke too early, or a Shirk missing)", "medium"))
+        return out
+    # the swap worked: the heavy auto-attack after the second hit has to go back to the first tank
+    auto = next((e for e in p.dmg if e["name"] == "attack" and h2["t"] + 2 < e["t"] < h2["t"] + 4.5), None)
+    if not auto or auto["who"] != h2["who"] or not lethal(auto) or p.job.get(h2["who"]) not in TANK_JOBS: return out
+    t, v = auto["t"], h2["who"]
+    if a in p.dead_by(t - 0.3):
+        out.append(fault(t, mech, [a], [v], f"the auto-attack after the second Glaukopis killed {v} because {a} was already dead", "consequence", chain=[a]))
+    elif p.casts is None:
+        out.append(fault(t, mech, [a], [v], f"did not take the boss back after the second Glaukopis; its auto-attack killed {v} through the vulnerability", "medium"))
+    else:
+        back = p.cast_at(a, "Provoke", h2["t"] - 1, t)
+        when = f"provoked back {back[0] - h2['t']:+.1f} s from the second Glaukopis, too late (by +{SNAPSHOT} s)" if back else "did not provoke back after the second Glaukopis"
+        out.append(fault(t, mech, [a], [v], f"{when}: the auto-attack after it killed {v} through the vulnerability", "high"))
+    return out
+
+
+BRIGHT_PRIORITY = ("H1", "T1", "T2", "H2")   # bright Souls' middle platforms, west to east
+
+
+def seats(p, lp):
+    """{"T1": name, "H1": ..., "T2": ..., "H2": ...} from the light parties (light party 1 baits Paradeigma I's first wave)."""
+    out = {}
+    for n, party in ((1, lp[0]), (2, lp[1])):
+        for w in sorted(party):
+            role = "T" if p.job.get(w) in TANK_JOBS else "H" if p.job.get(w) in HEALER_JOBS else None
+            if role: out.setdefault(f"{role}{n}", w)
+    return out
+
+
+def para3(p, lp, priority=False):
+    """priority: the bright Souls take the middle platforms by BRIGHT_PRIORITY, so when both soak one tower the one
+    who belongs on the other side is wrong; without it (before the groups agreed on it) both share the blame."""
     out = []
     sup = {k: p.holders(f"{k} Soul", 200, 210) for k in ("Quartered", "X-Marked", "Astralbright", "Umbralbright")}
     bright = [(w, a) for a in ("Astral", "Umbral") for w in sup[f"{a}bright"]]
@@ -244,9 +382,16 @@ def para3(p):
             who = [e["who"] for e in es]
             bad = [w for w in who if role.get(w) != want] or who
             place = {"+": "the north platform (Quartered)", "X": "the south platform (X-Marked)", "bright": "a middle platform (bright Souls)"}[want]
-            # two bright Souls on one middle tower: which of them was wrong depends on the group's priority, so both share it
-            out.append(fault(t, "Paradeigma III", bad, wipe | set(who), f"{' and '.join(who)} soaked the same tower on {place}, leaving another tower empty (Electrify)",
-                             "high" if len(bad) < len(who) else "medium"))
+            rule = f"{' and '.join(who)} soaked the same tower on {place}, leaving another tower empty (Electrify)"
+            # two bright Souls on one middle tower: the priority says which of them belongs on the other side; without
+            # it, both share the blame
+            rank = {w: BRIGHT_PRIORITY.index(s) for s, w in seats(p, lp).items() if s in BRIGHT_PRIORITY}
+            if priority and len(who) == 2 and set(bad) == set(who) and all(role.get(w) == "bright" and w in rank for w in who):
+                first, second = sorted(who, key=rank.get)
+                west = es[0]["pos"][0] < 0
+                bad = [second if west else first]
+                rule += f"; {bad[0]} belongs on the {'eastern' if west else 'western'} one (priority H1 > T1 > T2 > H2, west to east)"
+            out.append(fault(t, "Paradeigma III", bad, wipe | set(who), rule, "high" if len(bad) < len(who) else "medium"))
     # platforms: Quartered takes the north-most, X-Marked the south-most
     wrong_plat = {}
     for w in sup["Quartered"]:
@@ -329,7 +474,79 @@ def para3(p):
 
 
 # ---------- Superchain I ----------
-def superchain1(p):
+# The first resolution: the cluster with two short chains sits on an intercardinal, CLUSTER y out on each axis (fitted
+# to clean orange spreads: 8.2, 8.3), and the party stands in a ring around it (7.9 y), evenly spaced, seat by seat:
+# facing Athena from the cluster, the tanks either side of the line to her, then melee, healers, and ranged at the
+# back; the 1s on the right, the 2s on the left. Orange fires one cone from the cluster at each player, so two players
+# at the same angle share one; purple fires at all DPS or all supports, each shared with the partner beside them (M1
+# with T1, M2 with T2, R1 with H1, R2 with H2). There are always 8 orange cones and 4 purple ones: a dead player's goes
+# to someone else (orange: a player hit twice; purple: one at random). SPOT_ANGLE is each row's angle off the line to
+# Athena in clean spreads (median, degrees; quartiles within 7-15 of it, except ranged, who stand wider).
+MELEE_JOBS = {"Monk", "Dragoon", "Ninja", "Samurai", "Reaper", "Viper"}
+CLUSTER, SPOT_ANGLE, SPOT_MARGIN = 8.25, {"T": 17, "M": 50, "H": 98, "R": 146}, 20
+PARTNER = {"T": "M", "M": "T", "H": "R", "R": "H"}
+
+
+def seats_all(p, lp):
+    """{player: (row letter, 1 or 2)} for the whole party, from the light parties and the jobs."""
+    row = lambda j: "T" if j in TANK_JOBS else "H" if j in HEALER_JOBS else "M" if j in MELEE_JOBS else "R"
+    return {w: (row(p.job[w]), n) for n, party in ((1, lp[0]), (2, lp[1])) for w in party if w in p.job}
+
+
+def spot_frame(p, lp, hs):
+    """(seat, angle, want) for the first resolution: each player's seat, their angle around the cluster off the line to
+    Athena (degrees, + = right of someone facing her from the cluster) and their seat's angle. When the whole party
+    fits its seats better mirrored (1s left), they are read mirrored: light parties learned the other way round, or a
+    group that spread mirrored, where the spots relative to each other still say who moved. None when unknown."""
+    seat, pos = seats_all(p, lp), {e["who"]: e["pos"] for e in hs if e["pos"]}
+    if len(pos) < 4: return None
+    mx, my = sum(x for x, _ in pos.values()) / len(pos), sum(y for _, y in pos.values()) / len(pos)
+    cx, cy = math.copysign(CLUSTER, mx), math.copysign(CLUSTER, my)
+    to_athena = math.atan2(-cy, -cx)
+    ang = {w: (math.degrees(math.atan2(y - cy, x - cx) - to_athena) + 180) % 360 - 180 for w, (x, y) in pos.items()}  # y points south
+    diff = lambda a, b: abs((a - b + 180) % 360 - 180)
+    want = lambda flip: {w: SPOT_ANGLE[r] * (1 if (n == 1) != flip else -1) for w, (r, n) in seat.items()}
+    cost = lambda flip: sum(diff(ang[w], a) for w, a in want(flip).items() if w in ang)
+    return seat, ang, want(cost(True) < 0.75 * cost(False))
+
+
+def cone_blame(p, lp, hs, group):
+    """Who of a group sharing an orange cone left their spot around the cluster: (culprits, confidence, why). The one
+    further off their seat's angle by at least SPOT_MARGIN degrees; all of them when each is that far off (a swap);
+    otherwise they share it."""
+    fr = spot_frame(p, lp, hs)
+    if not fr or not all(w in fr[0] and w in fr[1] for w in group): return sorted(group), "low", ""
+    seat, ang, want = fr
+    off = {w: abs((ang[w] - want[w] + 180) % 360 - 180) for w in group}
+    far = sorted(group, key=off.get, reverse=True)
+    name = lambda w: "".join(map(str, seat[w]))
+    if off[far[0]] - off[far[1]] >= SPOT_MARGIN:
+        w = far[0]
+        return [w], "high" if off[w] - off[far[1]] >= 2 * SPOT_MARGIN else "medium", f"; {w} ({name(w)}) stood {off[w]:.0f} degrees off their spot around the cluster"
+    if off[far[-1]] >= SPOT_MARGIN:
+        return sorted(group), "medium", "; " + ", ".join(f"{w} ({name(w)}) {off[w]:.0f}" for w in far) + " degrees off their spots"
+    return sorted(group), "low", ""
+
+
+def pair_blame(p, lp, hs, crowd):
+    """Three or more in one purple pair: the pair whose spot (midway between its two seats) the crowd stands at keeps
+    it, the others joined it. (culprits, confidence, why); no culprits when it cannot tell."""
+    seat = seats_all(p, lp)
+    extra = [w for w in crowd if w in seat and (PARTNER[seat[w][0]], seat[w][1]) not in {seat.get(x) for x in crowd}]
+    if extra and len(extra) < len(crowd): return extra, "medium", f"; {', '.join(extra)} joined a pair not theirs"
+    fr = spot_frame(p, lp, hs)
+    if not fr or not all(w in fr[0] and w in fr[1] for w in crowd): return [], "low", ""
+    seat, ang, want = fr
+    a = math.degrees(math.atan2(sum(math.sin(math.radians(ang[w])) for w in crowd), sum(math.cos(math.radians(ang[w])) for w in crowd)))
+    spot = lambda w: (want[w] + want[w] * SPOT_ANGLE[PARTNER[seat[w][0]]] / SPOT_ANGLE[seat[w][0]]) / 2    # midway to the partner
+    home = [w for w in crowd if abs((spot(w) - a + 180) % 360 - 180) < SPOT_MARGIN]
+    if home and len(home) < len(crowd):
+        out = sorted(set(crowd) - set(home))
+        return out, "medium", f"; the pair stood at {', '.join(home)}'s spot, {', '.join(out)} joined it"
+    return [], "low", ""
+
+
+def superchain1(p, lp):
     out = []
     S = {k: p.holders(f"{k} Soul", 120, 130) for k in ("Astralstrong", "Umbralstrong", "Astralbright", "Umbralbright", "Heavensflame")}
     if not any(S.values()): return out
@@ -342,17 +559,32 @@ def superchain1(p):
         for e in hs: by[e.get("sourceInstance")].append(e["who"])
         hit = collections.Counter(e["who"] for e in hs)
         alive = [w for w in p.job if w not in dead]
+        gone = sorted(w for w in dead if w not in hit)    # their cone went to someone else
         if nm == "Superchain Emission":
             missing = [w for w in alive if w not in hit]
             lone = [ws[0] for ws in by.values() if len(ws) == 1]
+            crowd = [ws for ws in by.values() if len(ws) > 2]
+            if gone and (lone or crowd):   # a dead target's cone picked someone at random
+                out.append(fault(t, "Superchain I", gone, {w for ws in by.values() for w in ws}, f"purple jacks out of their pairs because {', '.join(gone)} "
+                                 f"{'was' if len(gone) == 1 else 'were'} already dead (a dead target's goes to someone at random)", "consequence", chain=gone))
+                continue
             if lone and missing: out.append(fault(t, "Superchain I", missing, lone, f"not in their pair for the purple jack; {', '.join(lone)} took it alone", "high"))
-            for ws in by.values():
-                if len(ws) > 2: out.append(fault(t, "Superchain I", ws, ws, "three or more in one purple-jack pair", "low"))
-        else:
-            for ws in by.values():
-                if len(ws) > 1: out.append(fault(t, "Superchain I", ws[1:], ws, f"orange cone overlap ({', '.join(ws)})", "low"))
-            for w, n in hit.items():
-                if n >= 2: out.append(fault(t, "Superchain I", [w], [w], "hit by two orange cones (not in their spread spot)", "medium"))
+            for ws in crowd:   # three or more: whoever's seat partner is not in it, or who stood away from it, joined
+                cul, conf, why = pair_blame(p, lp, hs, ws)
+                out.append(fault(t, "Superchain I", cul or ws, ws, "three or more in one purple-jack pair" + why, conf))
+        else:   # every cone from the cluster hits whoever stands in line with it
+            groups = {frozenset(ws) for ws in by.values() if len(ws) > 1}
+            doubled = [w for w, n in hit.items() if n >= 2 and not any(w in g for g in groups)]
+            if gone and sum(n - 1 for n in hit.values()) <= len(gone):   # all the extra hits are the dead players' cones
+                if groups or doubled:
+                    out.append(fault(t, "Superchain I", gone, set(doubled) | {w for g in groups for w in g}, f"orange cones doubled up because {', '.join(gone)} "
+                                     f"{'was' if len(gone) == 1 else 'were'} already dead (a dead player's cone goes to someone else)", "consequence", chain=gone))
+                continue
+            for g in groups:
+                cul, conf, why = cone_blame(p, lp, hs, g)
+                out.append(fault(t, "Superchain I", cul, g, f"orange cone overlap ({', '.join(sorted(g))}){why}", conf))
+            for w in doubled:   # two cones that hit only them, nobody dead
+                out.append(fault(t, "Superchain I", [w], [w], "hit by two orange cones (not in their spread spot)", "medium"))
     # lasers: Astral laser shared by Astralstrong + Umbralbright + Umbral Tilts, Umbral laser the mirror
     lt = p.hits(("Astral Impact", "Umbral Impact"), 136, 139.5)
     wrong_group = set()
@@ -378,12 +610,29 @@ def superchain1(p):
         owner = next((w for w in ws if w in hf), None)
         for v in ws:
             if v == owner: continue
-            if v in hf: out.append(fault(hh[0]["t"], "Superchain I", [owner, v], [v], "two Heavensflame players overlapped (pair did not split)", "medium"))
-            else: out.append(fault(hh[0]["t"], "Superchain I", [owner], [v], f"Heavensflame did not spread far enough; hit {v}", "medium"))
-    # bright Soul AoE vs strong Souls waiting to soak
-    for e in p.hits(("Astral Glow", "Umbral Glow"), 144, 147):
-        if e["who"] in set(S["Astralstrong"]) | set(S["Umbralstrong"]):
-            out.append(fault(e["t"], "Superchain I", [e["who"]], [e["who"]], "stepped into the tower before the bright Soul's AoE went off", "high"))
+            if v in hf: out.append(fault(hh[0]["t"], "Superchain I", [owner, v], [owner, v], "two Heavensflame players overlapped (pair did not split)", "medium", ability="Theos's Holy"))
+            else: out.append(fault(hh[0]["t"], "Superchain I", [owner], [v], f"Heavensflame did not spread far enough; hit {v}", "medium", ability="Theos's Holy"))
+    # the bright Souls' small AoE as they drop their towers: only the owner belongs in it. Strong Souls wait beside it
+    # before stepping in, the two bright Souls drop on opposite cardinals, and Heavensflame spreads well away from
+    # everyone (a Heavensflame player in it, left low, often dies to their own Theos's Holy next, matched to this too)
+    bright, strong = set(S["Astralbright"]) | set(S["Umbralbright"]), set(S["Astralstrong"]) | set(S["Umbralstrong"])
+    glow = p.hits(("Astral Glow", "Umbral Glow"), 144, 147.5)
+    gi = collections.defaultdict(list)
+    for e in glow: gi[(e["name"], e.get("sourceInstance"))].append(e["who"])
+    for e in glow:
+        v, owner = e["who"], next((w for w in gi[(e["name"], e.get("sourceInstance"))] if w in bright), None)
+        if v == owner: continue
+        if v in strong:
+            out.append(fault(e["t"], "Superchain I", [v], [v], "stepped into the tower before the bright Soul's AoE went off", "high"))
+        elif owner in wrong_group:   # the laser side decides the tower side
+            out.append(fault(e["t"], "Superchain I", [owner], [v], f"took the wrong laser, so their tower dropped on the wrong side; its AoE hit {v}", "high"))
+        elif v in bright:
+            out.append(fault(e["t"], "Superchain I", [v] if v in wrong_group else [owner, v] if owner else [v], [v],
+                             f"the bright Souls dropped their towers together ({owner or 'a bright Soul'}'s AoE hit {v}); they go on opposite cardinals", "high" if v in wrong_group else "medium"))
+        elif v in hf:
+            out.append(fault(e["t"], "Superchain I", [v], [v], f"Heavensflame not spread away: stood in {owner + chr(39) + 's' if owner else 'a'} bright Soul's AoE as the tower dropped", "high"))
+        else:
+            out.append(fault(e["t"], "Superchain I", [v], [v], f"stood in {owner + chr(39) + 's' if owner else 'a'} bright Soul's AoE as the tower dropped", "medium"))
     # final towers: Astralbright tower soaked by Umbralstrong (Astral Advance), Umbralbright by Astralstrong
     soaks = p.hits(("Astral Advance", "Umbral Advance"), 147, 150.5)
     expl = p.hits("Unmitigated Explosion", 149, 156)
@@ -405,14 +654,122 @@ def superchain1(p):
     return out
 
 
-def classify(p, lp):
-    """Every Damage Down and lethal hit in the pull with its mechanic, cause, culprits and confidence. Entries marked
-    derived=True are fallout of an earlier mistake (blame carried over from it), not a new mistake of their own."""
-    faults = sorted(para1(p, lp) + para2(p) + superchain1(p) + para3(p), key=lambda f: f["t"])
+# ---------- Dialogos: the tanks' shared hit and the party stack ----------
+# Athena stands at the arena centre. Peridialogos aims the tanks' hit at the closest player and the stack at the
+# farthest; Apodialogos the other way round. So the tanks belong at the centre for Peridialogos and out for Apodialogos,
+# the party the opposite. Measured at the hits (r from the centre, clean resolutions): Peridialogos tanks r <= 5.6,
+# party >= 7.7; Apodialogos party <= 8.4, tanks >= 9.8. CENTRE_R splits the two bands.
+CENTRE_R = {"Peridialogos": 6.6, "Apodialogos": 9.1}
+
+
+def dialogos(p):
+    """Apodialogos or Peridialogos is one hit the two tanks share (alone, one takes twice the damage: 265k unmitigated
+    for Apodialogos, 490k for Peridialogos, against 135k each for two), aimed at one player and hitting those in line
+    with them; Dialogos, about 0.6 s later, is a stack the rest of the party shares (78k each for six, 448k alone).
+    Concussion, the tank hit's damage over time, follows. A player's place is read from their position at either hit;
+    one hit by neither has no position, and is only blamed as missing from a hit that needed them."""
+    out = []
+    tb = p.hits(("Apodialogos", "Peridialogos"), 165, 180)
+    if not tb: return out
+    t, nm = tb[0]["t"], tb[0]["name"]
+    st = p.hits("Dialogos", t - 1, t + 2.5)
+    in_tb, in_st = {e["who"] for e in tb}, {e["who"] for e in st}
+    dead = p.dead_by(t - 0.3) - in_tb - in_st
+    is_tank = lambda w: p.job.get(w) in TANK_JOBS
+    tanks = {w for w in p.job if is_tank(w)} - dead
+    party = set(p.job) - tanks - dead
+    peri = nm == "Peridialogos"
+    where = lambda centre: "at the centre" if centre else "out"
+    r = {}
+    for e in tb + st:
+        if e["pos"] and e["who"] not in r: r[e["who"]] = math.hypot(*e["pos"])
+    misplaced = lambda w: w in r and (r[w] < CENTRE_R[nm]) != (is_tank(w) == peri)   # tanks at the centre for Peridialogos
+    pick = lambda ws, closest: (min if closest else max)((w for w in ws if w in r), key=r.get, default=None)
+    target = pick(in_tb, peri)                     # the player the tanks' hit was aimed at
+    blamed = set()
+    # the tanks' hit: a non-tank in it took it (from the tanks' place, or in line with them), unless it was aimed at a
+    # non-tank standing where the party belongs: then the tanks were not where they belong
+    out_t, extra = sorted(tanks - in_tb), sorted(in_tb - tanks)
+    if extra and target and not is_tank(target) and not misplaced(target):
+        cul = sorted(w for w in tanks if w not in in_tb or misplaced(w))
+        if cul:
+            out.append(fault(t, "Dialogos", cul, in_tb, f"not {where(peri)} for {nm} (the tanks' hit goes to the {'closest' if peri else 'farthest'} "
+                             f"player); it went to {target} and hit {', '.join(extra)}", "high"))
+            blamed |= set(cul)
+    else:
+        for x in extra:
+            how = f"stood {where(peri)} with the tanks" if misplaced(x) else "stood in line with the tanks"
+            out.append(fault(t, "Dialogos", [x], [x], f"{how} for {nm} (a hit the two tanks share)", "high"))
+            blamed.add(x)
+        if out_t and target and is_tank(target):
+            out.append(fault(t, "Dialogos", out_t, in_tb, f"left {nm} to {', '.join(sorted(in_tb & tanks))} (the two tanks share it)", "high"))
+            blamed |= set(out_t)
+    gone = sorted({w for w in p.job if is_tank(w)} & dead)
+    if gone and not out_t and not extra and in_tb:
+        out.append(fault(t, "Dialogos", gone, in_tb, f"{', '.join(sorted(in_tb))} took {nm} alone because {', '.join(gone)} was already dead (the two tanks share it)", "consequence", chain=gone))
+    # the stack: aimed at a tank, that tank stood where the party belongs; aimed at the party, whoever of the party
+    # is not in it left it (one in the tanks' hit counts once: a culprit's faults within 2 s are one mistake)
+    s_target = pick(in_st, not peri)
+    if s_target and is_tank(s_target):
+        cul = sorted(w for w in in_st if is_tank(w) and w not in blamed)
+        if cul: out.append(fault(st[0]["t"], "Dialogos", cul, in_st, f"stood {where(not peri)} where the party stacks for {nm}; the Dialogos stack went to them", "high"))
+    elif s_target:
+        miss = sorted(party - in_st)
+        if miss: out.append(fault(st[0]["t"], "Dialogos", miss, in_st | set(miss), f"not in the Dialogos stack: {len(in_st & party)} of the party's {len(party)} shared it", "high"))
+    return out
+
+
+# ---------- the rule book ----------
+# Which rules judge each mechanic, by the raid day they take effect (the report's local date, as the site groups raid
+# days). A pull is judged by the latest entry dated on or before its day, so patching a mechanic's strategy is a new
+# dated entry and older pulls keep the rules they were played under. GENERIC (also a mechanic not listed, or a day
+# before its first entry) leaves only the generic rules: standing in an avoidable AoE is the victim's mistake.
+# NOT_YET blames no one for anything in the mechanic: the groups are still learning it or have no settled strategy.
+GENERIC, NOT_YET = "generic", "not yet"
+CONF_ORDER = {"high": 0, "medium": 1, "low": 2}   # surest first
+RULEBOOK = {
+    "Paradeigma I": [(None, lambda p, lp: para1(p, lp) + para1_auto(p, lp))],
+    "Paradeigma II": [(None, lambda p, lp: para2(p))],
+    "Glaukopis": [(None, lambda p, lp: glaukopis(p, 92, 110))],
+    "Superchain I": [(None, superchain1)],
+    "Dialogos": [(None, lambda p, lp: dialogos(p))],
+    "Paradeigma III": [(None, para3),
+                       ("2026-10-26", lambda p, lp: para3(p, lp, priority=True))],   # bright Souls by H1 > T1 > T2 > H2
+    "Glaukopis / Ultima Blade": [(None, lambda p, lp: glaukopis(p, 236, 280))],
+    "Palladion": [(None, NOT_YET)],   # to start blaming it: ("YYYY-MM-DD", GENERIC) or a rule
+}
+
+
+def rules_on(day):
+    """{mechanic: rule function, GENERIC or NOT_YET} for a raid day ("YYYY-MM-DD"); None means the latest rules."""
+    out = {}
+    for mech, versions in RULEBOOK.items():
+        on = [rule for since, rule in versions if since is None or day is None or since <= day]
+        out[mech] = on[-1] if on else GENERIC
+    return out
+
+
+def classify(p, lp, day=None):
+    """Every Damage Down and lethal hit in the pull with its mechanic, cause, culprits and confidence, judged by the
+    rule book on the pull's raid day. Entries marked derived=True are fallout of an earlier mistake (blame carried over
+    from it), not a new mistake of their own; jump=True is a death without a hit (jumping off the arena)."""
+    rules = rules_on(day)
+    faults = sorted((f for rule in rules.values() if callable(rule) for f in rule(p, lp)), key=lambda f: f["t"])
     res = []
+
+    def add(r):
+        """A mistake in a NOT_YET mechanic keeps its cause but blames no one; fallout of an earlier one keeps its blame."""
+        if rules.get(r["mechanic"]) == NOT_YET and r["culprits"] and not r.get("derived"):
+            r = dict(r, culprits=[], confidence="not blamed", cause=f"{r['cause']} (not blamed: no rules for {r['mechanic']} yet)")
+        res.append(r)
     for i in p.incidents():
         mech = mech_at(i["t"])
-        f = next((f for f in faults if i["victim"] in f["victims"] and -1.5 <= i["t"] - f["t"] <= 4.5), None)
+        if i.get("jump"):
+            add(dict(i, mechanic=mech, cause="left the arena without taking a hit (jumped off: wipe called?)", culprits=[], confidence="unattributed"))
+            continue
+        # the earliest fault that hit them, unless one is about the very hit that killed them
+        near = [f for f in faults if i["victim"] in f["victims"] and -1.5 <= i["t"] - f["t"] <= 4.5]
+        f = next((f for f in near if f.get("ability") == i["ability"]), near[0] if near else None)
         if f is None and i["ability"] == "Unmitigated Explosion":
             f = next((f for f in faults if "tower" in f["rule"] and abs(i["t"] - f["t"]) <= 4.5), None)
         own = None
@@ -421,25 +778,26 @@ def classify(p, lp):
         prev = next((r for r in reversed(res) if r["victim"] == i["victim"] and r["culprits"] and 0 <= i["t"] - r["t"] <= 10), None)
         if f and f["chain"]:   # blame whoever caused the earlier death behind this fault
             why = [(n, r) for n in f["chain"] for r in [next((r for r in reversed(res) if r["victim"] == n and r["culprits"]), None)] if r]
-            if why:
-                res.append(dict(i, mechanic=f["mechanic"], cause=f["rule"] + "; earlier: " + "; ".join(f"{n} {r['cause']}" for n, r in why),
-                                culprits=list(dict.fromkeys(c for _, r in why for c in r["culprits"])), confidence="medium", derived=True))
+            if why:   # as sure as the least sure of the deaths it comes from
+                add(dict(i, mechanic=f["mechanic"], cause=f["rule"] + "; earlier: " + "; ".join(f"{n} {r['cause']}" for n, r in why),
+                                culprits=list(dict.fromkeys(c for _, r in why for c in r["culprits"])), derived=True,
+                                confidence=max((r["confidence"] for _, r in why), key=lambda c: CONF_ORDER.get(c, 1))))
             else:
-                res.append(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=[], confidence="consequence", derived=True))
+                add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=[], confidence="consequence", derived=True))
         elif f:
-            res.append(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"]))
+            add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"]))
         elif prev and i["ability"] not in AVOIDABLE:
-            res.append(dict(i, mechanic=mech, cause=f"after their earlier {prev['kind']}: {prev['cause']}", culprits=prev["culprits"], confidence="medium", derived=True))
+            add(dict(i, mechanic=mech, cause=f"after their earlier {prev['kind']}: {prev['cause']}", culprits=prev["culprits"], confidence="medium", derived=True))
         elif own:
-            res.append(dict(i, mechanic=mech, cause=f"after their earlier mistake: {own['rule']}", culprits=own["culprits"], confidence="medium", derived=True))
+            add(dict(i, mechanic=mech, cause=f"after their earlier mistake: {own['rule']}", culprits=own["culprits"], confidence="medium", derived=True))
         elif i["ability"] in AVOIDABLE:
-            res.append(dict(i, mechanic=mech, cause=AVOIDABLE[i["ability"]], culprits=[i["victim"]], confidence="high"))
+            add(dict(i, mechanic=mech, cause=AVOIDABLE[i["ability"]], culprits=[i["victim"]], confidence="high"))
         elif i["ability"] == "Shockwave":
-            res.append(dict(i, mechanic=mech, cause="stood in Athena's dash line (Palladion Shockwave)", culprits=[i["victim"]], confidence="medium"))
-        elif i["ability"] == "attack" and p.job.get(i["victim"]) in SUPPORT_JOBS - {"WhiteMage", "Scholar", "Astrologian", "Sage"}:
-            res.append(dict(i, mechanic=mech, cause="tank died to auto-attacks (mitigation / tank swap)", culprits=[], confidence="unattributed"))
+            add(dict(i, mechanic=mech, cause="stood in Athena's dash line (Palladion Shockwave)", culprits=[i["victim"]], confidence="medium"))
+        elif i["ability"] == "attack" and p.job.get(i["victim"]) in TANK_JOBS:
+            add(dict(i, mechanic=mech, cause="tank died to auto-attacks (mitigation / tank swap)", culprits=[], confidence="unattributed"))
         else:
             earlier = [r for r in res if r["t"] < i["t"] - 0.5 and r["culprits"]]
-            res.append(dict(i, mechanic=mech, cause=f"{i['kind']} to {i['ability']}" + (" after an earlier mistake" if earlier else " (no rule matched: likely HP / mitigation)"),
+            add(dict(i, mechanic=mech, cause=f"{i['kind']} to {i['ability']}" + (" after an earlier mistake" if earlier else " (no rule matched: likely HP / mitigation)"),
                             culprits=[], confidence="consequence" if earlier else "unattributed"))
     return res, faults

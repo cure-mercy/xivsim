@@ -6,3 +6,4 @@ tools/rotation/.cache/
 scratch/
 tools/gear/.cache/
 .fflogs_v2
+tests/blame_cases.json
