@@ -107,8 +107,17 @@ A tier's search repeats while its set's speed factor and rates move. Tiers close
   as a persistent chain, tags `AUTO` so auto-attacks are known, and pairs each DoT and sure-crit increment with its
   channel. A hit of potency b varies by b² K² v (K: damage per potency, v: the variance of crit x direct hit at the
   set's rates); sure crits vary by their direct hit only, sure critical direct hits and Wildfire not at all; a DoT's
-  share counts as ticks of the model's tick potency. Not in it: the ±5% damage roll and random procs (Dancer's, Red
-  Mage's), and the extra spread own crit buffs (Devilment, Battle Voice, Battle Litany) give their hits.
+  share counts as ticks of the model's tick potency. Not in it: the ±5% damage roll and the extra spread own crit
+  buffs (Devilment, Battle Voice, Battle Litany) give their hits;
+- **proc luck** for the jobs whose models draw their procs (`DRAWN`: Monk, Bard, Dancer, Red Mage; `engine.DRAW`):
+  the rotation played 400 times under drawn procs by a player who re-plans 20 s ahead before every step
+  (`montecarlo.draws`, sweep width 3000: at 300 the sweep's pruning, not the procs, made a quarter of Red Mage's
+  draws lose 3.1%), measured against the same player with nothing drawn (the short horizon's own cost is no luck).
+  Each draw's hits are recorded and priced as above (`record(draw=seed)`); a Monk weaponskill's drawn crit (which
+  opens its chakra) is booked as a sure crit or a plain hit (`plainp`), so its crit luck and its chakra's go
+  together. The band (`lo` / `hi`) is p16-p84 of the draws, each spread by its own crit and direct-hit SD: as many
+  pulls as one SD either side, but lopsided like proc luck. Other jobs: ceiling ± spread. Draws cached in
+  `.cache/procs/` (delete after a job model changes).
 
 ## The site's sets (`sheets.py`)
 
@@ -133,17 +142,17 @@ first run since the 2026-10-24 grid rule, which reaches its 2.10-2.14 s tiers). 
 tomestone gear melded to the tier. Pictomancer and Viper have no Mandervillous weapon (Dawntrail jobs): their
 relic is the synced Phantom Occultum. The site ceiling (`ceiling.py`) is in each job's potency unit (Black Mage x1.22).
 
-| Job | Best tier (searched) | Tied within 0.4% | Weapon (relic substats) | Armour and accessories | Food | Site ceiling 0:00-2:00, nDPS +- luck |
+| Job | Best tier (searched) | Tied within 0.4% | Weapon (relic substats) | Armour and accessories | Food | Site ceiling 0:00-2:00, nDPS +- luck (with procs: p16 / p84) |
 |---|---|---|---|---|---|---|
 | BLM | 2.13/1.81 | 2.12/1.80, 2.17/1.85, 2.15/1.83, 2.21/1.88, 2.20/1.87 | Mandervillous Rod (det/sps +dh) | 2 synced (780, 790) | Rroneek au Gratin | 15,608 +-280 (1.8%) |
-| BRD | 2.47 | 2.50 | Mandervillous Compound Bow (crit/dh +sks) | 2 synced (780, 780) | Caramel Popcorn | 10,053 +-280 (2.8%) |
-| DNC | 2.50 | - | Mandervillous Chakrams (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 10,354 +-373 (3.6%) |
+| BRD | 2.47 | 2.50 | Mandervillous Compound Bow (crit/dh +sks) | 2 synced (780, 780) | Caramel Popcorn | 10,053 +-280 (2.8%); with procs -3.8% / +2.8% |
+| DNC | 2.50 | - | Mandervillous Chakrams (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 10,354 +-373 (3.6%); with procs -4.3% / +4.7% |
 | DRG | 2.50 | 2.49 | Mandervillous Trident (crit/det +dh) | 2 synced (780, 790) | Caramel Popcorn | 12,923 +-383 (3.0%) |
 | MCH | 2.49 | 2.47 | Mandervillous Revolver (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 13,230 +-309 (2.3%) |
-| MNK | 1.94 | - | Mandervillous Fists (crit/dh +sks) | 2 synced (780, 780) | Caramel Popcorn | 14,141 +-386 (2.7%) |
+| MNK | 1.94 | - | Mandervillous Fists (crit/dh +sks) | 2 synced (780, 780) | Caramel Popcorn | 14,141 +-386 (2.7%); with procs -3.3% / +3.1% |
 | NIN | 2.12 | - | Mandervillous Knives (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 13,364 +-431 (3.2%) |
 | PCT | 2.49 | 2.47, 2.50 | Phantom Round Brush Occultum (crit/det +dh) | 4 synced (780, 780, 790, 795) | Caramel Popcorn | 14,335 +-483 (3.4%) |
-| RDM | 2.50 | 2.49 | Mandervillous Rapier (crit/det +dh) | 3 synced (780, 780, 790) | Caramel Popcorn | 12,622 +-424 (3.4%) |
+| RDM | 2.50 | 2.49 | Mandervillous Rapier (crit/det +dh) | 3 synced (780, 780, 790) | Caramel Popcorn | 12,622 +-424 (3.4%); with procs -3.4% / +3.4% |
 | RPR | 2.47 | 2.44, 2.49 | Mandervillous Zaghnal (crit/dh +sks) | 2 synced (780, 780) | Caramel Popcorn | 13,579 +-427 (3.1%) |
 | SAM | 2.50/2.17 | 2.49/2.16, 2.48/2.15 | Mandervillous Samurai Blade (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 14,374 +-306 (2.1%) |
 | SMN | 2.12 | 2.14, 2.11, 2.10 | Mandervillous Index (det/sps +dh) | 2 synced (780, 790) | Rroneek au Gratin | 12,837 +-217 (1.7%) |

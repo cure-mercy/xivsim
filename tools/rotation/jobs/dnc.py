@@ -34,7 +34,8 @@ reads the procs from the log's statuses (prepare) and counts a feather on every 
 Esprit: 5 a Cascade / Fountain, 10 a Reverse Cascade / Fountainfall while the Esprit status is up (Standard Finish's
 60 s, or Technical Finish's 20 s), 50 a Tillana, and the party's chances: the dance partner's while Standard Finish is
 up, everyone's in the Technical Finish window, at expected rates per second (PARTY_RATE, TECH_RATE: scratch/dnc/
-esprit.py and replays), only while Athena can be hit.
+esprit.py and replays), only while Athena can be hit. With procs drawn (engine.DRAW: montecarlo.py) the party's come
+as 10 Esprit or none on each member's GCD, on a fixed grid (PARTY_GCD) at the chance that gives the same rate.
 
 Devilment's +20% critical and direct-hit rate counts on the Dancer's own hits at its expected worth (as Bard's Battle
 Voice). Starfall Dance's sure critical direct hit (always under Devilment, whose rates it turns into damage) is kept in
@@ -44,7 +45,7 @@ Every action is instant and reaches the plan's spots (Saber Dance 25 y, the fini
 from Athena's 10.5 y hitbox), so R1, R2 and standing still play the same; only Palladion's downtime matters, where the
 steps can be danced with no target and the finish waits for Athena.
 """
-import itertools
+import itertools, math
 import engine
 from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, settle
 
@@ -77,6 +78,7 @@ ESPRIT = {"Cascade": 5, "Fountain": 5, "Reverse Cascade": 10, "Fountainfall": 10
 # players spend a lucky draw at once (13% of logged Saber Dances, by ~10 Esprit each), mostly outside the window.
 PARTY_RATE = 0.7
 TECH_RATE = 4.2
+PARTY_GCD = 2.5                                 # with procs drawn: each member's GCDs this far apart, the seven offset evenly
 AUTO, AUTO_DELAY = 80, 3.12
 # seconds from executing an action to its damage landing, the logs' medians
 DELAY = {"Cascade": 0.80, "Fountain": 0.98, "Reverse Cascade": 0.63, "Fountainfall": 1.20, "Saber Dance": 0.45,
@@ -199,6 +201,20 @@ def party(s, fight, a, b):
     return v
 
 
+def party_drawn(s, fight, a, b):
+    """The party's Esprit over [a, b) with procs drawn (engine.DRAW: montecarlo.py): 10 or none on each member's GCD
+    (PARTY_GCD apart, member j offset j / 7 of it), at the chance that gives party()'s rate: the partner's (j = 0) while
+    Standard Finish is up, the six others' in the Technical Finish window, only while Athena can be hit."""
+    v = 0.0
+    for j in range(7):
+        off, q = j * PARTY_GCD / 7, (PARTY_RATE if j == 0 else TECH_RATE / 6) * PARTY_GCD / 10
+        for n in range(math.ceil((a - off) / PARTY_GCD - 1e-9), math.ceil((b - off) / PARTY_GCD - 1e-9)):
+            t = off + n * PARTY_GCD
+            up = s.sf_until > t if j == 0 else s.tf_from <= t < s.tf_until
+            if up and fight.targetable(t) and engine.drawn(q, t, f"Esprit {j}"): v += 10
+    return v
+
+
 def advance(s, fight, to):
     """Auto-attacks and the party's Esprit up to `to`, and statuses that lapse."""
     while s.auto_next <= to:
@@ -206,7 +222,8 @@ def advance(s, fight, to):
         if 0 <= a + 0.5 < fight.until and fight.targetable(a): s.dmg += AUTO * mult(s, fight, a)
         s.auto_next = a + AUTO_DELAY
     if to > s.ep_t:
-        g = party(s, fight, max(s.ep_t, 0.0), to)
+        drawn = engine.DRAW is not None and LOG_PROCS is None
+        g = (party_drawn if drawn else party)(s, fight, max(s.ep_t, 0.0), to)
         if g: gain(s, g)
         s.ep_t = to
     if s.sym and s.sym_until <= to: wasted(s, 2, s.sym); s.sym = 0.0

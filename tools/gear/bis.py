@@ -287,12 +287,14 @@ class configured:
         if hasattr(self.job, "derive"): self.job.derive()
 
 
-def rotation(jobkey, speed, params, width=None, until=None):
+def rotation(jobkey, speed, params, width=None, until=None, with_setting=False):
     """The rotation's history at this speed factor and these rates over the whole phase (or 0:00-`until`: the site's
-    0:00-2:00 ceiling), searched and polished as dps.ceiling does, cached in .cache/rot/."""
+    0:00-2:00 ceiling), searched and polished as dps.ceiling does, cached in .cache/rot/. `with_setting`: (history,
+    the heuristic setting it was searched at); a file saved before the setting was kept is searched again."""
     key = "_".join([f"{speed:.3f}"] + [f"{k}{v:.3f}" for k, v in sorted(params.items())]) + (f"_w{until:.0f}" if until else "")
     f = CACHE / "rot" / f"{jobkey}_{key}.json"
-    if not f.exists():
+    d = json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+    if d is None or (with_setting and isinstance(d, list)):
         dps = _rot()
         import polish
         job = dps.JOBS[jobkey][0]
@@ -300,9 +302,14 @@ def rotation(jobkey, speed, params, width=None, until=None):
         with configured(job, speed, params):
             s, setting, _ = dps.engine.search(jobkey, fight, width=width, speed=speed, params=params or None)
             s, _ = polish.polish(jobkey, fight, s, setting, speed, params=params or None, log=lambda m: None)
+        new = dict(setting=list(setting), hist=s.history())
+        if isinstance(d, list) and [list(x) for x in d] != json.loads(json.dumps(new["hist"])):
+            print(f"  {f.name}: searched again for its setting, and the search now finds another rotation", flush=True)
         f.parent.mkdir(parents=True, exist_ok=True)
-        f.write_text(json.dumps(s.history()), encoding="utf-8")
-    return [tuple(x) for x in json.loads(f.read_text(encoding="utf-8"))]
+        f.write_text(json.dumps(new), encoding="utf-8")
+        d = new
+    hist = [tuple(x) for x in (d["hist"] if isinstance(d, dict) else d)]
+    return (hist, tuple(d["setting"])) if with_setting else hist
 
 
 def mix(jobkey, hist, speed, params):

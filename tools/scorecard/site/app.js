@@ -1517,7 +1517,8 @@ function rdpsNote(job, w, wf) {
 // the job's 0:00-2:00 ceiling as rDPS, the window our pulls and the clears' cover, plus our players' median 0:00-2:00
 // credit for buffs given (the clears' for a job none of ours plays). With the gear model's result (tools/gear/ceiling.py,
 // DATA.rotations[job].bis): the rotation for 0:00-2:00 with the best-in-slot set at its best GCD (gear and rotation
-// optimized together), nDPS; the band one standard deviation either side from crit and direct-hit luck alone. Without
+// optimized together), nDPS; the band where luck puts two pulls in three (lo / hi: crit and direct hit, and for a job
+// whose procs are random, Monk, Bard, Dancer and Red Mage, the procs drawn too: b.procs; older data ±b.sd). Without
 // it, the older ceiling: the best of the rotations' own 0:00-2:00 searches at the median conversion, the band the same
 // rotation from the weakest to the strongest player's gear (each player's own ceiling against the median's at their
 // GCD, for players with BAND_PULLS clean pulls or more; for a job none of ours plays, the clears' dps_lo / dps_hi)
@@ -1535,7 +1536,8 @@ function ceilingRdps(job) {
   const credit = given.length ? median(given) : c.given || 0, from = given.length ? "ours" : "clears";
   const b = (DATA.rotations[job] || {}).bis;
   if (b) return { value: b.ceiling + credit, ndps: b.ceiling, credit, from, gcd: b.gcd, crit: null, bis: b,
-    lo: b.ceiling - b.sd + credit, hi: b.ceiling + b.sd + credit, bandFrom: "crit and direct-hit luck, one standard deviation" };
+    lo: (b.lo != null ? b.lo : b.ceiling - b.sd) + credit, hi: (b.hi != null ? b.hi : b.ceiling + b.sd) + credit,
+    bandFrom: b.procs ? "crit, direct-hit and proc luck, two pulls in three" : "crit and direct-hit luck, one standard deviation" };
   const steady =[...own.values()].filter(o => o.n >= BAND_PULLS), use = steady.length ? steady : [...own.values()];
   const ends = use.length ? use.map(o => x.ceiling_2min * o.ceiling / all[o.key].ceiling_2min)
     : [x.ceiling_2min * x.dps_lo / x.dps, x.ceiling_2min * x.dps_hi / x.dps];
@@ -1584,8 +1586,10 @@ function jobsCard(jobs) {
       : `ceiling 0:00–2:00 (${r.top.gcd.toFixed(2)} s GCD${r.top.crit != null ? `, ${pct(r.top.crit)} crit` : ""}, median conversion)`, "k-ceil"],
     ...(r.top.credit ? [[num(r.top.ndps), "of it nDPS", "k-none"], [`+${num(r.top.credit)}`, `buffs given: ${r.top.from === "ours" ? "our" : "the clears'"} median over 0:00–2:00`, "k-none"]] : []),
     ...(r.box ? [[pct(r.box.med / r.top.value), "of it at our median", "k-none"]] : []),
-    r.top.bis ? [`±${num(r.top.bis.sd)}`, `${pct(r.top.bis.sd / r.top.bis.ceiling)}: ${r.top.bandFrom}`, "k-band"]
-      : [`${num(r.top.lo)}–${num(r.top.hi)}`, `ceiling across ${r.top.bandFrom}`, "k-band"],
+    ...(r.top.bis ? [[`${num(r.top.lo)}–${num(r.top.hi)}`, `${signed(r.top.lo / r.top.value - 1, 1)} / ${signed(r.top.hi / r.top.value - 1, 1)}: ${r.top.bandFrom}`, "k-band"],
+      ...(r.top.bis.procs ? [[`±${num(r.top.bis.sd)}`, "of it crit and direct hit alone, one standard deviation", "k-none"],
+        [`${signed(r.top.bis.procs.p16, 1)} / ${signed(r.top.bis.procs.p84, 1)}`, `procs alone${r.job === "Monk" ? " (with the weaponskill crits that open its chakra)" : ""}, two draws in three (mean ${signed(r.top.bis.procs.mean, 1)}; ${r.top.bis.procs.seeds} draws, played re-planning ${r.top.bis.procs.replan} s ahead)`, "k-none"]] : [])]
+      : [[`${num(r.top.lo)}–${num(r.top.hi)}`, `ceiling across ${r.top.bandFrom}`, "k-band"]]),
     ...(r.clears.length ? [[num(r.clearsMean), `clears' mean, ${r.clears.length} player${r.clears.length > 1 ? "s" : ""}: ${r.clears.map(v => kfmt(v)).join(" · ")}`, "k-clear"]] : [["–", "no clears of this job in the benchmark", "k-clear"]])];
   const draw = width => {
     const vals = rows.flatMap(r => [...(r.box ? [r.box.lo, r.box.hi] : r.s), r.top.value, r.top.lo, r.top.hi, ...r.clears]);
@@ -1625,18 +1629,20 @@ function jobsCard(jobs) {
     return svg;
   };
   const anyBis = rows.some(r => r.top.bis), oldBand = rows.filter(r => !r.top.bis).map(r => jobName(r.job));
+  const drawn = rows.filter(r => r.top.bis && r.top.bis.procs).map(r => jobName(r.job));
   const table = () => tableOf(["Job", "Our median", "Middle half", "Clean pulls", "Ceiling 0:00–2:00", anyBis ? "Band" : "Across gear", "Our median of it", "Clears' mean", "Clears' players"],
     lanes.filter(l => !l.head).map(r => [jobName(r.job), r.box ? num(r.box.med) : "–", r.box ? `${num(r.box.q1)}–${num(r.box.q3)}` : "–",
       `${r.n} (${r.players} player${r.players === 1 ? "" : "s"})`, num(r.top.value),
-      r.top.bis ? `±${num(r.top.bis.sd)} (luck)` : `${num(r.top.lo)}–${num(r.top.hi)} (gear)`, r.box ? pct(r.box.med / r.top.value) : "–",
+      r.top.bis ? `−${num(r.top.value - r.top.lo)} / +${num(r.top.hi - r.top.value)} (luck${r.top.bis.procs ? ", procs" : ""})` : `${num(r.top.lo)}–${num(r.top.hi)} (gear)`, r.box ? pct(r.box.med / r.top.value) : "–",
       r.clearsMean != null ? num(r.clearsMean) : "–", String(r.clears.length)]));
   const legend = [
     el("span", {}, el("i", { style: "width:16px;height:10px;border-radius:2px;background:var(--series)" }), "our players' clean pulls: middle half, median, whiskers"),
     el("span", {}, el("i", { style: "width:2px;height:14px;background:var(--ink)" }), anyBis ? "ceiling 0:00–2:00, best-in-slot gear" : "ceiling 0:00–2:00"),
-    el("span", {}, el("i", { class: "ceil-band-key", style: "width:16px;height:12px;border-radius:2px" }), anyBis ? "± one standard deviation of crit and direct-hit luck" : "ceiling across players' gear"),
+    el("span", {}, el("i", { class: "ceil-band-key", style: "width:16px;height:12px;border-radius:2px" }), anyBis ? `luck, two pulls in three: crit and direct hit${drawn.length ? `, procs for ${drawn.join(", ")}` : ""}` : "ceiling across players' gear"),
     el("span", {}, el("i", { style: "width:8px;height:8px;border-radius:50%;background:var(--muted)" }), "clears' players")];
   const about = anyBis
-    ? "Tick: the ceiling, the optimizer's best rotation for 0:00–2:00 with best-in-slot gear, materia and food at the GCD where gear and rotation together do best (the fight's sync: level 90, level-100 gear synced to item level 660), nDPS, plus our median credit for buffs given. Band: one standard deviation either side from crit and direct-hit luck alone, at that set's rates: about two pulls in three land inside it if played perfectly (random procs, Dancer's and Red Mage's, spread them further)."
+    ? "Tick: the ceiling, the optimizer's best rotation for 0:00–2:00 with best-in-slot gear, materia and food at the GCD where gear and rotation together do best (the fight's sync: level 90, level-100 gear synced to item level 660), nDPS, plus our median credit for buffs given. Band: where luck puts about two pulls in three if played perfectly. Crit and direct hit at that set's rates, one standard deviation either side"
+      + (drawn.length ? `; for ${drawn.join(", ")} the random procs too (Monk's chakra, Bard's Repertoire and Hawk's Eye, Dancer's procs, feathers and the party's Esprit, Red Mage's Verfire / Verstone), drawn hundreds of times and played by someone re-planning 20 s ahead, against the same player without them. Proc luck needn't be even, so these bands can reach further on one side of the tick than the other.` : ".")
       + (oldBand.length ? ` Not yet computed for ${oldBand.join(", ")}: there, the older ceiling at our players' median conversion, its band across our players' gear.` : "")
     : "Tick: the ceiling, the optimizer's best rotation for 0:00–2:00 at our players' median conversion and best GCD, plus our median credit for buffs given. Band: that ceiling across our players' gear (5+ clean pulls each), moved to its GCD; for a job none of ours plays, the clears' gear. The ceiling is an expected value: a lucky pull beats it by a few percent, more with random procs (Dancer, Red Mage).";
   return card("Our players against the ceiling and the clears", info(`All rDPS over 0:00–2:00, tinctures removed. Box: our players' clean pulls (no death or Damage Down before 2:00, no Echo): middle half, median, whiskers to 1.5 times the box's width, outliers as dots (one far off the scale is only in the tooltip). ${about} Grey dots: the benchmark clears' players, each one's mean. Within a role, jobs go by our median; click one for its rotations.`),

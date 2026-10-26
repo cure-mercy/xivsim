@@ -26,8 +26,21 @@ hit (crit rate p at x c, direct hit q at x1.25):
 The models book a DoT at application, so its share counts as ticks of the job's tick potency. Own crit and direct-hit
 buffs (Devilment, Battle Voice, Battle Litany) are priced into the hits' potency at expected value; their extra
 spread under the buff is left out (it's small: a fifth of the rates on a fifth of the hits).
+
+Proc luck (DRAWN: Monk, Bard, Dancer, Red Mage, the job models that draw their procs, engine.DRAW): the same rotation
+played SEEDS times under drawn procs by a player who re-plans 20 s ahead before every step (montecarlo.draws), each
+draw's hits recorded as above (record(draw=seed)) and priced at the set; and once with nothing drawn, which the draws
+are measured against (what the 20 s horizon costs on its own is no luck). The sweep's width matters (REPLAN): at 300
+a quarter of Red Mage's draws lost 3.1% to a pruned line (the melee combo pushed past 2:00) and the undrawn replay
+itself moved -0.8% (Monk) to +1.3% (Red Mage, at 1000); at 3000 it is within 0.2% of the plan for Monk, Dancer and
+Red Mage, and Bard's -0.9% is the horizon's (the same at 300). Re-planning over the whole phase instead (as a real
+player, scored to 2:00) moved Red Mage's burst past 2:00 from some draws' mana: luck of the cut, not of the procs. A Monk weaponskill's crit opens a chakra, so
+under draws it is booked as a sure crit or a plain hit (no crit; its direct hit still rolls) and its crit luck comes
+with the chakra's. The band (lo / hi) is the p16-p84 of the draws, each spread by its own crit and direct-hit SD (a
+mixture of normals): as many pulls as one SD either side, but lopsided, as proc luck is. Other jobs: the ceiling +- sd.
+The draws are cached in .cache/procs/ (delete it after a job model changes).
 """
-import argparse, itertools, json, math, statistics as st, sys
+import argparse, hashlib, itertools, json, math, statistics as st, sys, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -39,7 +52,12 @@ from gear import Stats                               # noqa: E402
 CACHE = HERE / ".cache"
 OUT = CACHE / "bis_site.json"
 CI = CACHE / "ci"
+PROCS = CACHE / "procs"
 UNIT = {"blm": "ENOCHIAN"}     # a job model whose potencies include a multiplier the game applies on top of potency
+DRAWN = ("mnk", "brd", "dnc", "rdm")    # job models that draw their random procs (engine.DRAW: montecarlo.py)
+SEEDS = 400
+REPLAN = (20.0, 3000)          # the player under drawn procs: re-plans this many seconds ahead, at this sweep width
+BAND = (st.NormalDist().cdf(-1), st.NormalDist().cdf(1))     # the band: as much of the pulls as one SD either side
 _seq = itertools.count()
 
 
@@ -86,9 +104,11 @@ def _tick(job):
     return st.mean(f(n) for n in base) if isinstance(base, dict) else f()
 
 
-def record(jobkey, hist, speed, params, until):
+def record(jobkey, hist, speed, params, until, draw=None):
     """The rotation's hits over 0:00-`until`, replayed at the speed factor and rates: {kind: (sum, sum of squares)},
-    kinds normal, auto, sure, dot (dot's squares as ticks of the model's tick potency)."""
+    kinds normal, auto, sure, dot (dot's squares as ticks of the model's tick potency) and plain (a hit known not to
+    crit: Monk's weaponskills with procs drawn). `draw`: replayed with the procs drawn from this seed (a history
+    montecarlo.play played with it)."""
     dps = bis._rot()
     import polish
     job = dps.JOBS[jobkey][0]
@@ -105,24 +125,26 @@ def record(jobkey, hist, speed, params, until):
             for k in ("SURE_W", "STAR_W"):
                 if k in keep: setattr(job, k, 1.0)     # final() then adds nothing for the sure crits' weight
             s = job.State.initial(fight)
-            for k in ("dmg", "dotp", "critp"):
+            for k in ("dmg", "dotp", "critp", "plainp"):
                 if hasattr(s, k): setattr(s, k, Acc(getattr(s, k)))
+            dps.engine.DRAW = draw
             steps, states = polish.split(job, fight, s, hist)
             job.State.copy = capture
             del copies[:]
             total = job.final(states[-1], fight)       # the swings and ticks to the window's end, on a copy
         finally:
+            dps.engine.DRAW = None
             job.State.copy = copy
             for k, v in keep.items(): setattr(job, k, v)
     last = copies[-1] if copies else states[-1]
     dmg = [(q, x) for q, x in _log(total) if x]
     paired, kind = set(), {}
-    for chan in ("dotp", "critp"):
+    for chan, name in (("dotp", "dot"), ("critp", "sure"), ("plainp", "plain")):
         for q, x in _log(getattr(last, chan, None)):
             if not x: continue
             m = next((i for i, (q2, x2) in enumerate(dmg) if i not in paired and abs(q2 - q) <= 6 and x2 == x), None)
-            if m is not None: paired.add(m); kind[m] = "dot" if chan == "dotp" else "sure"
-    out = {k: [0.0, 0.0] for k in ("normal", "auto", "sure", "dot")}
+            if m is not None: paired.add(m); kind[m] = name
+    out = {k: [0.0, 0.0] for k in ("normal", "auto", "sure", "dot", "plain")}
     tick = _tick(job)
     for i, (q, x) in enumerate(dmg):
         k = kind.get(i) or ("auto" if isinstance(x, Auto) else "normal")
@@ -140,10 +162,54 @@ def spread(job, s, rec):
     v_hit = ec2 * ed2 - (ec * ed) ** 2
     v_sure = 0.0 if job in bis.SURE_DH else c * c * (ed2 - ed * ed)
     base = s.main_multi * s.det_multi * s.wd_multi
-    k = dict(normal=s.trait * base, auto=base * s.dot_multi, sure=s.trait * base, dot=s.trait * base)   # a DoT's speed
-    # bonus is in its potency already: the models' dot_tick
-    v = dict(normal=v_hit, auto=v_hit, sure=v_sure, dot=0.0 if job in bis.PLAIN_DOT else v_hit)
+    k = dict(normal=s.trait * base, auto=base * s.dot_multi, sure=s.trait * base, dot=s.trait * base,   # a DoT's speed
+             plain=s.trait * base)                  # bonus is in its potency already: the models' dot_tick
+    v = dict(normal=v_hit, auto=v_hit, sure=v_sure, dot=0.0 if job in bis.PLAIN_DOT else v_hit, plain=ed2 - ed * ed)
     return math.sqrt(sum(k[x] ** 2 * v[x] * max(rec[x][1], 0.0) for x in rec))
+
+
+def worth(job, s, rec):
+    """The window's expected damage (the gear model's units) from the recorded hits: bis.value, plus the plain hits
+    (no crit, the direct hit expected)."""
+    plain = rec.get("plain", (0.0,))[0]
+    return (bis.value(job, s, bis.Mix(*(rec[k][0] for k in ("normal", "dot", "sure", "auto"))))
+            + s.trait * plain * s.main_multi * s.det_multi * s.wd_multi * (1 + 0.25 * s.dh_rate))
+
+
+# ---------------------------------------------------------------------------------------------------- proc luck
+
+def draws(jobkey, hist, setting, speed, params, until, seeds=SEEDS, log=print):
+    """The rotation played under drawn procs by a player who re-plans (montecarlo.draws, REPLAN), each draw's hits
+    over 0:00-`until` recorded: {ev: record() of the same player with nothing drawn, runs: [record() per draw]},
+    cached in .cache/procs/ by everything it depends on but the job model (delete it after a model change, as
+    .cache/rot)."""
+    key = json.dumps([jobkey, hist, list(setting), speed, sorted(params.items()), until, seeds, REPLAN])
+    f = PROCS / f"{jobkey}_{hashlib.sha1(key.encode()).hexdigest()[:16]}.json"
+    if f.exists(): return json.loads(f.read_text(encoding="utf-8"))
+    dps = bis._rot()
+    import montecarlo
+    job = dps.JOBS[jobkey][0]
+    fight = dps.site_fight(job, until)[1]
+    t0 = time.time()
+    d = montecarlo.draws(jobkey, fight, hist, setting, speed, params, seeds, REPLAN)
+    t1 = time.time()
+    rec = lambda h, seed: record(jobkey, [tuple(x) for x in h], speed, params, until, seed)
+    out = dict(ev=rec(d["ev"][4], None), runs=[rec(r[4], i) for i, r in enumerate(d["runs"], 1)])
+    log(f"  {seeds} draws re-planned {REPLAN[0]:.0f} s ahead in {t1 - t0:.0f} s, recorded in {time.time() - t1:.0f} s")
+    PROCS.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(out), encoding="utf-8")
+    return out
+
+
+def quantile(parts, p):
+    """The p-quantile of an equal mixture of normals [(mean, sd)]."""
+    lo, hi = min(m - 8 * s for m, s in parts), max(m + 8 * s for m, s in parts)
+    dists = [st.NormalDist(m, max(s, 1e-9)) for m, s in parts]
+    for _ in range(60):
+        x = (lo + hi) / 2
+        if sum(d.cdf(x) for d in dists) / len(dists) < p: lo = x
+        else: hi = x
+    return (lo + hi) / 2
 
 
 # ------------------------------------------------------------------------------------------------- per-job factor
@@ -228,22 +294,40 @@ def measured(jobkey, log=lambda m: None):
 
 # -------------------------------------------------------------------------------------------------------- export
 
-def job_ceiling(jobkey, log=print):
-    """The site's entry for a job: its 0:00-2:00 ceiling with the combined optimum's set (nDPS), the spread from crit
-    and direct-hit luck (one standard deviation), the set and how it was made."""
+def job_ceiling(jobkey, seeds=SEEDS, log=print):
+    """The site's entry for a job: its 0:00-2:00 ceiling with the combined optimum's set (nDPS), the band luck spreads
+    it over (lo / hi: crit and direct hit, and a job's drawn procs; sd: crit and direct hit alone, one standard
+    deviation), the set and how it was made."""
     dps = bis._rot()
     b = json.loads((CACHE / f"bis_{jobkey}.json").read_text(encoding="utf-8"))
     J, W = jobkey.upper(), dps.WINDOW
     s = Stats(J, b["totals"], {k: tuple(v) for k, v in b["foodBonus"].items()})
-    hist = bis.rotation(jobkey, b["speed"], b["params"], until=W)
+    hist = bis.rotation(jobkey, b["speed"], b["params"], until=W, with_setting=jobkey in DRAWN)
+    if jobkey in DRAWN: hist, setting = hist
     rec = record(jobkey, hist, b["speed"], b["params"], W)
     m = bis.Mix(*(rec[k][0] for k in ("normal", "dot", "sure", "auto")))
     f = factor(jobkey)
     ceiling = f * bis.value(J, s, m) / W
     sd = f * spread(J, s, rec) / W
+    lo, hi, procs = ceiling - sd, ceiling + sd, None
     log(f"{J}: tier {'/'.join(f'{x:.2f}' for x in b['tier'])}, {m}; potency unit x{f:.2f}; "
         f"ceiling 0:00-2:00 {ceiling:,.0f} nDPS, crit / direct-hit luck +-{sd:,.0f} ({sd / ceiling:.2%}) one SD")
-    return dict(ceiling=round(ceiling), sd=round(sd), gcd=b["tier"][0], hasted=b["tier"][1] if len(b["tier"]) > 1 else None,
+    if jobkey in DRAWN:
+        d = draws(jobkey, hist, setting, b["speed"], b["params"], W, seeds, log)
+        # each draw against the same player with nothing drawn (what the horizon costs is no luck), at the ceiling
+        ev = worth(J, s, d["ev"])
+        to = ceiling / ev
+        parts = [(worth(J, s, r) * to, spread(J, s, r) * to) for r in d["runs"]]
+        lo, hi = (quantile(parts, p) for p in BAND)
+        r = sorted(x / ceiling - 1 for x, _ in parts)
+        q = lambda p: r[min(len(r) - 1, int(p * len(r)))]
+        procs = dict(seeds=len(r), replan=REPLAN[0], mean=round(st.mean(r), 5), p16=round(q(BAND[0]), 5),
+                     p84=round(q(BAND[1]), 5), horizon=round(ev / bis.value(J, s, m) - 1, 5))
+        log(f"  procs drawn: mean {procs['mean']:+.2%}, p16 {procs['p16']:+.2%}, p84 {procs['p84']:+.2%} (the player's "
+            f"{REPLAN[0]:.0f} s horizon alone {procs['horizon']:+.2%}); with crit / direct hit "
+            f"{lo:,.0f}-{hi:,.0f} ({lo / ceiling - 1:+.2%} / {hi / ceiling - 1:+.2%})")
+    return dict(ceiling=round(ceiling), sd=round(sd), lo=round(lo), hi=round(hi), procs=procs, gcd=b["tier"][0],
+                hasted=b["tier"][1] if len(b["tier"]) > 1 else None,
                 crit_rate=s.crit_rate, crit_dmg=s.crit_dmg, dh_rate=s.dh_rate, potency=round(m.total), unit=f,
                 food=b["food"], gear=b["gear"], window=W)
 
@@ -252,6 +336,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--job", help="only this job (default: every job with a bis_<job>.json)")
     ap.add_argument("--factors", action="store_true", help="check each job's potency unit against its uploaders' damage")
+    ap.add_argument("--seeds", type=int, default=SEEDS, help=f"draws of the procs for {', '.join(DRAWN)} (default {SEEDS})")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
     dps = bis._rot()
@@ -263,6 +348,6 @@ if __name__ == "__main__":
             print(f"{k}: potency unit x{f:.2f}; measured " + (f"x{m:.4f} over {n} uploaders, {m / f - 1:+.2%}" if m else "-: no uploader"))
     else:
         saved = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else {}
-        for k in keys: saved[dps.JOBS[k][1]] = job_ceiling(k)
+        for k in keys: saved[dps.JOBS[k][1]] = job_ceiling(k, a.seeds)
         OUT.write_text(json.dumps(saved, indent=1), encoding="utf-8")
         print(f"saved {len(keys)} jobs to {OUT}")
