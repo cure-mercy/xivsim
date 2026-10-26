@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fflogs, gamedata
-from classifier import Pull, classify, infer_light_parties
+from classifier import CONF_ORDER, Pull, classify, infer_light_parties
 
 HERE = Path(__file__).resolve().parent
 P1, SAVAGE, DD = 91, 101, 1002911
@@ -24,6 +24,11 @@ ROLE = gamedata.ROLE
 # grade thresholds: mistakes per pull, share of pulls whose wipe the player caused, damage vs clears, uptime points
 # vs clearers of the role. With eight players and one wipe a pull, a fair share of the wipes is 12.5%.
 G_MIST, G_WIPE, G_DMG, G_UP = (0.30, 0.60), (0.10, 0.20), (-0.05, -0.12), (-0.5, -1.5)
+# how much a mistake or a wipe counts in mistakes per pull and wipes, by the classifier's confidence in its culprit. On the
+# hand-checked pulls (tests/blame_cases.json) counted mistakes were right 83% of the time at high (all avoidable hits, 76%
+# of the rule-based ones), 77% at medium and in 2 of 3 at low; wipes 72% at high against 44-58% at medium (a wipe naming
+# part of its culprits counted as half). Low is blame a rule shares between players it cannot tell apart.
+CONF_WEIGHT = {"high": 1.0, "medium": 0.75, "low": 0.5}
 CASCADE_GAP = 15                 # deaths closer together than this (seconds) belong to the same collapse
 MISTAKE_AFTER_WIPE = 2           # mistakes are counted up to this long after the one that decided the wipe
 # the fight's phases, each from the start of one major mechanic to the next (the HP checkpoints' boundaries)
@@ -38,12 +43,17 @@ WINDOWS = [("Opener & Paradeigma I", 0.0, 55.4), ("Paradeigma II", 55.4, 112.4),
 RAISE_PENALTY, RAISE_S = {"Weakness": 0.22, "Brink of Death": 0.50}, 100
 DD_PENALTY = 0.38
 # causes, grouped for the summaries: (text in the classifier's cause, label)
-CAUSES = [("Trinity of Souls", "Trinity of Souls: on the cleaved side"), ("green orb", "Green orb (Superchain)"),
+CAUSES = [("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulnerability"), ("Glaukopis", "Glaukopis tank swap"), ("tanks' hit", "Tank share (Apo / Peridialogos)"),
+          ("the two tanks share", "Tank share (Apo / Peridialogos)"), ("Dialogos stack", "Dialogos stack"),
+          ("left the arena", "Left the arena"),
+          ("Heavensflame not spread away", "Heavensflame in a bright Soul's AoE"),
+          ("dropped their towers together", "Bright Souls' towers dropped together"), ("bright Soul's AoE as the tower", "Bright Soul's AoE"),
+          ("Trinity of Souls", "Trinity of Souls: on the cleaved side"), ("green orb", "Green orb (Superchain)"),
           ("Ray of Light", "Ray of Light column"), ("donut", "Donut (Superchain)"),
           ("White Flame line-up", "Missed White Flame bait"), ("did not bait their White Flame", "Missed White Flame bait"),
           ("White Flame", "White Flame line"), ("tether laser", "Tether laser"), ("laser group", "Superchain laser group"),
           ("share", "Superchain laser group"), ("Heavensflame", "Heavensflame spread"), ("orange cone", "Orange cone overlap"),
-          ("purple jack", "Purple pair"), ("Soul AoE", "Soul AoE"), ("the + ", "+ / X placement"), ("the X ", "+ / X placement"),
+          ("purple jack", "Purple pair"), ("purple-jack pair", "Purple pair"), ("Soul AoE", "Soul AoE"), ("the + ", "+ / X placement"), ("the X ", "+ / X placement"),
           ("arms of", "+ / X placement"), ("dash line", "Palladion dash line"), ("destroyed tile", "Destroyed tile"),
           ("auto-attacks", "Tank death to auto-attacks")]
 # tower failures, labelled by mechanic and by what went wrong; the first match wins
@@ -241,32 +251,53 @@ def first_mistake(data, f):
 def mistakes_of(res):
     """Every distinct mistake in a pull: classifier entries with a culprit that are not just fallout of an earlier
     mistake, one per culprit per 2 s (a bait that kills four players is one mistake). Yields (culprit, t, cause, mechanic,
-    kind): kind is "death" when any of the mistake's events killed someone, else "DD" (Damage Down only)."""
+    kind, confidence): kind is "death" when any of the mistake's events killed someone, else "DD" (Damage Down only);
+    confidence is the surest of its entries'."""
     out = []
     for r in res:
         if r.get("derived") or not r["culprits"]: continue
         kind = "death" if r["kind"] == "death" else "DD"
         for c in r["culprits"]:
             same = next((i for i, m in enumerate(out) if m[0] == c and abs(m[1] - r["t"]) <= 2), None)
-            if same is None: out.append((c, r["t"], r["cause"], r["mechanic"], kind))
-            elif kind == "death": out[same] = out[same][:4] + ("death",)
+            if same is None: out.append((c, r["t"], r["cause"], r["mechanic"], kind, r["confidence"]))
+            else:
+                m = out[same]
+                out[same] = m[:4] + ("death" if kind == "death" else m[4], min(m[5], r["confidence"], key=lambda x: CONF_ORDER.get(x, 1)))
     return out
 
 
 def wipe_of(res):
-    """Who lost the pull. The collapse is the last run of deaths with less than CASCADE_GAP seconds between them.
-    A mass death in it (four or more players to one ability within 3 s, like a tower explosion or Electrify)
-    decides the wipe; otherwise its first death with a culprit does, or failing that the last attributed death
-    before it. Earlier deaths the group recovered from do not count. Returns (culprits, the deciding entry)."""
-    deaths = [r for r in res if r["kind"] == "death"]
-    if not deaths: return [], None
+    """Who lost the pull. A player jumping off the arena (a death without a hit) means the wipe was called, so only
+    deaths before the first jump count, and a pull with none was called without one (the jump decides, no culprit).
+    The collapse is the last run of deaths with less than CASCADE_GAP seconds between them. A mass death in it (four
+    or more players to one ability within 3 s, like a tower explosion or Electrify) decides the wipe; otherwise its
+    first death does, or one with a culprit within 1.5 s of it (the same hit, logged in any order). When no rule
+    explains that first death and no mistake came before it in the pull (or its mechanic is not blamed yet), no one
+    lost the pull, even if a later death has a culprit, since that may be its fallout. A first death that follows an
+    earlier mistake without a rule tying it to one passes to the collapse's first death with a culprit; failing that,
+    a collapse in a mechanic not blamed yet has no culprit, and any other the last attributed death before it.
+    Earlier deaths the group recovered from do not count. Returns (culprits, the deciding entry)."""
+    jump = next((r for r in res if r.get("jump")), None)
+    deaths = [r for r in res if r["kind"] == "death" and not r.get("jump") and (jump is None or r["t"] < jump["t"])]
+    if not deaths: return [], jump
     i = len(deaths) - 1
     while i > 0 and deaths[i]["t"] - deaths[i - 1]["t"] <= CASCADE_GAP: i -= 1
     collapse = deaths[i:]
     mass = next((r for r in collapse if r["culprits"] and
                  sum(1 for q in collapse if q["ability"] == r["ability"] and 0 <= q["t"] - r["t"] <= 3) >= 4), None)
-    trig = mass or next((r for r in collapse if r["culprits"]), None) or next((r for r in reversed(deaths[:i]) if r["culprits"]), None)
+    first, near = collapse[0], next((r for r in collapse if r["culprits"] and r["t"] - collapse[0]["t"] <= 1.5), None)
+    if not mass and not near and first["confidence"] in ("unattributed", "not blamed"): return [], first
+    trig = mass or near or next((r for r in collapse if r["culprits"]), None)
+    if not trig and (gated := next((r for r in collapse if r["confidence"] == "not blamed"), None)): return [], gated
+    trig = trig or next((r for r in reversed(deaths[:i]) if r["culprits"]), None)
     return (trig["culprits"], trig) if trig else ([], None)
+
+
+def wipe_label(trig):
+    """The site's name for what lost the pull."""
+    if trig["culprits"]: return cause_label(trig["cause"], trig["mechanic"])
+    if trig.get("jump"): return "Wipe called (left the arena)"
+    return "Not blamed yet (no rules)" if trig["confidence"] == "not blamed" else "No culprit found"
 
 
 def downtime(p, res, end):
@@ -302,11 +333,17 @@ def analyse(group, data, bench):
     names = {a["id"]: a["name"] for a in data["masterData"]["actors"] if a["subType"] in ROLE}
     rep = {"masterData": data["masterData"], "deaths": data["deaths"]}
     ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"]}
-    pulls = [Pull(data["code"], f, rep, ev) for f in data["fights"]]
+    import acts                                 # the players' casts, for the rules that read them (the Glaukopis swap)
+    A = acts.report(data["code"], data["fights"])
+    pulls = [Pull(data["code"], f, rep, ev, acts=A.get(str(f["id"]))) for f in data["fights"]]
     lp = infer_light_parties(pulls)
+    day = datetime.datetime.fromtimestamp(data["startTime"] / 1000).date().isoformat()   # the raid day, as build_site.py's
     attended, nmist, mcauses = collections.Counter(), collections.Counter(), collections.defaultdict(collections.Counter)
     nkind = collections.Counter()               # (player, "death" / "DD") -> mistakes
     nwipe, wcauses = collections.Counter(), collections.defaultdict(collections.Counter)
+    # the same weighted by the confidence in the culprit (CONF_WEIGHT), and the counts by confidence
+    wmist, wkind, wwipe = collections.Counter(), collections.Counter(), collections.Counter()
+    mconf, wconf = collections.defaultdict(collections.Counter), collections.defaultdict(collections.Counter)
     all_causes, wipe_causes, conf = collections.Counter(), collections.Counter(), collections.Counter()
     pull_rows, lives = [], []        # one record per pull (for build_site.py); each pull's lost time, for the costs below
     wsamples = collections.defaultdict(list)   # (player, job, window) -> clean phase samples
@@ -314,7 +351,7 @@ def analyse(group, data, bench):
     for n, (p, f) in enumerate(zip(pulls, data["fights"]), 1):
         for pid in f["friendlyPlayers"]:
             if pid in names: attended[names[pid]] += 1
-        res, _ = classify(p, lp)
+        res, _ = classify(p, lp, day)
         dur = (f["endTime"] - f["startTime"]) / 1000
         row = dict(n=n, id=f["id"], at=data["startTime"] + f["startTime"], dur=round(dur, 1), boss=f.get("bossPercentage"), kill=bool(f.get("kill")),
                    first=round(first_mistake(data, f)[0], 1), deaths=sum(1 for r in res if r["kind"] == "death"), wipe=None, mistakes=[],
@@ -325,10 +362,12 @@ def analyse(group, data, bench):
             first = [r for r in res if r["t"] <= res[0]["t"] + 1.5]
             conf.update(r["confidence"] for r in first)
         if not f.get("kill") and res:
-            wipe_causes[cause_label(trig["cause"], trig["mechanic"]) if trig else "Unclear"] += 1
-            for c in cul: nwipe[c] += 1; wcauses[c][cause_label(trig["cause"], trig["mechanic"])] += 1
-            if trig: row["wipe"] = dict(culprits=cul, t=round(trig["t"], 1), mechanic=trig["mechanic"],
-                                        label=cause_label(trig["cause"], trig["mechanic"]), cause=trig["cause"])
+            wipe_causes[wipe_label(trig) if trig else "Unclear"] += 1
+            for c in cul:
+                nwipe[c] += 1; wcauses[c][wipe_label(trig)] += 1
+                wwipe[c] += CONF_WEIGHT.get(trig["confidence"], 1.0); wconf[c][trig["confidence"]] += 1
+            if trig: row["wipe"] = dict(culprits=cul, t=round(trig["t"], 1), mechanic=trig["mechanic"], label=wipe_label(trig), cause=trig["cause"],
+                                        confidence=trig["confidence"])
         # every death with what killed them and whose fault it was; when: "lost" for the deaths that decided the wipe
         # (the deciding death and the rest of its mass death), "after" for the collapse after it, None before
         lost_at = trig["t"] - 1 if trig else dur
@@ -339,11 +378,12 @@ def analyse(group, data, bench):
                              for r in res if r["kind"] == "death"]
         # every mistake while the pull was still alive; what happens during the collapse is forced or noise
         cutoff = trig["t"] + MISTAKE_AFTER_WIPE if trig else dur
-        for c, t, cause, mech, kind in mistakes_of(res):
+        for c, t, cause, mech, kind, cf in mistakes_of(res):
             if t <= cutoff:
                 lab = cause_label(cause, mech); nmist[c] += 1; mcauses[c][lab] += 1; all_causes[lab] += 1
                 nkind[(c, kind)] += 1
-                row["mistakes"].append(dict(who=c, t=round(t, 1), mechanic=mech, label=lab, cause=cause, kind=kind))
+                w = CONF_WEIGHT.get(cf, 1.0); wmist[c] += w; wkind[(c, kind)] += w; mconf[c][cf] += 1
+                row["mistakes"].append(dict(who=c, t=round(t, 1), mechanic=mech, label=lab, cause=cause, kind=kind, conf=cf))
         down = downtime(p, res, dur)
         lives.append((row, down, min(cutoff, dur)))
         # a phase is a clean sample for a player when they were alive and unweakened through it, before the pull was lost
@@ -388,7 +428,7 @@ def analyse(group, data, bench):
         row["lost"], row["lost_dd"] = round(row["lost"], 2), round(row["lost_dd"], 2)
         for (_, kind), hp in per_event.items(): event_cost[kind].append(hp)
         row["lost_by"] = [dict(who=c, hp=round(v, 2)) for c, v in by.most_common()]
-    import acts, checks                         # rotation checks against the clears (imported here: it imports this module)
+    import checks                               # rotation checks against the clears (imported here: it imports this module)
     rotation = checks.report(data, lives)
     ceil = ceilings()
     # opener damage (first OPENER_S seconds, alive throughout) against the clears' median on the job, or our other
@@ -412,7 +452,7 @@ def analyse(group, data, bench):
         if best and rot["opener"].get("dmg"): rot["opener"]["dmg"].update(best=best, vs_best=round(st.median(odps[key]) / best - 1, 3))
     played = {}                                  # (pull, player) -> job
     for f, row in zip(data["fights"], pull_rows):
-        for name, job in acts.report(data["code"], data["fights"]).get(str(f["id"]), {}).get("players", {}).values(): played[(row["n"], name)] = job
+        for name, job in A.get(str(f["id"]), {}).get("players", {}).values(): played[(row["n"], name)] = job
 
     def pull_detail(name, job):
         """One entry per pull the player played on this job: how it went for them."""
@@ -461,9 +501,12 @@ def analyse(group, data, bench):
                 phases.append(dict(window=wname, n=len(sm), ndps=nd, uptime=act, uptime_diff=act - rup if rup else None,
                                    vs=(nd / ref["ndps"] - 1, ref["players"], ref.get("echo_corrected", False)) if ref else None))
             players.append(dict(group=group, name=name, job=job, role=ROLE.get(job, "Melee"), pulls=attended[name],
-                                mistakes=nmist[name], mrate=nmist[name] / attended[name],
-                                mdeath=nkind[(name, "death")], mdd=nkind[(name, "DD")], mcauses=mcauses[name].most_common(3),
-                                wipes=nwipe[name], wrate=nwipe[name] / attended[name], wcauses=wcauses[name].most_common(3), samples=len(xs),
+                                # mrate, wrate and the _w counts are weighted by confidence (CONF_WEIGHT); the plain counts are not
+                                mistakes=nmist[name], mistakes_w=wmist[name], mrate=wmist[name] / attended[name], mrate_raw=nmist[name] / attended[name],
+                                mdeath=nkind[(name, "death")], mdd=nkind[(name, "DD")], mdeath_w=wkind[(name, "death")], mdd_w=wkind[(name, "DD")],
+                                mconf=dict(mconf[name]), mcauses=mcauses[name].most_common(3),
+                                wipes=nwipe[name], wipes_w=wwipe[name], wrate=wwipe[name] / attended[name], wrate_raw=nwipe[name] / attended[name],
+                                wconf=dict(wconf[name]), wcauses=wcauses[name].most_common(3), samples=len(xs),
                                 best_quarter=top, avg=st.mean(xs) if xs else None, vs=vs, uptime=up,
                                 uptime_diff=up - bench["pools"]["clears"]["role_uptime"][ROLE.get(job, "Melee")] if up else None,
                                 mcauses_all=dict(mcauses[name]), wcauses_all=dict(wcauses[name]),
