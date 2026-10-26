@@ -362,6 +362,8 @@ function card(title, caption, draw, table, legend) {
   requestAnimationFrame(() => { body.append(draw(Math.max(260, body.clientWidth || 360))); });
   return f;
 }
+// player names, comma-separated: a table cell may break the line after a comma but never inside a name
+const names = list => el("span", { class: "names" }, list.flatMap((n, i) => [i ? ", " : "", el("span", { class: "nm" }, n)]));
 function tableOf(head, rows, numericFrom = 1) {   // numericFrom: first numeric column, or a list of them
   const isNum = i => Array.isArray(numericFrom) ? numericFrom.includes(i) : i >= numericFrom;
   return el("table", {}, el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: isNum(i) ? "num" : null }, h)))),
@@ -372,7 +374,13 @@ function niceMax(v) { const p = Math.pow(10, Math.floor(Math.log10(v || 1))); fo
 function ticks(max, n = 4) { const step = max / n; return Array.from({ length: n + 1 }, (_, i) => i * step); }
 
 // line chart, one series over raid days (x = categories)
-function lineChart(points, { yFmt = v => v, yMax, yMin = 0, invert = false, refs = [], second = null, name = null, extra = [] } = {}) {
+// a strategy date's short note: its mechanics ("Para I/II, Glaukopis strategy"), Glaukopis / Ultima Blade as Glaukopis
+const strategyLabel = s => { const ns = [...new Set(s.mechanics.map(m => shortMech(m.split(" / ")[0])))], paras = ns.filter(m => m.startsWith("Para "));
+  const names = [...(paras.length > 1 ? [`Para ${paras.map(m => m.slice(5)).join("/")}`] : paras), ...ns.filter(m => !m.startsWith("Para "))];
+  return `${names.join(", ")} ${s.kind === "added" ? "strategy" : "changed"}`; };
+const STRATEGY_NOTE = " Dashed vertical lines: from that raid day a mechanic's strategy is blamed; before it, only standing in avoidable hits is.";
+// dated: points carry their raid day (p.day), and each strategy date (DATA.strategies) between two of them gets a dashed line
+function lineChart(points, { yFmt = v => v, yMax, yMin = 0, invert = false, refs = [], second = null, name = null, extra = [], dated = false } = {}) {
   return width => {
     const legend = second || extra.length;
     const H = legend ? 186 : 170, L = 44, R = second ? 44 : refs.length ? 64 : 16, T = legend ? 28 : 12, B = 26, w = width - L - R, h = H - T - B;
@@ -387,6 +395,21 @@ function lineChart(points, { yFmt = v => v, yMax, yMin = 0, invert = false, refs
     const every = Math.max(1, Math.ceil(n * room / Math.max(1, w)));
     points.forEach((p, i) => { if (i !== n - 1 && (i % every || X(n - 1) - X(i) < room)) return;   // keep clear of the last label
       svg.append(sv("text", { x: X(i), y: H - 6, "text-anchor": n > 1 && i === 0 ? "start" : n > 1 && i === n - 1 ? "end" : "middle" }, p.x)); });
+    if (dated && n > 1) {   // strategy dates, midway between the raid days around them; notes that would overlap step down a row
+      let end = -Infinity, row = 0;
+      for (const st of DATA.strategies || []) {
+        const i = points.findIndex(p => p.day >= st.day);
+        if (i < 1) continue;
+        const x = (X(i - 1) + X(i)) / 2, text = strategyLabel(st), tw = text.length * 6, flip = x + 4 + tw > L + w;
+        row = (flip ? x - 4 - tw : x + 4) < end + 6 ? row + 1 : 0;
+        svg.append(sv("line", { class: "strategy", x1: x, x2: x, y1: T, y2: T + h }),
+          sv("text", { class: "lbl strategy", x: flip ? x - 4 : x + 4, y: T + 11 + row * 12, "text-anchor": flip ? "end" : "start" }, text));
+        end = flip ? x : x + 4 + tw;
+        const hit = sv("rect", { class: "hit", x: x - 5, y: T, width: 10, height: h });
+        hover(hit, `From ${dayName(st.day)}`, [[st.kind === "added" ? "strategy blamed" : "strategy changed", st.mechanics.join(", "), true]]);
+        svg.append(hit);
+      }
+    }
     const placed = [];   // reference labels: nudge apart when the lines are close
     const refY = r => { let y = Y(r.value); while (placed.some(q => Math.abs(q - y) < 11)) y -= 11; placed.push(y); return y; };
     for (const r of refs) svg.append(sv("line", { class: `ref ${r.cls || ""}`, x1: L, x2: L + w, y1: Y(r.value), y2: Y(r.value), "stroke-opacity": 0.6 }),
@@ -492,7 +515,30 @@ function hbarStackChart(rows, series, { fmt = v => v } = {}) {
     return svg;
   };
 }
-const KIND_SERIES = [{ name: "Lost the pull", color: "var(--wipe, #9e1f30)" }, { name: "Other deaths", color: "var(--div-neg)" }, { name: "Damage Down", color: "#e0a03a" }];   // deaths and DD as in Damage lost to mistakes
+// "What happened" for a mistake or death: a chained cause (the classifier's trace) as its immediate cause, then, folded,
+// the earlier deaths behind it as an indented list, each told once (a death met again says so). who: the culprit a
+// column beside it already names, so a cause told with their name first ("X: did not soak ...") drops it
+function whatHappened(x, who) {
+  const tr = x.trace, own = s => who && s.startsWith(`${who}: `) ? s.slice(who.length + 2) : s;
+  if (!tr) return own(x.cause);
+  const seen = new Set();
+  const by = d => d.by.length === 1 && d.by[0] === d.who ? "their own mistake" : `caused by ${d.by.join(", ")}`;
+  const list = node => {
+    const items = (node.parts || []).map(part => el("li", {}, part.rule, list(part)));
+    for (const d of node.deaths || []) {
+      if (seen.has(d.who)) { items.push(el("li", { class: "muted" }, `${d.who} died at ${mmss(d.t)} (told above)`)); continue; }
+      seen.add(d.who);
+      items.push(el("li", {}, el("b", {}, d.who), ` died at ${mmss(d.t)}, ${by(d)}: ${d.why.rule}`, list(d.why)));
+    }
+    return items.length ? el("ul", { class: "trace" }, items) : null;
+  };
+  const deaths = new Set(), count = node => { (node.parts || []).forEach(count); (node.deaths || []).forEach(d => { deaths.add(d.who); count(d.why); }); };
+  count(tr);
+  const head = own(tr.rule || `${tr.parts.length} failures at once`);
+  return el("div", {}, head, el("details", { class: "trace" }, el("summary", {}, `how it came about: ${deaths.size} earlier death${deaths.size === 1 ? "" : "s"}`), list(tr)));
+}
+const KIND_SERIES = [{ name: "Lost the pull", color: "var(--wipe, #9e1f30)" }, { name: "Other deaths", color: "var(--div-neg)" }, { name: "Damage Down", color: "#e0a03a" },
+  { name: "Survived", color: "var(--muted)" }];   // deaths and DD as in Damage lost to mistakes; survived: neither (both Superchain lasers on someone who lived)
 
 function hbarChart(rows, { fmt = v => v } = {}) {
   return width => {
@@ -785,7 +831,7 @@ function home() {
     ["Latest day", dayName(last.day), `${last.groups.length} group${last.groups.length > 1 ? "s" : ""}, ${ls.pulls} pulls`],
     ["Mistakes per pull", ls.mistakesPerPull?.toFixed(2), "latest day, per player", grade("mistakes", ls.mistakesPerPull)],
   ]));
-  const series = f => ds.map(d => ({ x: dayName(d.day), y: f(stats(d.groups)) }));
+  const series = f => ds.map(d => ({ x: dayName(d.day), y: f(stats(d.groups)), day: d.day }));
   // burndown over every pull, as on tomestone.gg
   const P = allPulls(), ok = P.filter(p => !p.echo && p.boss != null), best = ok.length ? Math.min(...ok.map(p => p.boss)) : null;
   const bd = card("Burndown", info("Every pull's boss HP at its end, all groups together in the order they were played (thin line), and the best so far (steps); dotted lines mark the first pull that reached each mechanic. Hover a pull for its day, group and how it ended. Pulls with The Echo are drawn but not counted for the best line."),
@@ -807,11 +853,11 @@ function home() {
         () => tableOf(["Mechanic", ...ds.map(d => dayName(d.day))], DATA.benchmark.windows.map((w, i) => [w.name, ...ds.map(d => { const x = cleanThrough(pullsOf(d))[i];
           return x.share != null ? `${pct(x.share)} (${x.left}/${x.entered})` : "–"; })])));
     })(),
-    card("Mistakes per pull", info("Per player, counted until each pull was lost. The dashed line divides the same mistakes by the minutes players spent in pulls (up to where each pull was lost), so longer pulls as the groups progress do not read as more mistakes."),
-      lineChart(series(s => s.mistakesPerPull), { yFmt: v => v.toFixed(2), name: "per pull", extra: [{ points: series(s => s.mistakesPerMin), name: "per minute", cls: "x-min", color: "#9b6cf2" }] }),
+    card("Mistakes per pull", info("Per player, counted until each pull was lost. The dashed line divides the same mistakes by the minutes players spent in pulls (up to where each pull was lost), so longer pulls as the groups progress do not read as more mistakes." + STRATEGY_NOTE),
+      lineChart(series(s => s.mistakesPerPull), { yFmt: v => v.toFixed(2), name: "per pull", dated: true, extra: [{ points: series(s => s.mistakesPerMin), name: "per minute", cls: "x-min", color: "#9b6cf2" }] }),
       () => tableOf(["Day", "Mistakes per pull", "Per minute in pulls"], ds.map(d => { const s2 = stats(d.groups); return [dayName(d.day), s2.mistakesPerPull.toFixed(2), s2.mistakesPerMin != null ? s2.mistakesPerMin.toFixed(3) : "–"]; }))),
-    card("Damage lost to mistakes", info("Boss HP per pull lost to mistakes before each pull was lost, valued at the player's own rDPS in that phase. Deaths: time dead and the raise's Weakness (−22% damage for 100 s). Damage Down: −38% damage while it lasts. Both measured from players' own hits in these logs. Reports with The Echo are left out."),
-      lineChart(series(s => s.lostPerPull), { yFmt: v => `${v.toFixed(1)}%`, name: "combined",
+    card("Damage lost to mistakes", info("Boss HP per pull lost to mistakes before each pull was lost, valued at the player's own rDPS in that phase. Deaths: time dead and the raise's Weakness (−22% damage for 100 s). Damage Down: −38% damage while it lasts. Both measured from players' own hits in these logs. Reports with The Echo are left out." + STRATEGY_NOTE),
+      lineChart(series(s => s.lostPerPull), { yFmt: v => `${v.toFixed(1)}%`, name: "combined", dated: true,
         extra: [{ points: series(s => s.lostPerPull != null && s.lostDDPerPull != null ? s.lostPerPull - s.lostDDPerPull : null), name: "deaths", cls: "x-death" },
                 { points: series(s => s.lostDDPerPull), name: "Damage Down", cls: "x-dd" }] }),
       () => tableOf(["Day", "Combined", "Deaths", "Damage Down"], ds.map(d => { const s2 = stats(d.groups);
@@ -882,7 +928,7 @@ function groupPage(day, group) {
         p.uptime != null ? el("span", {}, `${p.uptime.toFixed(1)}%`, gradeChip(grade("uptime", p.uptime_diff))) : "–"], `#/day/${day}/${group}/${encodeURIComponent(p.name)}`, 2));
     }
   }
-  app.append(heading("h2", "Player scorecard", `Mistakes per pull counts every mistake until the pull was lost; Deaths/pull and DD/pull split it into mistakes that killed someone and those that only gave Damage Down. Wipes: share of pulls their mistake lost. Both count each mistake by how sure the classifier is of its culprit: high in full, ${confWeights()}. vs Clears: rDPS 0:00–2:00 (best quarter of clean pulls) against clearers on the same job (clears without The Echo; a job with fewer than three such players also counts its Echo clears, damage divided by 1.2); * = only 1–2 clearers. Uptime: GCD time vs clearers of the role.`), el("div", { class: "table-wrap" }, el("table", {},
+  app.append(heading("h2", "Player scorecard", `Mistakes per pull counts every mistake until the pull was lost; Deaths/pull and DD/pull split it into mistakes that killed someone and those that only gave Damage Down (one that did neither, like both Superchain I lasers on a player who lived, counts only in the total). Wipes: share of pulls their mistake lost. Both count each mistake by how sure the classifier is of its culprit: high in full, ${confWeights()}. vs Clears: rDPS 0:00–2:00 (best quarter of clean pulls) against clearers on the same job (clears without The Echo; a job with fewer than three such players also counts its Echo clears, damage divided by 1.2); * = only 1–2 clearers. Uptime: GCD time vs clearers of the role.`), el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: i >= 2 ? "num" : null }, h)))), el("tbody", {}, rows))));
   // rotation and ability usage, per player
   const rotPlayers = r.players.filter(p => p.rotation && !p.rotation.opener_only);   // opener_only: no clears on the job, only the opener is compared
@@ -922,7 +968,7 @@ function groupPage(day, group) {
         return [`Pull ${p.n} · ${mmss(p.dur)} · boss ${p.boss?.toFixed(1)}%`, [[mmss(p.first), "first death or Damage Down"],
           [wv ? wv.culprits.join(", ") || "unclear" : (p.kill ? "kill" : "unclear"), wv ? `${wv.label} at ${mmss(wv.t)}` : "", true], [String(p.mistakes.length), "mistakes counted"], [String(p.deaths), "deaths"]]]; } }),
       () => tableOf(["Pull", "Length", "Boss HP", "First mistake", "Lost by", "Cause", "Mistakes"], r.pulls.map(p => [String(p.n), mmss(p.dur), `${p.boss?.toFixed(1)}%`, mmss(p.first),
-        p.wipe ? p.wipe.culprits.join(", ") : (p.kill ? "kill" : "–"), p.wipe ? p.wipe.label : "", String(p.mistakes.length)]))),
+        p.wipe ? names(p.wipe.culprits) : (p.kill ? "kill" : "–"), p.wipe ? p.wipe.label : "", String(p.mistakes.length)]))),
     (() => { const R = reachRows(r.pulls), wall = R.seg.reduce((a, s) => s.end > a.end ? s : a, R.seg[0]);
       return card("Where pulls ended", info(`How many pulls ended between each pair of mechanics (by pull length), and how many reached each mechanic. The longest bar is the wall: here ${wall.name}.`),
         hbarChart(R.seg.map(s => ({ label: s.name, value: s.end, tip: [[String(s.end), "pulls ended here", true]] })), { fmt: v => String(v) }),
@@ -983,7 +1029,7 @@ function playerPage(day, group, name) {
   const app = document.getElementById("app"), b = DATA.benchmark, p = entries[0];
   app.append(el("h1", {}, name), el("p", { class: "lede" }, `${entries.map(e => JOB[e.job] || e.job).join(" / ")} · ${group} · ${dayName(day)} · ${p.pulls} pulls`), echoNote(r));
   app.append(tiles([
-    ["Mistakes per pull", p.mrate.toFixed(2), `${p.mdeath || 0} deaths · ${p.mdd || 0} Damage Downs in ${p.pulls} pulls` +
+    ["Mistakes per pull", p.mrate.toFixed(2), `${p.mdeath || 0} deaths · ${p.mdd || 0} Damage Downs${p.mhit ? ` · ${p.mhit} survived` : ""} in ${p.pulls} pulls` +
       (p.mconf && p.mistakes ? `; by confidence: ${confText(p.mconf)}` : ""), grade("mistakes", p.mrate)],
     ["Wipes caused", pct(p.wrate), `${p.wipes} of ${p.pulls} pulls` + (p.wconf && p.wipes ? `; by confidence: ${confText(p.wconf)}` : ""), grade("wipes", p.wrate)],
     ...entries.map(e => [`${JOB[e.job] || e.job} vs clears`, e.vs ? signed(e.vs[0]) : "–", e.vs ? `${e.vs[1]} clearer${e.vs[1] > 1 ? "s" : ""} on the job${e.vs[2] ? ", some with The Echo (damage ÷1.2)" : ""}${e.vs[1] < 3 ? " · thin data" : ""}` : "no comparison", e.vs ? grade("damage", e.vs[0]) : null]),
@@ -999,11 +1045,11 @@ function playerPage(day, group, name) {
   const wiped = r.pulls.filter(q => q.wipe && q.wipe.culprits.includes(name));
   const lostIt = m => wiped.some(q => q.n === m.pull && Math.abs(q.wipe.t - m.t) < 2.5);   // as in the Every mistake table
   const causeRows = Object.entries(mistakeCounts(r, name)).sort((a, c) => c[1] - a[1]).map(([label, value]) => { const of = mine.filter(m => causeName(m.mechanic, m.label) === label);
-    return { label, value, values: [of.filter(lostIt).length, of.filter(m => !lostIt(m) && m.kind !== "DD").length, of.filter(m => !lostIt(m) && m.kind === "DD").length] }; });
+    return { label, value, values: [of.filter(lostIt).length, ...["death", "DD", "hit"].map(k => of.filter(m => !lostIt(m) && m.kind === k).length)] }; });
   app.append(el("h2", {}, "Mistakes"), el("div", { class: "grid wide" },
-    causeRows.length ? card("Mistakes by cause", { info: `${p.mistakes} mistakes (${p.mdeath || 0} deaths, ${p.mdd || 0} Damage Downs), counted until each pull was lost. Lost the pull: the mistake that ended a pull (the pull's wipe names them, within 2.5 s), usually a death, sometimes a Damage Down; the rest split into other deaths and Damage Downs. A wipe put on them without a recorded mistake of theirs (an unsoaked tower, say) counts in Wipes caused but has no bar here.` },
+    causeRows.length ? card("Mistakes by cause", { info: `${p.mistakes} mistakes (${p.mdeath || 0} deaths, ${p.mdd || 0} Damage Downs${p.mhit ? `, ${p.mhit} survived` : ""}), counted until each pull was lost. Lost the pull: the mistake that ended a pull (the pull's wipe names them, within 2.5 s), usually a death, sometimes a Damage Down; the rest split into other deaths, Damage Downs and mistakes they survived without either (both Superchain I lasers on one player: it leaves them low for what comes next). A wipe put on them without a recorded mistake of theirs (an unsoaked tower, say) counts in Wipes caused but has no bar here.` },
       hbarStackChart(causeRows, KIND_SERIES),
-      () => tableOf(["Cause", "Lost the pull", "Other deaths", "Damage Down", "Total"], causeRows.map(x => [x.label, ...x.values.map(String), String(x.value)])))
+      () => tableOf(["Cause", "Lost the pull", "Other deaths", "Damage Down", "Survived", "Total"], causeRows.map(x => [x.label, ...x.values.map(String), String(x.value)])))
       : el("figure", { class: "card" }, el("div", { class: "card-head" }, el("h3", {}, "Mistakes by cause")), el("div", { class: "empty" }, "No mistakes recorded.")),
     ...entries.filter(e => e.clean_pulls.length).map(e => {
       const jb = b.pools, refs = [];
@@ -1108,7 +1154,7 @@ function playerPage(day, group, name) {
     el("div", { class: "table-wrap" }, mine.length ? el("table", {},
     el("thead", {}, el("tr", {}, ["Pull", "Time", "Mechanic", "What happened", "Confidence", "", "Practice"].map((h, i) => el("th", { class: i < 2 ? "num" : null }, h)))),
     el("tbody", {}, mine.map(m => el("tr", {}, el("td", { class: "num" }, el("a", { href: `#/day/${day}/${group}/pulls/${m.pull}` }, String(m.pull))), el("td", { class: "num" }, mmss(m.t)), el("td", {}, shortMech(m.mechanic || "")),
-      el("td", { class: "wrap" }, m.cause), el("td", {}, confCell(m.conf)), el("td", { class: "muted" }, wiped.some(q => q.n === m.pull && Math.abs(q.wipe.t - m.t) < 2.5) ? "lost the pull" : ""),
+      el("td", { class: "wrap" }, whatHappened(m, name)), el("td", {}, confCell(m.conf)), el("td", { class: "muted" }, wiped.some(q => q.n === m.pull && Math.abs(q.wipe.t - m.t) < 2.5) ? "lost the pull" : ""),
       el("td", {}, drillLinks(m.mechanic) || "")))))
     : el("div", { class: "empty", style: "padding:14px" }, "No mistakes recorded.")));
   // every death of theirs: what killed them, why, and whose mistake it was
@@ -1117,7 +1163,7 @@ function playerPage(day, group, name) {
     others = before.filter(d => d.culprits.length && !d.culprits.includes(name)).length;
   const inGroup = new Set(r.players.map(q => q.name));
   const culprit = d => !d.culprits.length ? el("span", { class: "muted" }, "none found")
-    : el("span", {}, ...d.culprits.flatMap((c, i) => [i ? ", " : "", c === name ? "self" : inGroup.has(c) ? el("a", { href: `#/day/${day}/${group}/${encodeURIComponent(c)}` }, c) : c]));
+    : names(d.culprits.map(c => c === name ? "self" : inGroup.has(c) ? el("a", { href: `#/day/${day}/${group}/${encodeURIComponent(c)}` }, c) : c));
   app.append(heading("h2", "Deaths", "Every death of theirs, pull by pull: the hit that killed them, what the classifier says happened, and whose mistake it was (self: their own; none found: no rule explains it, often healing or mitigation, or fallout of an earlier death), with how sure it is of the culprit. Decided the wipe: the death, or the mass death, that lost the pull. After the wipe: the collapse once the pull was already lost, where deaths are forced."),
     el("p", { class: "lede" }, r.pulls.some(q => q.death_list) ? `${died.length} deaths in ${p.pulls} pulls; ${before.length} before the pull was lost: ${own} their own mistake, ${others} someone else's, ${before.length - own - others} no culprit found.`
       : "Not recorded for this report yet: rebuild the site (build_site.py --reanalyse)."),
@@ -1125,7 +1171,7 @@ function playerPage(day, group, name) {
       el("thead", {}, el("tr", {}, ["Pull", "Time", "Mechanic", "Killed by", "What happened", "Culprit", "Confidence", ""].map((h, i) => el("th", { class: i < 2 ? "num" : null }, h)))),
       el("tbody", {}, died.map(d => el("tr", { class: d.when === "after" ? "muted" : null },
         el("td", { class: "num" }, el("a", { href: `#/day/${day}/${group}/pulls/${d.pull}` }, String(d.pull))), el("td", { class: "num" }, mmss(d.t)),
-        el("td", {}, shortMech(d.mechanic || "")), el("td", {}, d.ability || "?"), el("td", { class: "wrap" }, d.cause), el("td", {}, culprit(d)),
+        el("td", {}, shortMech(d.mechanic || "")), el("td", {}, d.ability || "?"), el("td", { class: "wrap" }, whatHappened(d)), el("td", {}, culprit(d)),
         el("td", {}, d.culprits.length ? confCell(d.confidence) : ""),
         el("td", { class: "muted" }, d.when === "lost" ? "decided the wipe" : d.when === "after" ? "after the wipe" : "")))))
       : el("div", { class: "empty", style: "padding:14px" }, "No deaths recorded.")));
@@ -1161,15 +1207,15 @@ function playerPage(day, group, name) {
         ...vals.map(v => el("td", { class: "num" }, v)), el("td", { class: `num ${cls || ""}` }, t)))))));
   }
   if (byDay.length > 1) {
-    const pts = f => byDay.map(es => ({ x: `${dayName(es[0].day)} ${es[0].group}`, y: f(es) }));
+    const pts = f => byDay.map(es => ({ x: `${dayName(es[0].day)} ${es[0].group}`, y: f(es), day: es[0].day }));
     const perMin = es => { const rep = findGroup(es[0].day, es[0].group); if (!rep) return null;   // as on the overview, for one player
       const m = sum(rep.pulls.filter(q => q.players.includes(name)).map(q => Math.min(q.dur, q.wipe ? q.wipe.t + 2 : q.dur) / 60));
       return m ? es[0].mistakes / m : null; };   // mistakes are per player, repeated on each job entry
     app.append(el("div", { class: "grid" },
-      card("Mistakes per pull", info("Counted until each pull was lost. The dashed line divides the same mistakes by the minutes they spent in pulls (up to where each pull was lost), so longer pulls as the groups progress do not read as more mistakes."),
-        lineChart(pts(es => es[0].mrate), { yFmt: v => v.toFixed(2), name: "per pull", extra: [{ points: pts(perMin), name: "per minute", cls: "x-min", color: "#9b6cf2" }] }),
+      card("Mistakes per pull", info("Counted until each pull was lost. The dashed line divides the same mistakes by the minutes they spent in pulls (up to where each pull was lost), so longer pulls as the groups progress do not read as more mistakes." + STRATEGY_NOTE),
+        lineChart(pts(es => es[0].mrate), { yFmt: v => v.toFixed(2), name: "per pull", dated: true, extra: [{ points: pts(perMin), name: "per minute", cls: "x-min", color: "#9b6cf2" }] }),
         () => tableOf(["Day", "Mistakes per pull", "Per minute in pulls"], byDay.map(es => [`${dayName(es[0].day)} ${es[0].group}`, es[0].mrate.toFixed(2), perMin(es) != null ? perMin(es).toFixed(3) : "–"]))),
-      card("Wipes caused", info("Share of pulls."), lineChart(pts(es => es[0].wrate), { yFmt: v => pct(v), yMax: Math.max(0.4, ...byDay.map(es => es[0].wrate)) }), () => tableOf(["Day", "Wipes"], byDay.map(es => [`${dayName(es[0].day)} ${es[0].group}`, pct(es[0].wrate)]))),
+      card("Wipes caused", info("Share of pulls." + STRATEGY_NOTE), lineChart(pts(es => es[0].wrate), { yFmt: v => pct(v), dated: true, yMax: Math.max(0.4, ...byDay.map(es => es[0].wrate)) }), () => tableOf(["Day", "Wipes"], byDay.map(es => [`${dayName(es[0].day)} ${es[0].group}`, pct(es[0].wrate)]))),
     ));
   }
   app.append(el("div", { class: "table-wrap", style: "margin-top:12px" }, el("table", {},
@@ -1244,7 +1290,7 @@ function pullPage(day, group, n) {
   app.append(el("h2", {}, "Mistakes in order"), el("div", { class: "table-wrap" }, ms.length ? el("table", {},
     el("thead", {}, el("tr", {}, ["Time", "Who", "Mechanic", "What happened", ""].map((h, i) => el("th", { class: i === 0 ? "num" : null }, h)))),
     el("tbody", {}, ms.map(m => el("tr", {}, el("td", { class: "num" }, mmss(m.t)), el("td", {}, m.who), el("td", {}, shortMech(m.mechanic || "")),
-      el("td", { class: "wrap" }, m.cause),
+      el("td", { class: "wrap" }, whatHappened(m, m.who)),
       el("td", { class: "muted" }, p.wipe && Math.abs(p.wipe.t - m.t) < 0.05 && p.wipe.culprits.includes(m.who) ? "lost the pull" : "")))))
     : el("div", { class: "empty", style: "padding:14px" }, "No mistakes recorded.")));
 }

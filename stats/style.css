@@ -140,6 +140,8 @@ figcaption{ color: var(--muted); font-size: 13px; margin: 2px 0 8px; }
 .chart .gridline{ stroke: var(--grid); stroke-width: 1; }
 .chart .axisline{ stroke: var(--axis); stroke-width: 1; }
 .chart .ref{ stroke: var(--muted); stroke-width: 1; }
+.chart line.strategy{ stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }   /* a strategy's start date */
+.chart text.lbl.strategy{ fill: var(--muted); font-size: 11px; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
 .chart .barmark{ stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
 .chart .hit{ fill: transparent; cursor: default; }
 /* only what carries a tooltip (hover() gives it a tabindex) takes the pointer: bars, lines and numbers drawn over a
@@ -160,6 +162,7 @@ tr.link{ cursor: pointer; }
 tr.link:hover td{ background: var(--surface-2); }
 tr.role td{ color: var(--muted); font-size: 12px; padding-top: 12px; border-bottom: 0; }
 td.wrap{ white-space: normal; min-width: 260px; }
+.names{ white-space: normal; } .names .nm{ white-space: nowrap; }   /* a name list wraps after its commas only */
 
 /* grades: a green, yellow or red dot; the word rides along for hover and screen readers */
 .g{ display: inline-flex; align-items: center; margin-left: 6px; vertical-align: middle; }
@@ -295,6 +298,11 @@ td.good{ color: #3fae5a; } td.bad{ color: var(--div-neg); }
 .tip .t-key.k-tier-g{ width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--series); align-self: center; }
 /* the classifier's confidence in a culprit: high reads plainly, the weaker ones recede */
 .conf{ font-size: 12px; white-space: nowrap; color: var(--ink-2); } .conf.medium, .conf.low{ color: var(--muted); } .conf.low{ font-style: italic; }
+/* a chained cause's earlier deaths, folded under the immediate cause */
+details.trace{ margin-top: 4px; font-size: 13px; color: var(--ink-2); }
+details.trace summary{ cursor: pointer; color: var(--muted); }
+ul.trace{ margin: 4px 0 0; padding-left: 14px; border-left: 1px solid var(--grid); list-style: none; }
+ul.trace li{ margin: 4px 0; }
 .tag{ display: inline-block; font-size: 11px; line-height: 15px; padding: 0 5px; margin-left: 6px; border: 1px solid var(--accent); color: var(--accent); border-radius: 4px; vertical-align: 1px; }
 @media (max-width: 760px){
   .gear-doll{ grid-template-columns: 1fr; }
