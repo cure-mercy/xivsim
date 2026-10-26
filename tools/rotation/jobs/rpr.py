@@ -17,6 +17,7 @@ in the arena; inside an away window the search may hard-cast Harpe, or dash with
 """
 import itertools, math
 from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, SlotState, cd_key, gcd_times, settle, stand
+from jobs._common import away_soon, cast_label, cooldowns, flank_rear, out_of_reach, reach, wasted
 
 # level-90 potencies, from the logs (the guide's are Melee Mastery III's). Waxing / Infernal Slice: out of combo / in.
 POTENCY = {"Slice": 320, "Waxing Slice": (160, 400), "Infernal Slice": (180, 500), "Shadow of Death": 300,
@@ -42,6 +43,7 @@ COMBO_S, REAVER_S, ENH_S, REAPING_ENH_S, SHROUD_S, IDEAL_S, SACRIFICE_S, HARPE_S
 TN_S = 10.5        # logged at the cast, True North runs past its 10 (ends 10.51-10.55 after it; calibrate's status check)
 CDS = {"Soul Slice": (30, 2), "Gluttony": (60, 1), "Blood Stalk": (1, 1), "Enshroud": (5, 1), "Lemure's Slice": (1, 1),
        "Arcane Circle": (120, 1), "True North": (45, 2), "Hell's Ingress": (20, 1), "Tincture": (270, 1)}
+charges, use_cd, full_since, capped, ready, at = cooldowns(__name__)
 AVATAR = {"Blood Stalk", "Unveiled Gibbet", "Unveiled Gallows"}       # one action on the hotbar, one recast
 MELEE_ACTIONS = {"Slice", "Waxing Slice", "Infernal Slice", "Shadow of Death", "Soul Slice", "Gibbet", "Gallows",
                  "Void Reaping", "Cross Reaping", "Lemure's Slice"} | AVATAR          # 3 y: the rest reach 15-25 y
@@ -96,10 +98,6 @@ class State(SlotState):
 WASTE = ("Soul Gauge overcapped", "Shroud Gauge overcapped", "Soul Reaver dropped")
 
 
-def wasted(s, i, n=1):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
-
-
 def gain(s, gauge, n):
     cap = 100
     v = getattr(s, gauge) + n
@@ -126,26 +124,6 @@ def advance(s, fight, to):
     if s.reaver_until <= to: s.reaver = 0
 
 
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = CDS[name]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = CDS[name]
-    if n == mx: nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
-
-
-def cd_name(name):
-    return "Blood Stalk" if name in AVATAR else name
-
-
 def hit(s, fight, at, potency, name):
     land = at + DELAY.get(name, 0.6)
     if 0 <= land < fight.until and fight.targetable(land): s.dmg += potency * mult(s, fight, at)
@@ -153,39 +131,6 @@ def hit(s, fight, at, potency, name):
 
 def shrouded(s, at):
     return s.lemure > 0 and s.shroud_until > at
-
-
-def flank_rear(s, fight, at):
-    """Can the player take Gibbet's or Gallows' positional: True North, or a spot the strategy doesn't fix."""
-    return s.tn_until > at or not any(a <= at < b for a, b in fight.pinned)
-
-
-def reach(s, fight, t, commit=True):
-    """May a melee action land at t: every away window begun by then either got its stretch out of reach since the
-    last melee action, or can still get it after t. With `commit`, t becomes the last melee action."""
-    W, i = fight.away, s.ai
-    while i < len(W) and W[i].lo < t:
-        w = W[i]
-        if min(t, w.hi) - max(s.mlast, w.lo) >= w.need - 1e-9: i += 1; continue
-        if w.hi - max(t, w.lo) >= w.need - 1e-9: break
-        return False
-    if commit: s.ai, s.mlast = i, t
-    return True
-
-
-def out_of_reach(s, fight, t):
-    """Is the player away at t: inside an open away window, within `need` of their last melee action (or its start)."""
-    for w in fight.away[s.ai:]:
-        if w.lo > t: break
-        a = max(s.mlast, w.lo)
-        if a <= t < a + w.need: return True
-    return False
-
-
-def away_soon(s, fight, t, ahead=5.0):
-    for w in fight.away[s.ai:]:                     # a loop, not any() over a generator: called for every action
-        if w.lo <= t + ahead and w.hi > t: return True
-    return False
 
 
 # --- actions -------------------------------------------------------------------------------------------------------
@@ -423,12 +368,6 @@ def cast_time(s, name, at):
     return CAST.get(name, 0.0) * (SPEED if name != "Soulsow" else 1), None
 
 
-def at(s, fight, t):
-    """A copy of the state advanced to t, to read it at a logged cast."""
-    c = s.copy(); advance(c, fight, t)
-    return c
-
-
 STATUSES = {"Soul Reaver": lambda s, t: s.reaver > 0 and s.reaver_until > t,
             "Enhanced Gibbet": lambda s, t: s.enh == "Gibbet" and s.enh_until > t,
             "Enhanced Gallows": lambda s, t: s.enh == "Gallows" and s.enh_until > t,
@@ -477,10 +416,6 @@ def label(s, fight, name, t):
     if name == "Plentiful Harvest": return f"{s.sacrifice} stacks", potency(s, fight, name, t)
     if name in POTENCY and POTENCY[name]: return "", POTENCY[name]
     return None
-
-
-def cast_label(s, name, t):
-    return ""
 
 
 def own_factor(p, h):

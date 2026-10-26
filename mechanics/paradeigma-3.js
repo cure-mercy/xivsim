@@ -1,7 +1,7 @@
 /* Paradeigma III: pick a surviving platform, place, and bait the White Flame lasers. */
 (function(T){
 
-  const { shared, shuffle, showFeedback, aspectColor, aspectSoft, aspectLabel, tiltIcon } = T;
+  const { shared, shuffle, showFeedback, aspectColor, aspectSoft, aspectLabel, tiltIcon, el, dist } = T;
 
   const STYLES = /* css */ `
     /* Real time: the fight clock and the casts running, above the arena */
@@ -162,7 +162,6 @@
   `;
 
   function initPara3(){
-    const SVGNS = 'http://www.w3.org/2000/svg';
     const COLX = { L:180, R:420 };
     const ROWY = { 1:120, 2:240, 3:360, 4:480 };
     const PRIORITY = ['H1','T1','T2','H2'];
@@ -235,7 +234,6 @@
     const panel = document.getElementById('panel-para3');
 
     /* ---------- geometry ---------- */
-    const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
     function tile(row, col){
       return { row, col, key: String(row) + col, x: col === 'L' ? 60 : 300, y: 60 + (row-1)*120,
                w:240, h:120, cx:COLX[col], cy:ROWY[row] };
@@ -910,11 +908,6 @@
     });
 
     /* ---------- drawing helpers ---------- */
-    function el(name, attrs){
-      const n = document.createElementNS(SVGNS, name);
-      for(const k in attrs) n.setAttribute(k, attrs[k]);
-      return n;
-    }
     function layer(id){
       const g = document.getElementById(id);
       g.innerHTML = '';

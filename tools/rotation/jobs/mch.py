@@ -36,6 +36,7 @@ strategy's running costs a Machinist nothing, only Palladion's downtime: R1, R2 
 """
 import itertools
 from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, settle
+from jobs._common import cast_label, cooldowns, no_cast as cast_time, wasted
 
 POTENCY = {"Heated Split Shot": 200, "Heated Slug Shot": 120, "Heated Clean Shot": 120, "Drill": 620, "Air Anchor": 620,
            "Chain Saw": 620, "Blazing Shot": 220, "Gauss Round": 130, "Ricochet": 130}
@@ -109,12 +110,7 @@ class State(SlotState):
                 round(max(self.queen_until - self.t, 0), 1), self.pot_at is None, cd_key(self.cds))
 
 
-
 WASTE = ("heat overcapped", "battery overcapped", "Blazing Shot cuts lost on full charges", "Overheated stacks dropped")
-
-
-def wasted(s, i, n=1):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
 
 
 # --- time and cooldowns --------------------------------------------------------------------------------------------
@@ -133,40 +129,7 @@ def recast_of(name):
     return CDS[name][0] * (SPEED if name in TOOLS else 1.0)
 
 
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = recast_of(name), CDS[name][1]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def full_since(s, name, t):
-    """When the cooldown last came back to full charges, if it is full at t (else None); full at the pull counts from 0."""
-    n, nxt = s.cds[name]
-    mx = CDS[name][1]
-    if n == mx: return 0.0
-    f = nxt + (mx - n - 1) * recast_of(name)
-    return f if f <= t else None
-
-
-def capped(s, t):
-    """Potency the cooldowns have lost sitting full so far (CAPPED: what a second of their recharge is worth)."""
-    v = s.lost
-    for name, k in CAPPED.items():
-        f = full_since(s, name, t)
-        if f is not None: v += VALUE[k] * max(t - max(f, 0.0), 0)
-    return v
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = recast_of(name), CDS[name][1]
-    if n == mx:
-        if name in CAPPED: s.lost += VALUE[CAPPED[name]] * max(at - max(full_since(s, name, at), 0.0), 0)
-        nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
+charges, use_cd, full_since, capped, ready, at = cooldowns(__name__)
 
 
 def cut(s, name, at, secs):
@@ -187,12 +150,6 @@ def cut(s, name, at, secs):
 
 def cd_name(name):
     return name
-
-
-def ready(s, name, t):
-    """When the cooldown next has a charge, from t."""
-    n, nxt = charges(s, name, t)
-    return t if n else nxt
 
 
 # --- actions -------------------------------------------------------------------------------------------------------
@@ -429,10 +386,6 @@ REFERENCE = ("Gauss Round", 130)                    # no trait or patch touches 
 CAST = {}
 
 
-def cast_time(s, name, at):
-    return 0.0, None
-
-
 def prepare(p):
     """A replay of log p opens with the log's pre-pull Reassemble, if it had one (the status falls off before any is
     applied: its cast isn't logged), pressed at the earliest it can have been (its 5 s before it fell off)."""
@@ -445,11 +398,6 @@ def prepare(p):
 def unprepare():
     global LOG_PREPULL
     LOG_PREPULL = None
-
-
-def at(s, fight, t):
-    c = s.copy(); advance(c, fight, t)
-    return c
 
 
 STATUSES = {"Overheated": lambda s, t: s.oh > 0 and s.oh_until > t, "Hypercharged": lambda s, t: s.hc_until > t,
@@ -487,6 +435,3 @@ def label(s, fight, name, t):
     combo = name in COMBO_POT and combo_step(s, t) == COMBO.index(name)
     return ("combo" if combo else "") + (" OH" if overheated(s, t) and name in GCDS else ""), p
 
-
-def cast_label(s, name, t):
-    return ""

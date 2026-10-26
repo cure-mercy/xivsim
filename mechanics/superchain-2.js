@@ -1,7 +1,7 @@
 /* Superchain Theory II: IIA with Trinity of Souls, then IIB with Parthenos and the dives. */
 (function(T){
 
-  const { shared, showFeedback } = T;
+  const { shared, showFeedback, el } = T;
 
   const STYLES = /* css */ `
     .lc-num.sm{ font-size: 1.02rem; letter-spacing: 0.04em; }
@@ -79,10 +79,7 @@
       <div class="card">
         <h2>Shapes</h2>
         <div class="legend-list">
-          <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--good)"><use href="#icon-orb"/></svg><span><b>Green orb</b> — point-blank<span class="hint">, stay out</span></span></div>
-          <div class="legend-item"><svg viewBox="0 0 24 24" fill="none" stroke="var(--umbral-soft)"><use href="#icon-donut"/></svg><span><b>Blue donut</b> — ring<span class="hint">, get in close</span></span></div>
-          <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--shape-orange)"><use href="#icon-add"/></svg><span><b>Orange spiked ball</b> — cones everyone<span class="hint">, spread</span></span></div>
-          <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--shape-purple)"><use href="#icon-jack"/></svg><span><b>Purple jack</b> — cones one role<span class="hint">, pair up</span></span></div>
+${T.SHAPE_LEGEND}
         </div>
       </div>
     </aside>
@@ -91,7 +88,6 @@
   `;
 
   function initSuperchain2(){
-    const SVGNS = 'http://www.w3.org/2000/svg';
     const RAD = Math.PI / 180;
 
     const SHAPE = {
@@ -208,11 +204,6 @@
     function toB(){ genB(); st.set = 'B'; st.step = 1; render(); }
 
     /* ---------- drawing ---------- */
-    function el(name, attrs){
-      const n = document.createElementNS(SVGNS, name);
-      for(const k in attrs) n.setAttribute(k, attrs[k]);
-      return n;
-    }
     function layer(id){
       const g = document.getElementById(id);
       g.innerHTML = '';

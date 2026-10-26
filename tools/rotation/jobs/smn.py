@@ -46,6 +46,7 @@ reach (p12s.FAR).
 """
 import itertools
 from engine import ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, SlotState, cd_key, dash, dash_gain, gcd_times, settle, stand
+from jobs._common import cast_label, cooldowns, reach, wasted
 
 POTENCY = {"Ruin III": 310, "Ruin IV": 430, "Astral Impulse": 440, "Fountain of Fire": 540, "Ruby Rite": 510,
            "Topaz Rite": 330, "Emerald Rite": 230, "Fester": 340, "Energy Drain": 200, "Deathflare": 500,
@@ -123,13 +124,8 @@ class State(SlotState):
                 self.spot, self.ai, tuple(k for i, k in self.dashed if i == self.mvi))
 
 
-
 WASTE = ("Arcanum lost to a demi-summon", "attunement stacks lost", "favor lost", "Aetherflow overcapped",
          "Further Ruin lost")
-
-
-def wasted(s, i, n=1):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
 
 
 # --- statuses and cooldowns ----------------------------------------------------------------------------------------
@@ -164,66 +160,14 @@ def recast_of(name):
     return CDS[name][0] * (SPEED if name == "Demi" else 1.0)
 
 
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = recast_of(name), CDS[name][1]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def full_since(s, name, t):
-    """When the cooldown last came back, if it is up at t (else None); up at the pull counts from 0."""
-    n, nxt = s.cds[name]
-    mx = CDS[name][1]
-    if n == mx: return 0.0
-    f = nxt + (mx - n - 1) * recast_of(name)
-    return f if f <= t else None
-
-
-def capped(s, t):
-    """Potency the cooldowns have lost sitting ready so far (CAPPED: what a second of their recast is worth)."""
-    v = s.lost
-    for name, k in CAPPED.items():
-        f = full_since(s, name, t)
-        if f is not None: v += VALUE[k] * max(t - max(f, 0.0), 0)
-    return v
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = recast_of(name), CDS[name][1]
-    if n == mx:
-        if name in CAPPED: s.lost += VALUE[CAPPED[name]] * max(at - max(full_since(s, name, at), 0.0), 0)
-        nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
+charges, use_cd, full_since, capped, ready, at = cooldowns(__name__)
 
 
 def cd_name(name):
     return "Demi" if name in DEMIS else "Enkindle" if name.startswith("Enkindle") else name
 
 
-def ready(s, name, t):
-    """When the cooldown next has a charge, from t."""
-    n, nxt = charges(s, name, t)
-    return t if n else nxt
-
-
 # --- reach (as jobs/rdm.py) ----------------------------------------------------------------------------------------
-
-def reach(s, fight, t, commit=True):
-    """May a melee action land at t: no away window ([lo, hi] somewhere in which the player is out of reach for `need`
-    seconds on end) is left without such a stretch."""
-    W, i = fight.away, s.ai
-    while i < len(W) and W[i].lo < t:
-        w = W[i]
-        if min(t, w.hi) - max(s.mlast, w.lo) >= w.need - 1e-9: i += 1; continue
-        if w.hi - max(t, w.lo) >= w.need - 1e-9: break
-        return False
-    if commit: s.ai, s.mlast = i, t
-    return True
-
 
 def cyclone_lands(s, fight, t):
     """Crimson Cyclone lands the player beside Athena: not while a far spot holds them (before its snapshot, the middle
@@ -527,11 +471,6 @@ OGCDS = set(OGCD_ORDER)
 REFERENCE = ("Fester", 340)
 
 
-def at(s, fight, t):
-    c = s.copy(); advance(c, fight, t)
-    return c
-
-
 STATUSES = {"Further Ruin": lambda s, t: s.fr_until > t, "Searing Light": lambda s, t: s.sl_from <= t < s.sl_until,
             "Swiftcast": lambda s, t: s.swift > t, "Aetherflow": lambda s, t: s.af > 0,
             "Ifrit's Favor": lambda s, t: s.favor == "ifrit", "Garuda's Favor": lambda s, t: s.favor == "garuda",
@@ -576,10 +515,6 @@ def label(s, fight, name, t):
     """(group, model potency) for a logged hit of `name` cast at t from state s."""
     if name not in POTENCY: return None
     return "", POTENCY[name]
-
-
-def cast_label(s, name, t):
-    return ""
 
 
 def own_factor(p, h):

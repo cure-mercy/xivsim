@@ -48,6 +48,7 @@ steps can be danced with no target and the finish waits for Athena.
 import itertools, math
 import engine
 from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, settle
+from jobs._common import cast_label, cooldowns, no_cast as cast_time, wasted
 
 POTENCY = {"Cascade": 200, "Fountain": 100, "Reverse Cascade": 260, "Fountainfall": 320, "Saber Dance": 500,
            "Tillana": 600, "Starfall Dance": 600, "Fan Dance": 150, "Fan Dance II": 100, "Fan Dance III": 200, "Fan Dance IV": 300,
@@ -86,6 +87,7 @@ DELAY = {"Cascade": 0.80, "Fountain": 0.98, "Reverse Cascade": 0.63, "Fountainfa
 COMBO_S = 30.0
 CDS = {"Standard Step": (30, 1), "Technical Step": (120, 1), "Devilment": (120, 1), "Flourish": (60, 1),
        "Fan Dance": (1, 1), "Fan Dance II": (1, 1), "Fan Dance III": (1, 1), "Fan Dance IV": (1, 1), "Tincture": (270, 1)}
+charges, use_cd, full_since, capped, ready, at = cooldowns(__name__)
 JITTER = 0.05                                   # a replay: the logs' Steps come up to 0.03 s inside their recast
 GCDS = ["Cascade", "Fountain", "Reverse Cascade", "Fountainfall", "Saber Dance", "Tillana", "Starfall Dance",
         "Standard Step", "Technical Step"] + list(STEP_NAMES) + list(FINISH)
@@ -154,10 +156,6 @@ class State(SlotState):
 
 WASTE = ("Esprit overcapped", "feathers overcapped", "Silken procs overwritten or lapsed", "Fan Dance III / IV lost",
          "dances lapsed")
-
-
-def wasted(s, i, n=1):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
 
 
 # --- time, buffs and cooldowns -------------------------------------------------------------------------------------
@@ -232,49 +230,8 @@ def advance(s, fight, to):
     if s.dance and s.dance_until <= to: wasted(s, 4); s.dance, s.steps, s.dance_t = None, 0, None
 
 
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = CDS[name]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def full_since(s, name, t):
-    """When the cooldown last came back to full charges, if it is full at t (else None); full at the pull counts from 0."""
-    n, nxt = s.cds[name]
-    rec, mx = CDS[name]
-    if n == mx: return 0.0
-    f = nxt + (mx - n - 1) * rec
-    return f if f <= t else None
-
-
-def capped(s, t):
-    """Potency the cooldowns have lost sitting ready so far (CAPPED: what a second of their recast is worth)."""
-    v = s.lost
-    for name, k in CAPPED.items():
-        f = full_since(s, name, t)
-        if f is not None: v += VALUE[k] * max(t - max(f, 0.0), 0)
-    return v
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = CDS[name]
-    if n == mx:
-        if name in CAPPED: s.lost += VALUE[CAPPED[name]] * max(at - max(full_since(s, name, at), 0.0), 0)
-        nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
-
-
 def cd_name(name):
     return name
-
-
-def ready(s, name, t):
-    n, nxt = charges(s, name, t)
-    return t if n else nxt
 
 
 # --- procs ---------------------------------------------------------------------------------------------------------
@@ -576,10 +533,6 @@ REFERENCE = ("Fan Dance", 150)                      # 150 at level 90 (the 7.1 n
 CAST = {}
 
 
-def cast_time(s, name, at):
-    return 0.0, None
-
-
 def prepare(p):
     """A replay of log p: the procs the log granted (Silken Symmetry / Flow, Threefold), and its pre-pull dance, if its
     first GCD is a finish, begun at the earliest the dance allows. A finish logged twice within a second (FFLogs flags
@@ -605,11 +558,6 @@ def prepare(p):
 def unprepare():
     global LOG_PREPULL, LOG_PROCS
     LOG_PREPULL = LOG_PROCS = None
-
-
-def at(s, fight, t):
-    c = s.copy(); advance(c, fight, t)
-    return c
 
 
 STATUSES = {"Standard Step": lambda s, t: s.dance == "std" and s.dance_until > t,
@@ -663,10 +611,6 @@ def label(s, fight, name, t):
     if name == "Starfall Dance": return "sure crit", POTENCY[name]
     if name == "Fountain" and s.combo_until > t: return "combo", COMBO_POT[name]
     return "", POTENCY[name]
-
-
-def cast_label(s, name, t):
-    return ""
 
 
 def own_factor(p, h):

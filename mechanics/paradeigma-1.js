@@ -3,7 +3,7 @@
    on the adds' half lines up to bait the first wave, the parties swap, and the other one baits the second. */
 (function(T){
 
-  const { shared, showFeedback } = T;
+  const { shared, showFeedback, el } = T;
 
   const STYLES = /* css */ `
     .p1-wing-panel{ display: flex; flex-direction: column; gap: 4px; }
@@ -156,7 +156,6 @@
   `;
 
   function initPara1(){
-    const SVGNS = 'http://www.w3.org/2000/svg';
     const SLOTS = ['T1', 'T2', 'H1', 'H2', 'M1', 'M2', 'R1', 'R2'];
     const JOB = { T:'Tank', H:'Healer', M:'Melee DPS', R:'Ranged DPS' };
     const JOB_COLOR = { T:'var(--umbral-soft)', H:'var(--good)', M:'var(--astral-soft)', R:'var(--astral-soft)' };
@@ -428,11 +427,6 @@
     document.getElementById('p1-start').addEventListener('click', startClock);
 
     /* ---------- drawing ---------- */
-    function el(name, attrs){
-      const n = document.createElementNS(SVGNS, name);
-      for(const k in attrs) n.setAttribute(k, attrs[k]);
-      return n;
-    }
     function layer(id){
       const g = document.getElementById(id);
       g.innerHTML = '';

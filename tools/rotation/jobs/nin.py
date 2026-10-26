@@ -33,6 +33,7 @@ Forked Raiju (a gap closer) is left to replays: the search doesn't rush in while
 """
 import itertools
 from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, recast, settle
+from jobs._common import away_soon, cast_label, cooldowns, flank_rear, no_cast as cast_time, out_of_reach, reach, wasted
 
 POTENCY = {"Spinning Edge": 220, "Gust Slash": 160, "Aeolian Edge": 140, "Armor Crush": 140, "Throwing Dagger": 200,
            "Fleeting Raiju": 560, "Forked Raiju": 560, "Phantom Kamaitachi": 665, "Trick Attack": 300,
@@ -81,6 +82,7 @@ PREPULL = -3.5                                  # the search's pre-pull mudras: 
 CDS = {"Mudra": (20, 2), "Kassatsu": (60, 1), "Trick Attack": (60, 1), "Dream Within a Dream": (60, 1),
        "Dokumori": (120, 1), "Ten Chi Jin": (120, 1), "Meisui": (120, 1), "Bunshin": (90, 1), "Bhavacakra": (1, 1),
        "True North": (45, 2), "Tincture": (270, 1)}
+charges, use_cd, full_since, capped, ready, at = cooldowns(__name__)
 GCDS = WEAPONSKILLS + list(MUDRAS) + list(NINJUTSU)
 OGCD_ORDER = ["Tincture", "Dokumori", "Bunshin", "Kassatsu", "Ten Chi Jin", "Trick Attack", "Meisui",
               "Dream Within a Dream", "Bhavacakra", "True North"]
@@ -136,10 +138,6 @@ class State(SlotState):
 WASTE = ("Ninki overcapped", "Kazematoi overcapped", "Raiju Ready lost", "Bunshin stacks lost")
 
 
-def wasted(s, i, n=1):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
-
-
 # --- time passing --------------------------------------------------------------------------------------------------
 
 def mult(s, fight, at):
@@ -166,82 +164,9 @@ def cd_name(name):
     return "Mudra" if name in MUDRAS else name
 
 
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = CDS[name]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def full_since(s, name, t):
-    """When the cooldown last came back to full charges, if it is full at t (else None); full at the pull counts from 0."""
-    n, nxt = s.cds[name]
-    rec, mx = CDS[name]
-    if n == mx: return 0.0
-    f = nxt + (mx - n - 1) * rec
-    return f if f <= t else None
-
-
-def capped(s, t):
-    """Potency the cooldowns have lost sitting full so far (CAPPED: what a second of their recharge is worth)."""
-    v = s.lost
-    for name, k in CAPPED.items():
-        f = full_since(s, name, t)
-        if f is not None: v += VALUE[k] * max(t - max(f, 0.0), 0)
-    return v
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = CDS[name]
-    if n == mx:
-        if name in CAPPED: s.lost += VALUE[CAPPED[name]] * max(at - max(full_since(s, name, at), 0.0), 0)
-        nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
-
-
-def ready(s, name, t):
-    """When the cooldown next has a charge, from t."""
-    n, nxt = charges(s, name, t)
-    return t if n else nxt
-
-
 def hit(s, fight, at, potency, name, delay=None):
     land = at + (DELAY.get(name, 0.6) if delay is None else delay)
     if 0 <= land < fight.until and fight.targetable(land): s.dmg += potency * mult(s, fight, at)
-
-
-def flank_rear(s, fight, at):
-    """Can the player take a positional: True North, or a spot the strategy doesn't fix."""
-    return s.tn_until > at or not any(a <= at < b for a, b in fight.pinned)
-
-
-def reach(s, fight, t, commit=True):
-    """May a melee action land at t (see rpr.reach)."""
-    W, i = fight.away, s.ai
-    while i < len(W) and W[i].lo < t:
-        w = W[i]
-        if min(t, w.hi) - max(s.mlast, w.lo) >= w.need - 1e-9: i += 1; continue
-        if w.hi - max(t, w.lo) >= w.need - 1e-9: break
-        return False
-    if commit: s.ai, s.mlast = i, t
-    return True
-
-
-def out_of_reach(s, fight, t):
-    for w in fight.away[s.ai:]:
-        if w.lo > t: break
-        a = max(s.mlast, w.lo)
-        if a <= t < a + w.need: return True
-    return False
-
-
-def away_soon(s, fight, t, ahead=5.0):
-    for w in fight.away[s.ai:]:                     # a loop, not any() over a generator: called for every action
-        if w.lo <= t + ahead and w.hi > t: return True
-    return False
 
 
 # --- actions -------------------------------------------------------------------------------------------------------
@@ -555,10 +480,6 @@ REFERENCE = ("Dream Within a Dream", 180)           # a hit; untouched since 7.1
 CAST = {}
 
 
-def cast_time(s, name, at):
-    return 0.0, None
-
-
 def prepare(p):
     """A replay of log p opens with mudras made before the pull when its first ninjutsu comes before any logged mudra
     (their casts aren't logged), made as early as the 6 s Mudra status allows: its charge comes back soonest."""
@@ -573,11 +494,6 @@ def prepare(p):
 def unprepare():
     global LOG_PREPULL
     LOG_PREPULL = None
-
-
-def at(s, fight, t):
-    c = s.copy(); advance(c, fight, t)
-    return c
 
 
 STATUSES = {"Mudra": lambda s, t: bool(s.seq) and s.seq_until > t, "Kassatsu": lambda s, t: s.kass_until > t,
@@ -638,10 +554,6 @@ def label(s, fight, name, t):
             return ("combo" if p >= COMBO_POT[name] else "") + (" kaz" if name == "Aeolian Edge" and s.kaz else "") + (" TN" if tn else ""), p
         return ("combo" if p == COMBO_POT[name] else ""), p
     return "", POTENCY[name]
-
-
-def cast_label(s, name, t):
-    return ""
 
 
 def own_factor(p, h):

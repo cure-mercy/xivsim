@@ -1,7 +1,7 @@
 /* Gaiaochos II: break Missing Link into the safe corner, spread in the narrow lane, then two sets of Ultima Blow tethers. */
 (function(T){
 
-  const { shared, showFeedback } = T;
+  const { shared, showFeedback, el, pick } = T;
 
   const STYLES = /* css */ `
     .g2-slot{
@@ -82,7 +82,6 @@
   `;
 
   function initGaiaochos2(){
-    const SVGNS = 'http://www.w3.org/2000/svg';
     const C = 300, R = 240;
     const P = (x, y) => [C + x * R, C + y * R];
     const DIRS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -109,7 +108,6 @@
 
     let st = {};
     const fb = document.getElementById('g2-feedback');
-    const pick = arr => arr[Math.floor(Math.random() * arr.length)];
     function shuffled(arr){
       const a = arr.slice();
       for(let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -159,11 +157,6 @@
     }
 
     /* ---------- drawing ---------- */
-    function el(name, attrs){
-      const n = document.createElementNS(SVGNS, name);
-      for(const k in attrs) n.setAttribute(k, attrs[k]);
-      return n;
-    }
     function layer(id){
       const g = document.getElementById(id);
       g.innerHTML = '';

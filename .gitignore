@@ -5,3 +5,4 @@ tools/scorecard/site/data.json
 tools/rotation/.cache/
 scratch/
 tools/gear/.cache/
+.fflogs_v2

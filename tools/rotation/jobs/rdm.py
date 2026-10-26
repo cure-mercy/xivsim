@@ -52,6 +52,7 @@ import itertools
 import engine
 from engine import (ANIM_LOCK, BASE_GCD, RESOLVE, SLIDE, SlotState, cd_key, dash, dash_gain, gcd_times, move_credit,
                     open_move, settle, stand)
+from jobs._common import cast_label, cooldowns, reach, wasted
 
 # level-90 potencies from the logs (see above); (out of combo, in combo) for combo steps
 POTENCY = {"Jolt III": 360, "Verthunder III": 380, "Veraero III": 380, "Verfire": 340, "Verstone": 340,
@@ -93,6 +94,7 @@ LUCID_LAG = 0.62                                # Lucid Dreaming lands this long
 CDS = {"Fleche": (25, 1), "Contre Sixte": (35, 1), "Corps-a-Corps": (35, 2), "Engagement": (35, 2),
        "Embolden": (120, 1), "Manafication": (110, 1), "Acceleration": (55, 2), "Swiftcast": (60, 1),
        "Lucid Dreaming": (60, 1), "Tincture": (270, 1)}
+at = cooldowns(__name__)[5]                         # charges / use_cd are the job's own: Sprint has no CDS entry
 OGCD_ORDER = ["Tincture", "Embolden", "Manafication", "Fleche", "Contre Sixte", "Acceleration", "Swiftcast",
               "Engagement", "Displacement", "Corps-a-Corps", "Lucid Dreaming"]
 BACKSTEP = 15.0                                 # Displacement's backstep, yalms (the tooltip's: 3 uses in our logs)
@@ -141,10 +143,6 @@ class State(SlotState):
 
 
 WASTE = ("mana overcapped", "procs lost (granted again while up, or lapsed)", "Dualcast dropped")
-
-
-def wasted(s, i, n=1.0):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
 
 
 # --- time passing --------------------------------------------------------------------------------------------------
@@ -226,19 +224,6 @@ def grant(s, colour, chance, at, ev):
 
 
 # --- reach (as jobs/drg.py) ----------------------------------------------------------------------------------------
-
-def reach(s, fight, t, commit=True):
-    """May a melee action land at t: no away window ([lo, hi] somewhere in which the player is out of reach for `need`
-    seconds on end) is left without such a stretch."""
-    W, i = fight.away, s.ai
-    while i < len(W) and W[i].lo < t:
-        w = W[i]
-        if min(t, w.hi) - max(s.mlast, w.lo) >= w.need - 1e-9: i += 1; continue
-        if w.hi - max(t, w.lo) >= w.need - 1e-9: break
-        return False
-    if commit: s.ai, s.mlast = i, t
-    return True
-
 
 def needs_reach(s, name, at):
     return name in MELEE_ACTIONS and not (name in ENCHANTED and s.mana_until > at)
@@ -540,11 +525,6 @@ OGCDS = set(OGCD_ORDER) | {"Displacement", "Sprint"}
 REFERENCE = ("Jolt III", 360)                       # no trait above level 84 or patch touches it
 
 
-def at(s, fight, t):
-    c = s.copy(); advance(c, fight, t)
-    return c
-
-
 STATUSES = {"Dualcast": lambda s, t: s.dc > t, "Acceleration": lambda s, t: s.accel > t,
             "Swiftcast": lambda s, t: s.swift > t, "Magicked Swordplay": lambda s, t: s.ms > 0 and s.ms_until > t,
             "Manafication": lambda s, t: s.mana_until > t, "Embolden": lambda s, t: s.emb_from <= t < s.emb_until,
@@ -585,10 +565,6 @@ def label(s, fight, name, t):
         combo = in_combo(s, name, t) or (name == "Enchanted Zwerchhau" and s.combo == "r" and s.combo_until > t)
         return ("combo" if combo else "no combo"), p[combo]
     return "", p
-
-
-def cast_label(s, name, t):
-    return ""
 
 
 def own_factor(p, h):

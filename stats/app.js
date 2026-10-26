@@ -263,7 +263,7 @@ function shareBars(rows, { refName = "", barName = "" } = {}) {
 
 // ---------- practice links and focus lists ----------
 // the trainer's drills and briefs (the repository root on GitHub Pages; this site lives in stats/), open mechanics only
-const DRILLS = { "Paradeigma I": "para1", "Paradeigma II": "engrave", "Superchain I": "superchain" };
+const DRILLS = { "Paradeigma I": "para1", "Paradeigma II": "engrave", "Superchain I": "superchain", "Paradeigma III": "para3" };
 const drillLinks = mech => DRILLS[mech] ? el("span", { class: "drill" }, el("a", { href: `../index.html#${DRILLS[mech]}` }, "Drill"), " · ",
   el("a", { href: `../briefs.html#${DRILLS[mech]}` }, "Brief")) : null;
 const jumpTo = (title, text) => el("button", { type: "button", class: "linklike", on: { click: () => {
@@ -1100,6 +1100,23 @@ function playerPage(day, group, name) {
       el("td", { class: "wrap" }, m.cause), el("td", { class: "muted" }, wiped.some(q => q.n === m.pull && Math.abs(q.wipe.t - m.t) < 2.5) ? "lost the pull" : ""),
       el("td", {}, drillLinks(m.mechanic) || "")))))
     : el("div", { class: "empty", style: "padding:14px" }, "No mistakes recorded.")));
+  // every death of theirs: what killed them, why, and whose mistake it was
+  const died = r.pulls.flatMap(q => (q.death_list || []).filter(d => d.who === name).map(d => ({ ...d, pull: q.n })));
+  const before = died.filter(d => !d.when), own = before.filter(d => d.culprits.includes(name)).length,
+    others = before.filter(d => d.culprits.length && !d.culprits.includes(name)).length;
+  const inGroup = new Set(r.players.map(q => q.name));
+  const culprit = d => !d.culprits.length ? el("span", { class: "muted" }, "none found")
+    : el("span", {}, ...d.culprits.flatMap((c, i) => [i ? ", " : "", c === name ? "self" : inGroup.has(c) ? el("a", { href: `#/day/${day}/${group}/${encodeURIComponent(c)}` }, c) : c]));
+  app.append(heading("h2", "Deaths", "Every death of theirs, pull by pull: the hit that killed them, what the classifier says happened, and whose mistake it was (self: their own; none found: no rule explains it, often healing or mitigation, or fallout of an earlier death). Decided the wipe: the death, or the mass death, that lost the pull. After the wipe: the collapse once the pull was already lost, where deaths are forced."),
+    el("p", { class: "lede" }, r.pulls.some(q => q.death_list) ? `${died.length} deaths in ${p.pulls} pulls; ${before.length} before the pull was lost: ${own} their own mistake, ${others} someone else's, ${before.length - own - others} no culprit found.`
+      : "Not recorded for this report yet: rebuild the site (build_site.py --reanalyse)."),
+    el("div", { class: "table-wrap" }, died.length ? el("table", {},
+      el("thead", {}, el("tr", {}, ["Pull", "Time", "Mechanic", "Killed by", "What happened", "Culprit", ""].map((h, i) => el("th", { class: i < 2 ? "num" : null }, h)))),
+      el("tbody", {}, died.map(d => el("tr", { class: d.when === "after" ? "muted" : null },
+        el("td", { class: "num" }, el("a", { href: `#/day/${day}/${group}/pulls/${d.pull}` }, String(d.pull))), el("td", { class: "num" }, mmss(d.t)),
+        el("td", {}, shortMech(d.mechanic || "")), el("td", {}, d.ability || "?"), el("td", { class: "wrap" }, d.cause), el("td", {}, culprit(d)),
+        el("td", { class: "muted" }, d.when === "lost" ? "decided the wipe" : d.when === "after" ? "after the wipe" : "")))))
+      : el("div", { class: "empty", style: "padding:14px" }, "No deaths recorded.")));
   // across raid days
   const hist = reports().flatMap(x => x.players.filter(q => q.name === name).map(q => ({ ...q, day: x.day, group: x.group }))).sort((a, c) => a.day.localeCompare(c.day));
   const byDay = Object.values(hist.reduce((a, q) => ((a[q.day + q.group] = a[q.day + q.group] || []).push(q), a), {}));

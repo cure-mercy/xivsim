@@ -1,7 +1,7 @@
 /* Superchain Theory I: read the chains, then resolve your aspect, shape and tower. */
 (function(T){
 
-  const { shared, showFeedback, shuffle } = T;
+  const { shared, showFeedback, shuffle, el, dist } = T;
 
   const STYLES = /* css */ `
     /* Real time: the fight clock and the casts running, above the arena */
@@ -154,10 +154,7 @@
       <div class="card">
         <h2>Shapes</h2>
         <div class="legend-list">
-          <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--good)"><use href="#icon-orb"/></svg><span><b>Green orb</b> — point-blank<span class="hint">, stay out</span></span></div>
-          <div class="legend-item"><svg viewBox="0 0 24 24" fill="none" stroke="var(--umbral-soft)"><use href="#icon-donut"/></svg><span><b>Blue donut</b> — ring<span class="hint">, get in close</span></span></div>
-          <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--shape-orange)"><use href="#icon-add"/></svg><span><b>Orange spiked ball</b> — cones everyone<span class="hint">, spread</span></span></div>
-          <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--shape-purple)"><use href="#icon-jack"/></svg><span><b>Purple jack</b> — cones one role<span class="hint">, pair up</span></span></div>
+${T.SHAPE_LEGEND}
         </div>
       </div>
 
@@ -179,7 +176,6 @@
   `;
 
   function initSuperchain(){
-    const SVGNS = 'http://www.w3.org/2000/svg';
     const RAD = Math.PI / 180;
     const CW = ['NE','SE','SW','NW'];
     // The clusters sit 8 yalms out on the intercardinals (as in the log), 12 units to the yalm.
@@ -347,7 +343,6 @@
     /* ---------- geometry ---------- */
     const unit = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
     const add = (p, v, k) => [p[0] + v[0] * k, p[1] + v[1] * k];
-    const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
     const CENTRE = [300, 300];
     // facing the boss from cluster q (looking along -out), your left hand points along left(q)
     const outOf = q => [Math.cos(CANG[q] * RAD), Math.sin(CANG[q] * RAD)];
@@ -892,11 +887,6 @@
     document.getElementById('sc-start').addEventListener('click', startClock);
 
     /* ---------- drawing helpers ---------- */
-    function el(name, attrs){
-      const n = document.createElementNS(SVGNS, name);
-      for(const k in attrs) n.setAttribute(k, attrs[k]);
-      return n;
-    }
     function layer(id){
       const g = document.getElementById(id);
       g.innerHTML = '';

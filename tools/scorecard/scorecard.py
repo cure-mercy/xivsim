@@ -8,7 +8,7 @@ import collections, datetime, json, statistics as st, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import fflogs
+import fflogs, gamedata
 from classifier import Pull, classify, infer_light_parties
 
 HERE = Path(__file__).resolve().parent
@@ -20,10 +20,7 @@ POT = {"tank": 0.1042 / 1.1042, "dps": 0.1057 / 1.1057}
 POT_RATE_S = 38                  # the damage rate a tincture multiplies: the player's over 0:00-0:38, as for the clears
 CACHED_ONLY = False              # build_site --cached: don't fetch parts a cached report lacks
 ROLES = ["Tank", "Healer", "Melee", "Ranged", "Caster"]
-ROLE = {"Paladin": "Tank", "Warrior": "Tank", "DarkKnight": "Tank", "Gunbreaker": "Tank", "WhiteMage": "Healer", "Scholar": "Healer",
-        "Astrologian": "Healer", "Sage": "Healer", "Monk": "Melee", "Dragoon": "Melee", "Ninja": "Melee", "Samurai": "Melee", "Reaper": "Melee",
-        "Viper": "Melee", "Bard": "Ranged", "Machinist": "Ranged", "Dancer": "Ranged", "BlackMage": "Caster", "Summoner": "Caster",
-        "RedMage": "Caster", "Pictomancer": "Caster"}
+ROLE = gamedata.ROLE
 # grade thresholds: mistakes per pull, share of pulls whose wipe the player caused, damage vs clears, uptime points
 # vs clearers of the role. With eight players and one wipe a pull, a fair share of the wipes is 12.5%.
 G_MIST, G_WIPE, G_DMG, G_UP = (0.30, 0.60), (0.10, 0.20), (-0.05, -0.12), (-0.5, -1.5)
@@ -150,7 +147,7 @@ def gear():
     """The best-in-slot sets for the Gear pages and the rotations' job pages, {jobs: {job: sheet}, icons: {item id: data
     URI}} (tools/gear/sheets.py, from bis.py --combined's sets); empty when there are none."""
     sys.path.insert(0, str(HERE.parent / "gear"))
-    import gamedata, sheets
+    import sheets
     js = sheets.sheets({a: n for n, a in gamedata.ABBR.items()})
     if not js: return {}
     for name, s in js.items(): s["role"] = ROLE.get(name, "Melee")
@@ -332,6 +329,14 @@ def analyse(group, data, bench):
             for c in cul: nwipe[c] += 1; wcauses[c][cause_label(trig["cause"], trig["mechanic"])] += 1
             if trig: row["wipe"] = dict(culprits=cul, t=round(trig["t"], 1), mechanic=trig["mechanic"],
                                         label=cause_label(trig["cause"], trig["mechanic"]), cause=trig["cause"])
+        # every death with what killed them and whose fault it was; when: "lost" for the deaths that decided the wipe
+        # (the deciding death and the rest of its mass death), "after" for the collapse after it, None before
+        lost_at = trig["t"] - 1 if trig else dur
+        row["death_list"] = [dict(who=r["victim"], t=round(r["t"], 1), ability=r["ability"], mechanic=r["mechanic"], cause=r["cause"],
+                                  culprits=r["culprits"], confidence=r["confidence"],
+                                  when="lost" if trig and (r is trig or r["ability"] == trig["ability"] and abs(r["t"] - trig["t"]) <= 3)
+                                  else "after" if r["t"] >= lost_at else None)
+                             for r in res if r["kind"] == "death"]
         # every mistake while the pull was still alive; what happens during the collapse is forced or noise
         cutoff = trig["t"] + MISTAKE_AFTER_WIPE if trig else dur
         for c, t, cause, mech, kind in mistakes_of(res):

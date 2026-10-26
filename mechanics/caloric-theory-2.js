@@ -1,7 +1,7 @@
 /* Caloric Theory II: take the spread, swap the red marker into the middle, then hand Entropifaction clockwise. */
 (function(T){
 
-  const { shared, showFeedback } = T;
+  const { shared, showFeedback, el, pick, dist } = T;
 
   const STYLES = /* css */ `
     .c2-slot{
@@ -78,7 +78,6 @@
   `;
 
   function initCaloric2(){
-    const SVGNS = 'http://www.w3.org/2000/svg';
     const U = 15;
     const X = x => x * U, Y = y => y * U;
     const CENTRE = [20, 13];
@@ -117,7 +116,6 @@
 
     let st = {};
     const fb = document.getElementById('c2-feedback');
-    const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
     function startRound(){
       st.me = shared.slot;
@@ -168,11 +166,6 @@
     }
 
     /* ---------- drawing ---------- */
-    function el(name, attrs){
-      const n = document.createElementNS(SVGNS, name);
-      for(const k in attrs) n.setAttribute(k, attrs[k]);
-      return n;
-    }
     function layer(id){
       const g = document.getElementById(id);
       g.innerHTML = '';
@@ -371,7 +364,6 @@
     }
     // After your last answer, show the whole thing resolved with Atmosfaction going off.
     /* ---------- the step out, judged by the rules rather than one fixed spot ---------- */
-    const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
     // Everything a spot has to satisfy for holder i stepping out after handing off.
     function exitCheck(i, q){

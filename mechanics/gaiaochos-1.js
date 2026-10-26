@@ -1,7 +1,7 @@
 /* Gaiaochos I: break Missing Link down the safe line from Summon Darkness, then spread for Geocentrism. */
 (function(T){
 
-  const { shared, showFeedback } = T;
+  const { shared, showFeedback, el, pick } = T;
 
   const STYLES = /* css */ `
     .g1-slot{
@@ -81,7 +81,6 @@
   `;
 
   function initGaiaochos1(){
-    const SVGNS = 'http://www.w3.org/2000/svg';
     const C = 300, R = 240;
     // Positions are fractions of the arena's radius, read off Icy Veins' Geocentrism diagram.
     const P = (x, y) => [C + x * R, C + y * R];
@@ -117,7 +116,6 @@
 
     let st = {};
     const fb = document.getElementById('g1-feedback');
-    const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
     function startRound(){
       st.me = shared.slot;
@@ -145,11 +143,6 @@
     function lineDist(d, xy){ const a = ANGLE(d); return Math.abs(-Math.sin(a) * xy[0] + Math.cos(a) * xy[1]); }
 
     /* ---------- drawing ---------- */
-    function el(name, attrs){
-      const n = document.createElementNS(SVGNS, name);
-      for(const k in attrs) n.setAttribute(k, attrs[k]);
-      return n;
-    }
     function layer(id){
       const g = document.getElementById(id);
       g.innerHTML = '';

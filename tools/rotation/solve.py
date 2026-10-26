@@ -18,12 +18,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE)); sys.path.insert(0, str(HERE.parent / "scorecard"))
 import engine, p12s, polish                      # noqa: E402
 from engine import Move                          # noqa: E402
-from jobs import blm, brd, dnc, drg, mch, mnk, nin, pct, rdm, rpr, sam, smn, vpr    # noqa: E402
+from jobs import JOBS, blm                   # noqa: E402
 
-JOBS = {"blm": (blm, "BlackMage"), "rpr": (rpr, "Reaper"), "mnk": (mnk, "Monk"), "brd": (brd, "Bard"),
-        "drg": (drg, "Dragoon"), "rdm": (rdm, "RedMage"), "vpr": (vpr, "Viper"), "sam": (sam, "Samurai"),
-        "pct": (pct, "Pictomancer"), "mch": (mch, "Machinist"), "nin": (nin, "Ninja"),
-        "smn": (smn, "Summoner"), "dnc": (dnc, "Dancer")}
 CRIT, CRIT_DMG, DH = 0.25, 1.60, 0.36            # typical rates at this gear level, for the value of crit and direct hit buffs
 BUFFS = {   # name: (job, multiplier)
     "Divination": ("AST", 1.06), "Technical Finish": ("DNC", 1.05), "Brotherhood": ("MNK", 1.05), "Embolden": ("RDM", 1.05),

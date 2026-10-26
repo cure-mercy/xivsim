@@ -39,6 +39,7 @@ Athena; Uncoiled Fury and Writhing Snap reach from anywhere.
 """
 import itertools
 from engine import ANIM_LOCK, BASE_GCD, SlotState, cd_key, recast, settle
+from jobs._common import away_soon, cast_label, cooldowns, flank_rear, no_cast as cast_time, out_of_reach, reach, wasted
 
 POTENCY = {"Steel Fangs": (200, 300), "Reaving Fangs": (200, 300), "Hunter's Sting": 300, "Swiftskin's Sting": 300,
            "Flanksting Strike": 340, "Flanksbane Fang": 340, "Hindsting Strike": 340, "Hindsbane Fang": 340,
@@ -78,6 +79,7 @@ TN_S = 10.5
 TRIBUTE = 4                                     # Anguine Tribute at level 90 (the fifth is level 96)
 CDS = {"Vicewinder": (40, 2), "Serpent's Ire": (120, 1), "True North": (45, 2), "Tincture": (270, 1),
        "Death Rattle": (1, 1), "Twinfang Bite": (1, 1), "Twinblood Bite": (1, 1)}
+charges, use_cd, full_since, capped, ready, at = cooldowns(__name__)
 MELEE_ACTIONS = {"Steel Fangs", "Reaving Fangs", "Hunter's Sting", "Swiftskin's Sting", "Flanksting Strike",
                  "Flanksbane Fang", "Hindsting Strike", "Hindsbane Fang", "Vicewinder", "Hunter's Coil",
                  "Swiftskin's Coil", "Reawaken", "Death Rattle", "Twinfang Bite", "Twinblood Bite"} | set(GENERATIONS)
@@ -131,10 +133,6 @@ class State(SlotState):
 WASTE = ("Serpent Offerings overcapped", "Rattling Coil overcapped", "Death Rattle or a bite lost")
 
 
-def wasted(s, i, n=1):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
-
-
 # --- time passing --------------------------------------------------------------------------------------------------
 
 def mult(s, fight, at):
@@ -153,22 +151,6 @@ def advance(s, fight, to):
     if s.tribute and s.ra_until <= to: s.tribute = 0
 
 
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = CDS[name]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = CDS[name]
-    if n == mx: nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
-
-
 def cd_name(name):
     return name
 
@@ -176,37 +158,6 @@ def cd_name(name):
 def hit(s, fight, at, potency, name):
     land = at + DELAY.get(name, 0.6)
     if 0 <= land < fight.until and fight.targetable(land): s.dmg += potency * mult(s, fight, at)
-
-
-def flank_rear(s, fight, at):
-    """Can the player take a positional: True North, or a spot the strategy doesn't fix."""
-    return s.tn_until > at or not any(a <= at < b for a, b in fight.pinned)
-
-
-def reach(s, fight, t, commit=True):
-    """May a melee action land at t (see rpr.reach)."""
-    W, i = fight.away, s.ai
-    while i < len(W) and W[i].lo < t:
-        w = W[i]
-        if min(t, w.hi) - max(s.mlast, w.lo) >= w.need - 1e-9: i += 1; continue
-        if w.hi - max(t, w.lo) >= w.need - 1e-9: break
-        return False
-    if commit: s.ai, s.mlast = i, t
-    return True
-
-
-def out_of_reach(s, fight, t):
-    for w in fight.away[s.ai:]:
-        if w.lo > t: break
-        a = max(s.mlast, w.lo)
-        if a <= t < a + w.need: return True
-    return False
-
-
-def away_soon(s, fight, t, ahead=5.0):
-    for w in fight.away[s.ai:]:                     # a loop, not any() over a generator: called for every action
-        if w.lo <= t + ahead and w.hi > t: return True
-    return False
 
 
 # --- actions -------------------------------------------------------------------------------------------------------
@@ -475,15 +426,6 @@ HASTED = {"Swiftscaled": SWIFT}                     # calibrate.gcd_of divides g
 GCD_BASE = RECAST                                   # ...and gaps after these by their recast over 2.5 s
 
 
-def cast_time(s, name, at):
-    return 0.0, None
-
-
-def at(s, fight, t):
-    c = s.copy(); advance(c, fight, t)
-    return c
-
-
 STATUSES = {"Hunter's Instinct": lambda s, t: s.hi_until > t, "Swiftscaled": lambda s, t: s.ss_until > t,
             "Honed Steel": lambda s, t: s.honed == "Steel Fangs" and s.honed_until > t,
             "Honed Reavers": lambda s, t: s.honed == "Reaving Fangs" and s.honed_until > t,
@@ -537,10 +479,6 @@ def label(s, fight, name, t):
         return g.strip(), p + (FINISHER_POS if name in VENOM_OF else COIL_POS) * tn
     p = potency(s, fight, name, t)
     return ("enhanced" if isinstance(POTENCY[name], tuple) and p == POTENCY[name][1] else ""), p
-
-
-def cast_label(s, name, t):
-    return ""
 
 
 def own_factor(p, h):

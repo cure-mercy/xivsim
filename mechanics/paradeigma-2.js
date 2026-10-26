@@ -308,7 +308,7 @@
     const QUADS = ['NE','SE','SW','NW'];
     const OPPOSITE_ASPECT = { astral:'umbral', umbral:'astral' };
     // Tanks and healers both show the merged support icon, so the marker never suggests a job you do not play.
-    const ROLE_ICON = { tank: '#icon-support', healer: '#icon-support', dps: '#icon-dps' };
+    const ROLE_ICON = { tank: '#icon-support', healer: '#icon-support', dps: '#icon-sword' };
     const ROLE_COLOR = { tank: 'var(--umbral-soft)', healer: 'var(--good)', dps: 'var(--astral-soft)' };
     const ADD_OFFSET = 50;
     const LEAN_SIGN = {
@@ -713,7 +713,7 @@
     // tower to soak it, within about 3.75 yalms of your tower spot, about 3.5 yalms of your stretch spot, and
     // inside the lane (its half-width less your own) for the dive.
     const IN_RANGE = { drop: 45, stretch: 42, soak: 22, lane: 48 };
-    const svgEl = (name, attrs) => { const n = document.createElementNS(SVG_NS, name); for(const k in attrs) n.setAttribute(k, attrs[k]); return n; };
+    const svgEl = T.el;
 
     function buildParty(){
       st.actors = {};
@@ -736,7 +736,7 @@
         const a = st.actors[id];
         const g = svgEl('g', { id:'sp-' + id, class:'player' + (id === st.me ? ' me' : '') });
         g.appendChild(svgEl('circle', { cx:0, cy:0, r:15, fill:'var(--nebula-2)', stroke: aspectSoft(a.debuff), 'stroke-width':1.8 }));
-        const u = svgEl('use', { href: a.role === 'dps' ? '#icon-dps' : '#icon-support', x:-12, y:-12, width:24, height:24 });
+        const u = svgEl('use', { href: a.role === 'dps' ? '#icon-sword' : '#icon-support', x:-12, y:-12, width:24, height:24 });
         u.style.color = a.role === 'dps' ? 'var(--astral-soft)' : 'var(--good)';
         g.appendChild(u);
         g.appendChild(svgEl('rect', { x:4.5, y:-30.5, width:27, height:35, rx:4, fill:'var(--nebula-2)', stroke:'var(--line-strong)', 'stroke-width':1, class:'eg-badge' }));

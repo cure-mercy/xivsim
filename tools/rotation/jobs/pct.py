@@ -44,6 +44,7 @@ early in ~1 window of 3): that only makes the replay more permissive.
 """
 import itertools, math
 from engine import ANIM_LOCK, BASE_GCD, RESOLVE, RUN, SLIDE, SlotState, _overlap, cd_key, gcd_times, settle, stand
+from jobs._common import cooldowns, wasted
 
 # level-90 potencies (see above)
 POTENCY = {"Fire in Red": 420, "Aero in Green": 460, "Water in Blue": 500, "Blizzard in Cyan": 750,
@@ -88,6 +89,7 @@ SMUDGE_Y, SMUDGE_LOCK, SMUDGE_MIN = 15.0, 0.9, 1.0   # Smudge: a 15 y dash any w
 LANDSCAPE = 8.0                                 # yalms: a longer run takes the player out of Starry Muse's landscape
 CDS = {"Living Muse": (40, 2), "Striking Muse": (60, 2), "Starry Muse": (120, 1), "Mog of the Ages": (30, 1),
        "Subtractive Palette": (1, 1), "Swiftcast": (60, 1), "Smudge": (20, 1), "Tincture": (270, 1)}
+charges, use_cd, full_since, capped, ready, at = cooldowns(__name__)
 OGCD_ORDER = ["Tincture", "Starry Muse", "Striking Muse", "Pom Muse", "Winged Muse", "Mog of the Ages",
               "Subtractive Palette", "Swiftcast", "Smudge"]
 DAMAGE_OGCDS = {"Pom Muse", "Winged Muse", "Mog of the Ages"}
@@ -131,10 +133,6 @@ class State(SlotState):
 WASTE = ("Palette Gauge overcapped", "White Paint overcapped", "Moogle Portrait overwritten", "Hammer Time lapsed")
 
 
-def wasted(s, i, n=1):
-    w = list(s.waste); w[i] += n; s.waste = tuple(w)
-
-
 # --- statuses and charges ------------------------------------------------------------------------------------------
 
 def step(s, t):
@@ -154,42 +152,6 @@ def advance(s, fight, to):
     """Hammer Time stacks that lapse by `to`."""
     if s.ht and s.ht_until <= to:
         wasted(s, 3, s.ht); s.ht = 0
-
-
-def charges(s, name, at):
-    n, nxt = s.cds[name]
-    if nxt is None or nxt > at: return n, nxt         # nothing comes back by `at` (most calls)
-    rec, mx = CDS[name]
-    while n < mx and nxt is not None and nxt <= at:
-        n += 1; nxt = nxt + rec if n < mx else None
-    return n, nxt
-
-
-def full_since(s, name, t):
-    """When the cooldown last came back to full charges, if it is full at t (else None); full at the pull counts from 0."""
-    n, nxt = s.cds[name]
-    rec, mx = CDS[name]
-    if n == mx: return 0.0
-    f = nxt + (mx - n - 1) * rec
-    return f if f <= t else None
-
-
-def capped(s, t):
-    """Potency the muses' charges have lost sitting full so far (CAPPED: what a second of their recharge is worth)."""
-    v = s.lost
-    for name, k in CAPPED.items():
-        f = full_since(s, name, t)
-        if f is not None: v += VALUE[k] * max(t - max(f, 0.0), 0)
-    return v
-
-
-def use_cd(s, name, at):
-    n, nxt = charges(s, name, at)
-    rec, mx = CDS[name]
-    if n == mx:
-        if name in CAPPED: s.lost += VALUE[CAPPED[name]] * max(at - max(full_since(s, name, at), 0.0), 0)
-        nxt = at + rec
-    s.cds[name] = (n - 1, nxt)
 
 
 def cd_name(name):
@@ -461,12 +423,6 @@ MOVE_WEIGHT = 0.0
 END_TAPER = 15.0                                      # held resources fade over the window's last seconds
 
 
-def ready(s, name, t):
-    """When the cooldown next has a charge, from t."""
-    n, nxt = charges(s, name, t)
-    return t if n else nxt
-
-
 def held(s, fight=None):
     """What the held resources are worth (VALUE); a canvas or the Moogle Portrait only if what renders it is back before
     the window ends (a sky painted after the last Starry Muse ranked as if it would be used, over a Comet)."""
@@ -500,11 +456,6 @@ def final(s, fight):
 LOG_NAME, LOGS_SINCE = "Pictomancer", "2025-08-05"   # 7.3: the current potencies
 OGCDS = set(OGCD_ORDER)
 REFERENCE = ("Pom Muse", 800)                       # set at level 84; 7.2 moved it there, nothing since
-
-
-def at(s, fight, t):
-    c = s.copy(); advance(c, fight, t)
-    return c
 
 
 STATUSES = {"Aetherhues": lambda s, t: s.ah == 1 and s.ah_until > t, "Aetherhues II": lambda s, t: s.ah == 2 and s.ah_until > t,
