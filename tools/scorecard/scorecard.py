@@ -4,7 +4,7 @@ groups' clears (benchmark.json), the damage lost to deaths, and damage per phase
 
 build_site.py is the command that uses it. Needs .fflogs_v2 at the repository root (see fflogs.py).
 """
-import collections, datetime, json, statistics as st, sys
+import collections, datetime, json, re, statistics as st, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -48,14 +48,14 @@ WINDOWS = [("Opener & Paradeigma I", 0.0, 55.4), ("Paradeigma II", 55.4, 112.4),
 RAISE_PENALTY, RAISE_S = {"Weakness": 0.22, "Brink of Death": 0.50}, 100
 DD_PENALTY = 0.38
 # causes, grouped for the summaries: (text in the classifier's cause, label)
-CAUSES = [("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulnerability"), ("Glaukopis", "Glaukopis tank swap"), ("tanks' hit", "Tank share (Apo / Peridialogos)"),
+CAUSES = [("pulled Athena early", "Early pull"), ("broken gear", "Broken gear (low max HP)"), ("fell off the arena", "Fell off the arena"), ("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulnerability"), ("Glaukopis", "Glaukopis tank swap"), ("tanks' hit", "Tank share (Apo / Peridialogos)"),
           ("the two tanks share", "Tank share (Apo / Peridialogos)"), ("Dialogos stack", "Dialogos stack"),
           ("left the arena", "Left the arena"),
           ("Heavensflame not spread away", "Heavensflame in a bright Soul's AoE"),
           ("dropped their towers together", "Bright Souls' towers dropped together"), ("bright Soul's AoE", "Bright Soul's AoE"),
           ("Trinity of Souls", "Trinity of Souls: on the cleaved side"), ("green orb", "Green orb (Superchain)"),
           ("Ray of Light", "Ray of Light column"), ("donut", "Donut (Superchain)"),
-          ("White Flame line-up", "Missed White Flame bait"), ("did not bait their White Flame", "Missed White Flame bait"),
+          ("took both lasers", "Both Superchain lasers on one player"), ("White Flame line-up", "Missed White Flame bait"), ("did not bait their White Flame", "Missed White Flame bait"),
           ("White Flame", "White Flame line"), ("tether laser", "Tether laser"), ("laser group", "Superchain laser group"),
           ("share", "Superchain laser group"), ("Heavensflame", "Heavensflame spread"), ("orange cone", "Orange cone overlap"),
           ("purple jack", "Purple pair"), ("purple-jack pair", "Purple pair"), ("Soul AoE", "Soul AoE"), ("the + ", "+ / X placement"), ("the X ", "+ / X placement"),
@@ -63,6 +63,7 @@ CAUSES = [("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulne
           ("auto-attacks", "Tank death to auto-attacks")]
 # tower failures, labelled by mechanic and by what went wrong; the first match wins
 TOWERS = [(("platform tower", "same tower"), "support tower left empty (Electrify)"),
+          (("with the wrong Tilt",), "tower soaked with the wrong Tilt"),
           (("DPS soaked a support tower",), "DPS in a support tower"),
           (("died before dropping", "died holding"), "Soul died before dropping their tower"),
           (("wrong quadrant", "sweep", "two towers dropped", "dropped their Soul"), "Soul tower in the wrong quadrant"),
@@ -81,7 +82,9 @@ MECHS = {"Paradeigma II", "Superchain I", "Paradeigma III"}
 
 def cause_label(text, mech=""):
     """Summary label for a classifier cause; tether and tower failures are named with their mechanic."""
-    text = text.split("; earlier")[0].split("after their earlier")[-1]   # a chain's own rule, not the earlier deaths'
+    # a chain's own rules (each numbered part's, when several faults are about one hit), not the earlier deaths'
+    parts = re.split(r" \(\d+\) ", text[4:]) if text.startswith("(1) ") else [text]
+    text = "; ".join(t.split("; earlier")[0] for t in parts).split("after their earlier")[-1]
     for trigger, table, generic in GROUPED:   # tethers first: "clipped ... soak from the tower's outer side" is a tether failure
         if trigger in text:
             for keys, kind in table:
@@ -256,19 +259,20 @@ def first_mistake(data, f):
 def mistakes_of(res):
     """Every distinct mistake in a pull: classifier entries with a culprit that are not just fallout of an earlier
     mistake, one per culprit per 2 s (a bait that kills four players is one mistake). Yields (culprit, t, cause, mechanic,
-    kind, confidence): kind is "death" when any of the mistake's events killed someone, else "DD" (Damage Down only);
-    confidence is the surest of its entries'. Culprits an entry carries over from an earlier death are counted there."""
-    out = []
+    kind, confidence): kind is "death" when any of the mistake's events killed someone, else "DD" when one gave Damage
+    Down, else "hit" (neither: both Superchain lasers on someone who lived); confidence is the surest of its entries'.
+    Culprits an entry carries over from an earlier death are counted there."""
+    out, rank = [], {"death": 0, "DD": 1, "hit": 2}
     for r in res:
         if r.get("derived") or not r["culprits"]: continue
-        kind = "death" if r["kind"] == "death" else "DD"
+        kind = r["kind"]
         for c in r["culprits"]:
             if c in r.get("carried", ()): continue
             same = next((i for i, m in enumerate(out) if m[0] == c and abs(m[1] - r["t"]) <= 2), None)
             if same is None: out.append((c, r["t"], r["cause"], r["mechanic"], kind, r["confidence"]))
             else:
                 m = out[same]
-                out[same] = m[:4] + ("death" if kind == "death" else m[4], min(m[5], r["confidence"], key=lambda x: CONF_ORDER.get(x, 1)))
+                out[same] = m[:4] + (min(m[4], kind, key=rank.get), min(m[5], r["confidence"], key=lambda x: CONF_ORDER.get(x, 1)))
     return out
 
 
@@ -278,7 +282,8 @@ def wipe_of(res):
     The collapse is the last run of deaths with less than CASCADE_GAP seconds between them; one player outliving the
     rest by more (an invulnerability) does not make a run of their own unless the wipe was called. A mass death in it
     (four or more players to one ability within 3 s, or two to one that kills everyone left, RAIDWIDE) decides the
-    wipe; otherwise its first death does, or one with a culprit within 1.5 s of it (the same hit, logged in any order).
+    wipe (with no culprit when its mechanic is not blamed); otherwise its first death does, or one with a culprit within
+    1.5 s of it (the same hit, logged in any order).
     When no rule explains that first death and no mistake came before it in the pull (or its mechanic is not blamed
     yet), no one lost the pull, even if a later death has a culprit, since that may be its fallout. A first death that
     follows an earlier mistake without a rule tying it to one passes to the collapse's first death with a culprit;
@@ -294,8 +299,9 @@ def wipe_of(res):
     while jump is None and i > 0 and len({r["victim"] for r in deaths[i:]}) == 1: i = run_start(i - 1)
     collapse = deaths[i:]
     same_hit = lambda r: [q for q in collapse if q["ability"] == r["ability"] and 0 <= q["t"] - r["t"] <= 3]
-    mass = next((r for r in collapse if r["culprits"] and (len(same_hit(r)) >= 4 or r["ability"] in RAIDWIDE and len(same_hit(r)) >= 2
-                                                           and r["t"] - collapse[0]["t"] <= RAIDWIDE_S)), None)
+    mass = next((r for r in collapse if (r["culprits"] or r["confidence"] == "not blamed") and (len(same_hit(r)) >= 4 or r["ability"] in RAIDWIDE
+                                                           and len(same_hit(r)) >= 2 and r["t"] - collapse[0]["t"] <= RAIDWIDE_S)), None)
+    if mass and not mass["culprits"]: return [], mass   # a mass death in a mechanic not blamed (yet, or on this day)
     first, near = collapse[0], next((r for r in collapse if r["culprits"] and r["t"] - collapse[0]["t"] <= 1.5), None)
     if not mass and not near and first["confidence"] in ("unattributed", "not blamed"): return [], first
     trig = mass or near or next((r for r in collapse if r["culprits"]), None)
@@ -353,7 +359,7 @@ def analyse(group, data, bench):
     lp = infer_light_parties(pulls)
     day = datetime.datetime.fromtimestamp(data["startTime"] / 1000).date().isoformat()   # the raid day, as build_site.py's
     attended, nmist, mcauses = collections.Counter(), collections.Counter(), collections.defaultdict(collections.Counter)
-    nkind = collections.Counter()               # (player, "death" / "DD") -> mistakes
+    nkind = collections.Counter()               # (player, "death" / "DD" / "hit") -> mistakes
     nwipe, wcauses = collections.Counter(), collections.defaultdict(collections.Counter)
     # the same weighted by the confidence in the culprit (CONF_WEIGHT), and the counts by confidence
     wmist, wkind, wwipe = collections.Counter(), collections.Counter(), collections.Counter()
@@ -372,10 +378,11 @@ def analyse(group, data, bench):
                    players=sorted(names[pid] for pid in f["friendlyPlayers"] if pid in names))
         pull_rows.append(row)
         cul, trig = wipe_of(res) if not f.get("kill") else ([], None)
-        if res:
-            first = [r for r in res if r["t"] <= res[0]["t"] + 1.5]
+        inc = [r for r in res if r["kind"] != "hit"]   # deaths and Damage Downs
+        if inc:
+            first = [r for r in inc if r["t"] <= inc[0]["t"] + 1.5]
             conf.update(r["confidence"] for r in first)
-        if not f.get("kill") and res:
+        if not f.get("kill") and inc:
             wipe_causes[wipe_label(trig) if trig else "Unclear"] += 1
             for c in cul:
                 nwipe[c] += 1; wcauses[c][wipe_label(trig)] += 1
@@ -386,18 +393,20 @@ def analyse(group, data, bench):
         # (the deciding death and the rest of its mass death), "after" for the collapse after it, None before
         lost_at = trig["t"] - 1 if trig else dur
         row["death_list"] = [dict(who=r["victim"], t=round(r["t"], 1), ability=r["ability"], mechanic=r["mechanic"], cause=r["cause"],
-                                  culprits=r["culprits"], confidence=r["confidence"],
+                                  culprits=r["culprits"], confidence=r["confidence"], **({"trace": r["trace"]} if r.get("trace") else {}),
                                   when="lost" if trig and (r is trig or r["ability"] == trig["ability"] and abs(r["t"] - trig["t"]) <= 3)
                                   else "after" if r["t"] >= lost_at else None)
                              for r in res if r["kind"] == "death"]
         # every mistake while the pull was still alive; what happens during the collapse is forced or noise
         cutoff = trig["t"] + MISTAKE_AFTER_WIPE if trig else dur
+        traces = {r["cause"]: r["trace"] for r in res if r.get("trace")}   # the site shows a chained cause as a tree
         for c, t, cause, mech, kind, cf in mistakes_of(res):
             if t <= cutoff:
                 lab = cause_label(cause, mech); nmist[c] += 1; mcauses[c][lab] += 1; all_causes[lab] += 1
                 nkind[(c, kind)] += 1
                 w = CONF_WEIGHT.get(cf, 1.0); wmist[c] += w; wkind[(c, kind)] += w; mconf[c][cf] += 1
-                row["mistakes"].append(dict(who=c, t=round(t, 1), mechanic=mech, label=lab, cause=cause, kind=kind, conf=cf))
+                row["mistakes"].append(dict(who=c, t=round(t, 1), mechanic=mech, label=lab, cause=cause, kind=kind, conf=cf,
+                                            **({"trace": traces[cause]} if cause in traces else {})))
         down = downtime(p, res, dur)
         lives.append((row, down, min(cutoff, dur)))
         # a phase is a clean sample for a player when they were alive and unweakened through it, before the pull was lost
@@ -518,6 +527,7 @@ def analyse(group, data, bench):
                                 # mrate, wrate and the _w counts are weighted by confidence (CONF_WEIGHT); the plain counts are not
                                 mistakes=nmist[name], mistakes_w=wmist[name], mrate=wmist[name] / attended[name], mrate_raw=nmist[name] / attended[name],
                                 mdeath=nkind[(name, "death")], mdd=nkind[(name, "DD")], mdeath_w=wkind[(name, "death")], mdd_w=wkind[(name, "DD")],
+                                mhit=nkind[(name, "hit")],
                                 mconf=dict(mconf[name]), mcauses=mcauses[name].most_common(3),
                                 wipes=nwipe[name], wipes_w=wwipe[name], wrate=wwipe[name] / attended[name], wrate_raw=nwipe[name] / attended[name],
                                 wconf=dict(wconf[name]), wcauses=wcauses[name].most_common(3), samples=len(xs),

@@ -6,7 +6,7 @@ Superchain I laser groups / pairs / towers, Paradeigma III platforms) and the ta
 the logs show (Glaukopis, Dialogos). Which rules judge a mechanic depends on the raid day (RULEBOOK).
 Anything the rules cannot explain falls back to "avoidable AoE -> victim" or stays unattributed.
 """
-import collections, math
+import collections, json, math
 
 TANK_JOBS = {"Paladin", "Warrior", "DarkKnight", "Gunbreaker"}
 HEALER_JOBS = {"WhiteMage", "Scholar", "Astrologian", "Sage"}
@@ -57,8 +57,16 @@ class Pull:
             e["name"] = self.ab.get(e.get("abilityGameID"), "?")
             tr = e.get("targetResources")
             e["pos"] = ((tr["x"] - 10000) / 100, (tr["y"] - 10000) / 100) if tr and "x" in tr else None
+        # where enemy abilities came from: their calculateddamage events carry the caster's position (Athena's lasers)
+        self.src = [((e["timestamp"] - self.s) / 1000, self.ab.get(e.get("abilityGameID"), "?"), ((sr["x"] - 10000) / 100, (sr["y"] - 10000) / 100))
+                    for e in ev["dmg"] if inf(e) and e["type"] == "calculateddamage" and e.get("sourceID") not in self.players
+                    and (sr := e.get("sourceResources")) and "x" in sr]
 
     # helpers
+    def source_at(self, names, lo, hi):
+        """Where the first of these enemy abilities between lo and hi came from, or None."""
+        return next((pos for t, n, pos in self.src if n in names and lo <= t <= hi), None)
+
     def hits(self, names, lo, hi):
         names = {names} if isinstance(names, str) else set(names)
         return [e for e in self.dmg if e["name"] in names and lo <= e["t"] <= hi]
@@ -111,12 +119,19 @@ class Pull:
         return sorted(inc, key=lambda i: i["t"])
 
 
-def fault(t, mech, culprits, victims, rule, conf, chain=None, ability=None, fallout=False):
+def fault(t, mech, culprits, victims, rule, conf, chain=None, ability=None, fallout=False, hit=False, after=None):
     """chain: players whose earlier death caused this; their death's culprits are blamed instead when there is one.
     ability: the hit the fault is about; a death to it goes to this fault before an earlier one that hit the victim, and
-    faults about the same hit are one cause. fallout: its deaths are fallout of a mistake its culprits made earlier."""
-    return dict(t=t, mechanic=mech, culprits=list(dict.fromkeys(culprits)), victims=set(victims), rule=rule, confidence=conf,
-                chain=chain or [], ability=ability, fallout=fallout)
+    faults about the same hit are one cause. fallout: its deaths are fallout of a mistake its culprits made earlier.
+    hit: a mistake even when no death or Damage Down follows (a "hit" entry then stands for it). after: the fault whose
+    mistake this one is the consequence of; it is counted once, at whichever of their incidents comes first. A rule that blames
+    someone besides its own victims without naming them is told with their names first ("X: did not soak ..."), as it is
+    read on the victims' deaths too."""
+    culprits, victims = list(dict.fromkeys(culprits)), set(victims)
+    if culprits and not chain and victims != set(culprits) and any(w not in rule for w in culprits):
+        rule = f"{', '.join(culprits)}: {rule}"
+    return dict(t=t, mechanic=mech, culprits=culprits, victims=victims, rule=rule, confidence=conf,
+                chain=chain or [], ability=ability, fallout=fallout, hit=hit, after=after)
 
 
 # ---------- Paradeigma I: White Flame light-party baits ----------
@@ -284,7 +299,7 @@ def para2(p):
         # unsoaked tower (timed at the soak moment so the soakers' own deaths link to it too)
         t = soaks[0]["t"] if soaks else 80.2
         if w in wrong:
-            out.append(fault(t, "Paradeigma II", [w], {e["who"] for e in expl} | {w}, f"tower unsoaked: dropped in {quad(sp[w])}, sweep says {expq[w]}", "high", **boom))
+            out.append(fault(t, "Paradeigma II", [w], {e["who"] for e in expl} | {w}, f"{w}'s tower unsoaked: dropped in {quad(sp[w])}, sweep says {expq[w]}", "high", **boom))
         elif expq.get(w) in tq:
             sk = tq[expq[w]][0]
             if sk in p.dead_by(80): out.append(fault(t, "Paradeigma II", [sk], {e["who"] for e in expl}, f"tower unsoaked because {sk} was already dead", "consequence", chain=[sk], **boom))
@@ -602,6 +617,50 @@ def pair_blame(p, lp, hs, crowd):
     return [], "low", ""
 
 
+# Superchain I's lasers run from Athena, each aimed at its Strong Soul, about 4 y wide. Seen from Athena the two laser
+# groups stand a median 17 degrees apart in pulls where no one took both; where someone did, a median 5 (2026-10-26)
+LASER_STRONG = {"Astral Impact": "Astralstrong", "Umbral Impact": "Umbralstrong"}
+CAMPS_APART = 10    # degrees: groups closer than this stood on top of each other, and the Strong Souls aim the lines
+ON_ONE_SPOT = 5     # this many players in both lasers: the groups stood on one spot, each in both is their own
+
+
+def clip_blame(p, lt, exp, S, w, clip, both):
+    """A player in their own laser group also hit by the other laser (clip): whose mistake, as (culprits, rule,
+    confidence, chain). With the groups apart, the clipping laser's Strong Soul when they stood nearer the victim's
+    group than their own (in the middle), else the victim (stood toward the other group); with the groups together,
+    both Strong Souls'; with everyone in both, each victim's own; with its Strong Soul dead, whoever killed them."""
+    if len(both) >= ON_ONE_SPOT: return [w], f"took both lasers ({clip} too): the laser groups stood on one spot", "high", None
+    gone = [x for x in S[LASER_STRONG[clip]] if x in p.dead_by(lt[0]["t"] - 0.3)]
+    if gone:
+        return [], f"took both lasers ({clip} too): {', '.join(gone)}, who aims it, was already dead (a dead target's laser goes to someone else)", "consequence", gone
+    return clip_geometry(p, lt, exp, S, w, clip) + (None,)
+
+
+def clip_geometry(p, lt, exp, S, w, clip):
+    """clip_blame's verdict from where the groups and the clipping laser's Strong Soul stood, seen from Athena."""
+    mine = next(nm for nm in exp if nm != clip)
+    athena, pos = p.source_at(set(LASER_STRONG), lt[0]["t"] - 3, lt[-1]["t"] + 0.5), {e["who"]: e["pos"] for e in lt if e["pos"]}
+    s = next((x for x in S[LASER_STRONG[clip]] if x in pos), None)
+    bearing = lambda q: math.atan2(q[1] - athena[1], q[0] - athena[0])
+    mean = lambda ws: math.degrees(math.atan2(sum(math.sin(bearing(pos[x])) for x in ws), sum(math.cos(bearing(pos[x])) for x in ws)))
+    diff = lambda a, b: abs((a - b + 180) % 360 - 180)
+    theirs, ours = [x for x in exp[clip] - {s} if x in pos], [x for x in exp[mine] - {w} if x in pos]
+    if not (athena and s and ours): return [w], f"took both lasers ({clip} too)", "medium"
+    if not theirs:   # no one else took the clipping laser: did its Strong Soul stand in the victim's group?
+        if diff(math.degrees(bearing(pos[s])), mean(ours)) < CAMPS_APART:
+            return [s], f"took both lasers ({clip} too): {s}, who aims it, stood in {w}'s laser group", "medium"
+        return [w], f"took both lasers ({clip} too)", "medium"
+    gap = diff(mean(theirs), mean(ours))
+    if gap < CAMPS_APART:
+        aim = [x for k in LASER_STRONG.values() for x in S[k]]
+        return aim, f"took both lasers ({clip} too): the laser groups stood {gap:.0f} degrees apart as seen from Athena, so the lines overlapped " \
+                    f"(the Strong Souls {', '.join(aim)} aim them)", "medium"
+    a = math.degrees(bearing(pos[s]))
+    if diff(a, mean(ours)) < diff(a, mean(theirs)):
+        return [s], f"took both lasers ({clip} too): {s}, who aims it, stood nearer {w}'s laser group than their own", "medium"
+    return [w], f"took both lasers ({clip} too): stood toward the {clip} group", "medium"
+
+
 def superchain1(p, lp):
     out = []
     S = {k: p.holders(f"{k} Soul", 120, 130) for k in ("Astralstrong", "Umbralstrong", "Astralbright", "Umbralbright", "Heavensflame")}
@@ -659,10 +718,15 @@ def superchain1(p, lp):
                "Umbral Impact": set(S["Umbralstrong"]) | set(S["Astralbright"]) | tilt["Astral"]}
         wrong = [(e["who"], e["name"]) for e in lt if e["who"] not in exp[e["name"]]]
         wrong_group = {w for w, _ in wrong}
+        both = {e["who"] for e in lt if e["name"] == "Astral Impact"} & {e["who"] for e in lt if e["name"] == "Umbral Impact"}
         # a laser not theirs, with its own colour's Tilt, is their own death (it kills through six sharers); it only
-        # helps the others in it. Listed first: a wrong-group player's death is theirs before the short laser's
+        # helps the others in it. Listed first: a wrong-group player's death is theirs before the short laser's. Both
+        # lasers on one player is a mistake even when they live (it leaves them low for what comes next)
         for w, nm in wrong:
-            out.append(fault(t, "Superchain I", [w], [w], f"in the wrong laser group (took {nm})", "high"))
+            if w in both and any(w in ws for ws in exp.values()):
+                cul, why, conf, chain = clip_blame(p, lt, exp, S, w, nm, both)
+                out.append(fault(t, "Superchain I", cul, [w], why, conf, chain=chain, ability=nm, hit=True))
+            else: out.append(fault(t, "Superchain I", [w], [w], f"in the wrong laser group (took {nm})", "high"))
         # a laser a sharer short: whoever belonged in it and lived, but took the other or neither
         dead = p.dead_by(t - 0.3)
         for nm, ws in exp.items():
@@ -734,6 +798,19 @@ def superchain1(p, lp):
             elif b in wrong_group:   # the laser side decides the tower side, so this tower landed away from its soaker
                 out.append(fault(t, "Superchain I", [b], blown | {b}, f"{asp}bright tower unsoaked: {b} took the wrong laser, so it dropped on the wrong side", "high", **boom))
             else: out.append(fault(t, "Superchain I", sk, blown | set(sk), f"did not soak the {asp}bright tower", "high", **boom))
+        # soaked by its Strong Soul, but with the wrong Tilt (the tower takes the opposite one): it explodes all the same,
+        # whether they live or not (2026-10-26: 81 such towers exploded, 7 did not, in pulls that had already ended).
+        # The Tilt came from the bright Soul's AoE when they stepped in early, or from the other laser
+        mine = [e["who"] for e in got if e["who"] in soaker]
+        if mine and S[f"{asp}bright"] and not set(mine) & p.has_debuff_at(f"{OPP[asp]} Tilt", got[0]["t"] - 0.1):
+            w, t, blown, boom = mine[0], expl[0]["t"] if expl else 150, {e["who"] for e in expl}, dict(ability="Unmitigated Explosion")
+            src = next((f for f in out if f["victims"] == {w} and (f["rule"].startswith("stepped into the tower") or f.get("ability") in LASER_STRONG
+                                                                    or "wrong laser group" in f["rule"])), None)
+            why = ("the bright Soul's AoE gave it as they stepped in early" if src and src["rule"].startswith("stepped into the tower")
+                   else "from the laser they took" if src else "cause unclear")
+            rule = f"the {asp} tower failed: {w} soaked it with the wrong Tilt ({why})"
+            if src: out.append(fault(t, "Superchain I", src["culprits"], blown, rule, src["confidence"], chain=src["chain"], after=src, **boom))
+            else: out.append(fault(t, "Superchain I", [w], blown | {w}, rule, "medium", **boom))
     return out
 
 
@@ -812,7 +889,9 @@ def dialogos(p):
 # dated entry and older pulls keep the rules they were played under. GENERIC (also a mechanic not listed, or a day
 # before its first entry) leaves only the generic rules: standing in an avoidable AoE is the victim's mistake.
 # NOT_YET blames no one for anything in the mechanic: the groups are still learning it or have no settled strategy.
-GENERIC, NOT_YET = "generic", "not yet"
+# a mechanic with no rule function: GENERIC blames avoidable hits and their fallout, NOT_YET no one, AVOIDABLE_ONLY
+# (before the group had a strategy for it) only avoidable hits and deaths within STUNG_S of one
+GENERIC, NOT_YET, AVOIDABLE_ONLY = "generic", "not yet", "avoidable only"
 CONF_ORDER = {"high": 0, "medium": 1, "low": 2}   # surest first
 least_sure = lambda confs: max(confs, key=lambda c: CONF_ORDER.get(c, 1))
 
@@ -830,16 +909,30 @@ def merged(fs):
                 victims=set().union(*(f["victims"] for f in fs)),
                 fallout=bool(direct) and all(f["fallout"] for f in direct), parts=fs)
 RULEBOOK = {
-    "Paradeigma I": [(None, lambda p, lp: para1(p, lp) + para1_auto(p, lp))],
-    "Paradeigma II": [(None, lambda p, lp: para2(p))],
-    "Glaukopis": [(None, lambda p, lp: glaukopis(p, 92, 110))],
-    "Superchain I": [(None, superchain1)],
-    "Dialogos": [(None, lambda p, lp: dialogos(p))],
-    "Paradeigma III": [(None, para3),
+    "Paradeigma I": [(None, AVOIDABLE_ONLY),   # before the group's strategy: only avoidable hits (Trinity of Souls)
+                     ("2026-09-29", lambda p, lp: para1(p, lp) + para1_auto(p, lp))],   # the strategy took effect
+    "Paradeigma II": [(None, AVOIDABLE_ONLY),   # likewise (Ray of Light)
+                      ("2026-09-29", lambda p, lp: para2(p))],
+    "Glaukopis": [(None, AVOIDABLE_ONLY), ("2026-09-29", lambda p, lp: glaukopis(p, 92, 110))],   # the tank swap, with Paradeigma I and II's
+    "Superchain I": [(None, AVOIDABLE_ONLY),   # before the group's strategy: only avoidable hits (orb, donut) are blamed
+                     ("2026-10-06", superchain1)],   # the strategy officially introduced
+    "Dialogos": [(None, AVOIDABLE_ONLY), ("2026-10-06", lambda p, lp: dialogos(p))],   # with Superchain I's
+    "Paradeigma III": [(None, AVOIDABLE_ONLY), ("2026-10-25", para3),   # the original strategy arrived
                        ("2026-10-26", lambda p, lp: para3(p, lp, priority=True))],   # bright Souls by H1 > T1 > T2 > H2
-    "Glaukopis / Ultima Blade": [(None, lambda p, lp: glaukopis(p, 236, 280))],
+    "Glaukopis / Ultima Blade": [(None, AVOIDABLE_ONLY), ("2026-09-29", lambda p, lp: glaukopis(p, 236, 280))],   # the same swap
     "Palladion": [(None, NOT_YET)],   # to start blaming it: ("YYYY-MM-DD", GENERIC) or a rule
 }
+
+
+def strategy_dates():
+    """The rule book's dated entries, for the site's charts: [{day, mechanics, kind}], kind "added" when a mechanic
+    starts being blamed by a strategy (after AVOIDABLE_ONLY, NOT_YET or GENERIC), "changed" when its rules change."""
+    out = {}
+    for mech, versions in RULEBOOK.items():
+        for (_, before), (since, rule) in zip(versions, versions[1:]):
+            kind = "changed" if callable(before) else "added"
+            out.setdefault((since, kind), []).append(mech)
+    return [dict(day=d, kind=k, mechanics=ms) for (d, k), ms in sorted(out.items())]
 
 
 def rules_on(day):
@@ -851,10 +944,51 @@ def rules_on(day):
     return out
 
 
+# deaths no mechanic explains, from what the user recognised in them (2026-10-26)
+EARLY_PULL_S = 15     # before the first mechanic: Athena's first auto-attack on a non-tank means she was pulled early,
+                      # and the non-tanks her autos kill before one reaches a tank are its fallout
+BROKEN_GEAR = 0.5     # max HP under this share of the other non-tanks' median: broken gear (one player, at 5%, in the caches)
+FELL_GAP, FELL_HP, FELL_LEFT = 1.0, 0.25, 6   # a death with no hit, the last at least FELL_GAP s before with FELL_HP of
+                                              # their HP left, and the pull going on FELL_LEFT s more: fell off the arena?
+
+
+def broken_gear(p):
+    """{player: (their max HP, the other non-tanks' median)} for players whose max HP is far below the party's."""
+    mx = collections.defaultdict(list)
+    for e in p.dmg:
+        if m := (e.get("targetResources") or {}).get("maxHitPoints"): mx[e["who"]].append(m)
+    med = {w: sorted(v)[len(v) // 2] for w, v in mx.items()}
+    out = {}
+    for w, m in med.items():
+        others = sorted(v for x, v in med.items() if x != w and p.job.get(x) not in TANK_JOBS)
+        if others and m < BROKEN_GEAR * others[len(others) // 2]: out[w] = (m, others[len(others) // 2])
+    return out
+
+
+def early_puller(p):
+    """(the non-tank Athena's first auto-attack hit before EARLY_PULL_S, so she was pulled early, often by a ranged
+    click; until when her autos found no tank), or (None, 0)."""
+    autos = sorted((e for e in p.dmg if e["name"] == "attack"), key=lambda e: e["t"])
+    if not autos or autos[0]["t"] >= EARLY_PULL_S or p.job.get(autos[0]["who"]) in TANK_JOBS: return None, 0
+    return autos[0]["who"], next((e["t"] for e in autos if p.job.get(e["who"]) in TANK_JOBS), float("inf"))
+
+
+def fell_off(p, i, incs):
+    """A death with no hit that is not a jump: their last hit at least FELL_GAP s before, at FELL_HP of their HP or more,
+    the pull going on more than FELL_LEFT s, and not the first of a wave of jumps (two more deaths with no hit within 3 s,
+    the start of a wipe call by players already low)."""
+    if i["kind"] != "death" or i["ability"] != "?" or i.get("jump") or (p.e - p.s) / 1000 - i["t"] <= FELL_LEFT: return False
+    last = next((e for e in reversed(p.dmg) if e["who"] == i["victim"] and e["t"] <= i["t"] + 2), None)
+    tr = (last or {}).get("targetResources") or {}
+    if last and (i["t"] - last["t"] < FELL_GAP or tr.get("hitPoints", 0) < FELL_HP * tr.get("maxHitPoints", 1)): return False
+    return sum(1 for j in incs if j is not i and j["kind"] == "death" and j["ability"] == "?" and 0 < j["t"] - i["t"] <= 3) < 2
+
+
 def classify(p, lp, day=None):
     """Every Damage Down and lethal hit in the pull with its mechanic, cause, culprits and confidence, judged by the
     rule book on the pull's raid day. Entries marked derived=True are fallout of an earlier mistake (blame carried over
-    from it), not a new mistake of their own; jump=True is a death without a hit (jumping off the arena)."""
+    from it), not a new mistake of their own; jump=True is a death without a hit (jumping off the arena). A mistake that
+    counts though no death or Damage Down followed is an entry of kind "hit"."""
     rules = rules_on(day)
     faults = sorted((f for rule in rules.values() if callable(rule) for f in rule(p, lp)), key=lambda f: f["t"])
     res, used = [], set()       # used: faults already counted at an incident
@@ -862,21 +996,44 @@ def classify(p, lp, day=None):
     def from_chain(i, f):
         """Blame whoever caused the deaths behind a fault (its chain), as sure as the least sure of them, besides the
         fault's own culprits when it merges a direct one; those carried over from the earlier deaths are not counted
-        again (carried)."""
+        again (carried). Several chained faults about one hit (two unsoaked towers) are told one by one, "(1) ... (2) ...",
+        each with the earlier deaths behind it. The same story as a tree for the site (trace): {rule, deaths: [{who, t, by,
+        why: the death's own tree}], parts: [the trees of chained faults merged with it]}."""
         direct = f.get("direct", [])
-        why = [(n, r) for n in f["chain"] for r in [next((r for r in reversed(res) if r["victim"] == n and r["kind"] == "death"), None)] if r and r["culprits"]]
+        why_of = lambda chain: [(n, r) for n in chain for r in [next((r for r in reversed(res) if r["victim"] == n and r["kind"] == "death"), None)] if r and r["culprits"]]
+        why = why_of(f["chain"])
         culprits = list(dict.fromkeys(direct + [c for _, r in why for c in r["culprits"]]))
         if not culprits: return dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=[], confidence="consequence", derived=True)
-        return dict(i, mechanic=f["mechanic"], cause=f["rule"] + ("; earlier: " + "; ".join(f"{n} {r['cause']}" for n, r in why) if why else ""),
+        by = lambda n, r: "their own mistake" if r["culprits"] == [n] else "caused by " + ", ".join(r["culprits"])
+        trace = lambda rule, ws: rule + ("; earlier: " + "; ".join(f"{n}'s death, {by(n, r)}: {r['cause']}" for n, r in ws) if ws else "")
+        cause = trace(f["rule"], why)
+        if f.get("parts"):   # the direct causes first (the label comes from before "; earlier"), then each chained one's trace
+            chained = list(dict.fromkeys(trace(g["rule"], why_of(g["chain"])) for g in f["parts"] if g["chain"]))
+            told = " ".join(f"({k}) {t}" for k, t in enumerate(chained, 1)) if len(chained) > 1 else "".join(chained)
+            plain = "; ".join(dict.fromkeys(g["rule"] for g in f["parts"] if not g["chain"]))
+            cause = plain + ("; earlier: " + told if told else "") if plain else told
+        tree = lambda rule, ws: dict(rule=rule, **({"deaths": [dict(who=n, t=round(r["t"], 1), by=r["culprits"], why=r.get("trace") or dict(rule=r["cause"])) for n, r in ws]} if ws else {}))
+        node = tree(f["rule"], why)
+        if f.get("parts"):
+            nodes = list({json.dumps(t, sort_keys=True): t for t in (tree(g["rule"], why_of(g["chain"])) for g in f["parts"] if g["chain"])}.values())
+            node = dict(rule=plain, parts=nodes) if plain or len(nodes) > 1 else nodes[0]
+        return dict(i, mechanic=f["mechanic"], cause=cause, trace=node,
                     culprits=culprits, derived=not direct, carried=[c for c in culprits if c not in direct] if direct else [],
                     confidence=least_sure(([f["direct_conf"]] if direct else []) + [r["confidence"] for _, r in why]))
 
     def add(r):
-        """A mistake in a NOT_YET mechanic keeps its cause but blames no one; fallout of an earlier one keeps its blame."""
-        if rules.get(r["mechanic"]) == NOT_YET and r["culprits"] and not r.get("derived"):
-            r = dict(r, culprits=[], confidence="not blamed", cause=f"{r['cause']} (not blamed: no rules for {r['mechanic']} yet)")
+        """A mistake in a NOT_YET mechanic keeps its cause but blames no one, as does a death there no rule explains;
+        fallout of an earlier one keeps its blame.
+        In an AVOIDABLE_ONLY one, only an avoidable hit's blame stays (own_hit); its other deaths are not blamed, not
+        left to the rules for deaths no rule explains."""
+        gate = rules.get(r["mechanic"])
+        if (r["culprits"] and gate == NOT_YET and not r.get("derived") or not r["culprits"] and gate == NOT_YET and not r.get("jump")
+                or gate == AVOIDABLE_ONLY and not r.get("own_hit") and not r.get("jump")):
+            why = f"no rules for {r['mechanic']} yet" if gate == NOT_YET else f"no strategy for {r['mechanic']} yet on this day"
+            r = dict(r, culprits=[], confidence="not blamed", cause=f"{r['cause']} (not blamed: {why})")
         res.append(r)
-    for i in p.incidents():
+    incs, gear, (puller, untanked) = p.incidents(), broken_gear(p), early_puller(p)
+    for i in incs:
         mech = mech_at(i["t"])
         if i.get("jump"):
             add(dict(i, mechanic=mech, cause="left the arena without taking a hit (jumped off: wipe called?)", culprits=[], confidence="unattributed"))
@@ -894,7 +1051,7 @@ def classify(p, lp, day=None):
             hit = next((r for r in reversed(res) if r["victim"] == i["victim"] and r["ability"] == stung["name"] and i["victim"] in r["culprits"]
                         and abs(r["t"] - stung["t"]) <= 0.5), None)
             cause = AVOIDABLE[stung["name"]]
-            add(dict(i, mechanic=mech, culprits=[i["victim"]], confidence="high",
+            add(dict(i, mechanic=mech, culprits=[i["victim"]], confidence="high", own_hit=True,
                      **(dict(cause=f"after their earlier {hit['kind']}: {cause}", derived=True) if hit else dict(cause=f"{cause}, then {i['ability']} killed them"))))
             continue
         # the faults about the very hit that killed them (one cause together), else, unless the hit was an avoidable one,
@@ -909,16 +1066,24 @@ def classify(p, lp, day=None):
         own = None
         if f is None and i["ability"] not in AVOIDABLE:   # later fallout of a mistake that hurt them earlier in the same mechanic
             hurt = [g for g in reversed(faults) if g["mechanic"] == mech and 0 < i["t"] - g["t"] <= 15 and i["victim"] in g["victims"]]
-            own = next((g for g in hurt if i["victim"] in g["culprits"]), hurt[0] if hurt else None)   # their own first
+            # their own first, then one about them alone (the laser they took) before one about a group (a laser short)
+            own = next((g for g in hurt if i["victim"] in g["culprits"]), next((g for g in hurt if g["victims"] == {i["victim"]}), hurt[0] if hurt else None))
         prev = next((r for r in reversed(res) if r["victim"] == i["victim"] and r["culprits"] and 0 <= i["t"] - r["t"] <= 10), None)
+        if f:   # the mistakes these faults follow from (after): counted already, at an earlier incident?
+            parts = f.get("parts", [f])
+            direct = [g for g in parts if not g["chain"]]
+            prior = [g["after"] for g in direct if g.get("after")]
+            again = bool(direct) and len(prior) == len(direct) and all(id(g) in used for g in prior)
+            used.update(id(g) for g in parts + prior)
         if f and f["chain"]:
-            add(from_chain(i, f))
+            r = from_chain(i, f)
+            add(dict(r, derived=True, carried=[]) if again and r["culprits"] else r)
         elif f:
-            used.update(id(g) for g in f.get("parts", [f]))
-            add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"], **({"derived": True} if f["fallout"] else {})))
+            add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"], **({"derived": True} if f["fallout"] or again else {})))
         elif prev and i["ability"] not in AVOIDABLE:
             add(dict(i, mechanic=mech, cause=f"after their earlier {prev['kind']}: {prev['cause']}", culprits=prev["culprits"], confidence="medium", derived=True))
         elif own and own["chain"]:
+            used.add(id(own))
             add(from_chain(i, own))
         elif own and id(own) in used:   # the mistake was already counted at an earlier incident
             add(dict(i, mechanic=mech, cause=f"after their earlier mistake: {own['rule']}", culprits=own["culprits"], confidence="medium", derived=True))
@@ -926,7 +1091,17 @@ def classify(p, lp, day=None):
             used.add(id(own))
             add(dict(i, mechanic=own["mechanic"], cause=own["rule"], culprits=own["culprits"], confidence=own["confidence"]))
         elif i["ability"] in AVOIDABLE:
-            add(dict(i, mechanic=mech, cause=AVOIDABLE[i["ability"]], culprits=[i["victim"]], confidence="high"))
+            add(dict(i, mechanic=mech, cause=AVOIDABLE[i["ability"]], culprits=[i["victim"]], confidence="high", own_hit=True))
+        elif (i["kind"] == "death" and puller and i["t"] < untanked and p.job.get(i["victim"]) not in TANK_JOBS   # killed by an auto
+              and any(e["who"] == i["victim"] and e["name"] == "attack" and (e.get("targetResources") or {}).get("hitPoints") == 0
+                      and i["t"] - 4 <= e["t"] <= i["t"] + 2 for e in p.dmg)):
+            add(dict(i, mechanic=mech, cause=f"{puller} pulled Athena early: her first auto-attack went to them, not a tank (an accidental pull?)",
+                     culprits=[puller], confidence="medium", own_hit=True, early_pull=True, **({"derived": True} if any(r.get("early_pull") for r in res) else {})))
+        elif i["kind"] == "death" and i["victim"] in gear:
+            m, med = gear[i["victim"]]
+            add(dict(i, mechanic=mech, cause=f"had {m:,} max HP against the party's ~{med:,} (broken gear?)", culprits=[i["victim"]], confidence="medium", own_hit=True))
+        elif fell_off(p, i, incs):
+            add(dict(i, mechanic=mech, cause="died without taking a hit while the pull went on (fell off the arena?)", culprits=[i["victim"]], confidence="low", own_hit=True))
         elif i["ability"] == "Shockwave":
             add(dict(i, mechanic=mech, cause="stood in Athena's dash line (Palladion Shockwave)", culprits=[i["victim"]], confidence="medium"))
         elif i["ability"] == "attack" and p.job.get(i["victim"]) in TANK_JOBS:
@@ -935,4 +1110,10 @@ def classify(p, lp, day=None):
             earlier = [r for r in res if r["t"] < i["t"] - 0.5 and r["culprits"]]
             add(dict(i, mechanic=mech, cause=f"{i['kind']} to {i['ability']}" + (" after an earlier mistake" if earlier else " (no rule matched: likely HP / mitigation)"),
                             culprits=[], confidence="consequence" if earlier else "unattributed"))
-    return res, faults
+    # mistakes that count without a death or Damage Down to carry them (both lasers on a player who lived)
+    for f in faults:
+        if f["hit"] and id(f) not in used:
+            for v in sorted(f["victims"]):
+                i = dict(t=f["t"], kind="hit", victim=v, ability=f["ability"], pos=None)
+                add(from_chain(i, f) if f["chain"] else dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"]))
+    return sorted(res, key=lambda r: r["t"]), faults

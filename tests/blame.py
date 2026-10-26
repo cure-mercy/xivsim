@@ -2,9 +2,11 @@
 
     python tests/run.py blame                    run it (with the other suites, or alone)
     python tests/blame.py run [--known]          the same; --known also lists each known-wrong verdict and why
-    python tests/blame.py show CODE FIGHT        one pull laid out for checking by hand: players and seats, debuffs,
+    python tests/blame.py show CODE FIGHT [--own-day]  one pull laid out for checking by hand: players and seats, debuffs,
                                                  provokes, the classifier's faults and verdicts, every hit around them
-    python tests/blame.py add CODE FIGHT "WHY"   append a pull to the cases with the classifier's current verdicts
+    python tests/blame.py add CODE FIGHT "WHY" [--own-day]
+                                                 append a pull to the cases with the classifier's current verdicts,
+                                                 judged as the case will be (--own-day: by its raid day's rule book)
 
 The cases are in tests/blame_cases.json, which is git-ignored: like the site's data.json it names players and who
 caused which mistake. It reads the scorecard's caches (tools/scorecard/.cache), so the suite only runs where those are.
@@ -12,7 +14,12 @@ Each case is one pull: what it covers, the wipe's culprits, and every incident (
 the strategy blames and whether it is fallout of an earlier mistake (not counted again). An incident whose `known`
 says the classifier gets it wrong expects the right answer and is counted as known, not FAIL, until the classifier
 gets it right (FIXED: drop the `known`); `wipe_known` does the same for the wipe. A `note` explains a verdict that
-needed thought. After `add`, check every verdict against `show` before keeping the case.
+needed thought. After `add`, check every verdict against `show` before keeping the case. A `rules_day` judges the
+pull by the rule book of that day instead of its raid day's: the pulls checked from before a strategy was introduced
+(Superchain I, 2026-10-06; the last, Paradeigma III, 2026-10-25: RULES_DAY) still test them, while the scorecard does
+not blame those days by them. A case with `own_day` is judged by its raid day instead, to test the dates themselves.
+An incident's `cause_has` is text its cause must contain, and a case's `wipe_label` the label of what lost the pull:
+for rules whose wording or label matters, not only whom they blame.
 
 A FAIL line means the classifier now blames someone else for a pull checked by hand. tools/scorecard/blame_diff.py
 shows everything else the change moved, across all cached pulls.
@@ -24,6 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools" / "scorecard"))
 CASES = ROOT / "tests" / "blame_cases.json"
 TOL = 0.25            # seconds an incident's time may move and still be the same incident
+RULES_DAY = "2026-10-25"   # the last strategy's introduction: pulls checked from before it are judged by its rule book
 SKIP_DEBUFFS = {"Weakness", "Brink of Death", "Damage Down", "Magic Vulnerability Up", "Physical Vulnerability Up", "Concussion"}
 
 
@@ -40,10 +48,11 @@ def find(code, fight):
     return hit[0]
 
 
-def verdicts(code, fight):
+def verdicts(code, fight, own_day=False):
+    """A pull judged as its case is: by RULES_DAY's rule book when it is older, unless own_day."""
     D, C, S = _modules()
     f, n, p, lp, day = find(code, fight)
-    return f, n, p, lp, day, D.judge(C, S, f, p, lp, day)
+    return f, n, p, lp, day, D.judge(C, S, f, p, lp, day if own_day or day >= RULES_DAY else RULES_DAY)
 
 
 def run(known=False):
@@ -61,7 +70,7 @@ def run(known=False):
         if x is None:
             log.append(f"FAIL {case['code']} #{case['fight']}: not in the cache"); bad = True; continue
         f, n, p, lp, day = x
-        j = D.judge(C, S, f, p, lp, day)
+        j = D.judge(C, S, f, p, lp, case.get("rules_day", day))
         head = f"{case['code']} #{case['fight']} pull {n}: {case['about']}"
         lines = []
         exp = [dict(x, t=float(x["t"])) for x in case["incidents"]]
@@ -80,6 +89,8 @@ def run(known=False):
                              else f"FIXED {where}: now {said}, as it should be; drop the case's `known`")
             elif ok: tally["ok"] += 1
             else: lines.append(f"FAIL {where}: expected {meant}, got {said}: {got['cause']}")
+            if want.get("cause_has") and want["cause_has"] not in got["cause"]:
+                lines.append(f"FAIL {where}: the cause no longer says \"{want['cause_has']}\": {got['cause']}")
         if "wipe" in case:
             ok, said, meant = sorted(case["wipe"]) == j["wipe"][0], ", ".join(j["wipe"][0]) or "no one", ", ".join(sorted(case["wipe"])) or "no one"
             if case.get("wipe_known"):
@@ -88,20 +99,30 @@ def run(known=False):
                              else f"FIXED wipe: now {said}, as it should be; drop the case's `wipe_known`")
             elif ok: tally["wipes ok"] += 1
             else: lines.append(f"FAIL wipe: expected {meant}, got {said}")
+        if case.get("wipe_label") and (lab := D.wipe_label(S, j["wipe"][1]) if j["wipe"][1] else None) != case["wipe_label"]:
+            lines.append(f"FAIL wipe label: expected \"{case['wipe_label']}\", got \"{lab}\"")
         bad |= any(l.startswith("FAIL") for l in lines)
         shown = [l for l in lines if known or not l.startswith("KNOWN")]
         n_known = len(lines) - len([l for l in lines if not l.startswith("KNOWN")])
         log.append(("  " if shown else "ok ") + head + (f" ({n_known} known wrong)" if n_known and not known else ""))
         log += ["    " + l for l in shown]
+    # the rule book's dates: a strategy is blamed only from the day it was introduced
+    for mech, day, want in [(m, d, w) for ms, since, before in ((("Paradeigma I", "Paradeigma II", "Glaukopis", "Glaukopis / Ultima Blade"), "2026-09-29", "2026-09-23"),
+                                                                 (("Superchain I", "Dialogos"), "2026-10-06", "2026-09-30"),
+                                                                 (("Paradeigma III",), "2026-10-25", "2026-10-18"))
+                            for m in ms for d, w in ((before, C.AVOIDABLE_ONLY), (since, callable))]:
+        got = C.rules_on(day)[mech]
+        if not (callable(got) if want is callable else got == want):
+            log.append(f"FAIL rule book: {mech} on {day} is {getattr(got, '__name__', got)}, not {'a rule' if want is callable else want}"); bad = True
     log.append(f"\n{len(cases)} pulls: {tally['ok']} incidents as checked, {tally['wipes ok']} wipes as checked, "
                f"{tally['known']} known wrong (tests/blame.py run --known lists them), {tally['fixed']} fixed" + (", FAIL" if bad else ""))
     return "\n".join(log), bad
 
 
-def show(code, fight):
+def show(code, fight, own_day=False):
     """One pull laid out for checking its verdicts by hand."""
     D, C, S = _modules()
-    f, n, p, lp, day, j = verdicts(code, fight)
+    f, n, p, lp, day, j = verdicts(code, fight, own_day)
     dur = (f["endTime"] - f["startTime"]) / 1000
     boss = f.get("bossPercentage")
     print(f"{code} #{fight} pull {n}, {day}: {D.mmss(dur)}, " + ("kill" if f.get("kill") else f"wipe at {boss}% boss HP"))
@@ -113,7 +134,7 @@ def show(code, fight):
     print("debuffs: " + "; ".join(f"{t} {nm}: {', '.join(ws)}" for (t, nm), ws in sorted(deb.items())))
     pv = [(t, w, a) for t, w, a in p.casts or [] if a in ("Provoke", "Shirk")]
     if pv: print("provoke / shirk: " + "; ".join(f"{t:.1f} {w} {a}" for t, w, a in pv))
-    _, faults = C.classify(p, lp, day)
+    _, faults = C.classify(p, lp, day if own_day or day >= RULES_DAY else RULES_DAY)
     print("\nfaults:")
     for x in faults:
         print(f"  {D.mmss(x['t'])} {x['mechanic']}: {', '.join(x['culprits']) or 'no one'} [{x['confidence']}] {x['rule']}"
@@ -140,11 +161,15 @@ def show(code, fight):
                   f" inst {e.get('sourceInstance', '-')!s:3s} pos {'(%.1f, %.1f)' % e['pos'] if e['pos'] else '-'}")
 
 
-def add(code, fight, about):
-    f, n, p, lp, day, j = verdicts(code, fight)
+def add(code, fight, about, own_day=False):
+    D, C, S = _modules()
+    f, n, p, lp, day = find(code, fight)
+    rules = day if own_day or day >= RULES_DAY else RULES_DAY
+    j = D.judge(C, S, f, p, lp, rules)
     cases = json.loads(CASES.read_text(encoding="utf-8")) if CASES.exists() else {"pulls": []}
     if any(c["code"] == code and c["fight"] == fight for c in cases["pulls"]): raise SystemExit(f"{code} #{fight} is already a case")
     cases["pulls"].append(dict(code=code, fight=fight, pull=n, day=day, about=about, wipe=j["wipe"][0],
+                               **({"own_day": True} if own_day else {"rules_day": rules} if rules != day else {}),
                                incidents=[dict(t=round(r["t"], 2), kind=r["kind"], victim=r["victim"], culprits=sorted(r["culprits"]),
                                                **({"fallout": True} if r.get("derived") else {}), note=r["cause"]) for r in j["res"]]))
     CASES.write_text(json.dumps(cases, indent=1, ensure_ascii=False), encoding="utf-8")
@@ -154,8 +179,8 @@ def add(code, fight, about):
 if __name__ == "__main__":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     cmd, *args = sys.argv[1:] or ["run"]
-    if cmd == "show": show(args[0], int(args[1]))
-    elif cmd == "add": add(args[0], int(args[1]), args[2])
+    if cmd == "show": show(args[0], int(args[1]), own_day="--own-day" in args)
+    elif cmd == "add": add(args[0], int(args[1]), args[2], own_day="--own-day" in args)
     elif cmd == "run":
         out, failed = run(known="--known" in args); print(out); sys.exit(1 if failed else 0)
     else: sys.exit(__doc__)
