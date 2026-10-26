@@ -28,8 +28,13 @@ G_MIST, G_WIPE, G_DMG, G_UP = (0.30, 0.60), (0.10, 0.20), (-0.05, -0.12), (-0.5,
 # hand-checked pulls (tests/blame_cases.json) counted mistakes were right 83% of the time at high (all avoidable hits, 76%
 # of the rule-based ones), 77% at medium and in 2 of 3 at low; wipes 72% at high against 44-58% at medium (a wipe naming
 # part of its culprits counted as half). Low is blame a rule shares between players it cannot tell apart.
+# (Measured before the classifier's rules were fixed against those same pulls, 2026-10-26.)
 CONF_WEIGHT = {"high": 1.0, "medium": 0.75, "low": 0.5}
 CASCADE_GAP = 15                 # deaths closer together than this (seconds) belong to the same collapse
+SIMULTANEOUS_S = 0.6             # deaths this close to the one that lost the pull lost it with it (one mechanic's step:
+                                 # in the hand-checked pulls up to 0.53 s apart; its next step comes 0.8 s or more later)
+RAIDWIDE = {"Electrify", "Unmitigated Explosion"}   # kill everyone left alive: two such deaths are already a mass death,
+RAIDWIDE_S = 5                   # when they come this soon after the collapse began (later, the pull was already lost)
 MISTAKE_AFTER_WIPE = 2           # mistakes are counted up to this long after the one that decided the wipe
 # the fight's phases, each from the start of one major mechanic to the next (the HP checkpoints' boundaries)
 WINDOWS = [("Opener & Paradeigma I", 0.0, 55.4), ("Paradeigma II", 55.4, 112.4), ("Superchain I & Dialogos", 112.4, 193.9),
@@ -47,7 +52,7 @@ CAUSES = [("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulne
           ("the two tanks share", "Tank share (Apo / Peridialogos)"), ("Dialogos stack", "Dialogos stack"),
           ("left the arena", "Left the arena"),
           ("Heavensflame not spread away", "Heavensflame in a bright Soul's AoE"),
-          ("dropped their towers together", "Bright Souls' towers dropped together"), ("bright Soul's AoE as the tower", "Bright Soul's AoE"),
+          ("dropped their towers together", "Bright Souls' towers dropped together"), ("bright Soul's AoE", "Bright Soul's AoE"),
           ("Trinity of Souls", "Trinity of Souls: on the cleaved side"), ("green orb", "Green orb (Superchain)"),
           ("Ray of Light", "Ray of Light column"), ("donut", "Donut (Superchain)"),
           ("White Flame line-up", "Missed White Flame bait"), ("did not bait their White Flame", "Missed White Flame bait"),
@@ -59,12 +64,12 @@ CAUSES = [("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulne
 # tower failures, labelled by mechanic and by what went wrong; the first match wins
 TOWERS = [(("platform tower", "same tower"), "support tower left empty (Electrify)"),
           (("DPS soaked a support tower",), "DPS in a support tower"),
-          (("died before dropping",), "Soul died before dropping their tower"),
+          (("died before dropping", "died holding"), "Soul died before dropping their tower"),
           (("wrong quadrant", "sweep", "two towers dropped", "dropped their Soul"), "Soul tower in the wrong quadrant"),
           (("wrong side",), "tower dropped on the wrong side"),
           (("own tile instead", "at the centre instead"), "bright tower placed wrong"),
           (("before the bright Soul",), "stepped into the tower too early"),
-          (("did not soak", "unsoaked because", "soaker could not", "cause unclear"), "tower not soaked"),
+          (("did not soak", "unsoaked because", "soaker could not", "cause unclear", "instead of soaking", "belonged on"), "tower not soaked"),
           (("soaked", "stepped into"), "wrong player in a tower")]
 # tether laser failures (Paradeigma II and III), labelled the same way
 TETHERS = [(("not stretched",), "tether not stretched far enough"),
@@ -76,7 +81,7 @@ MECHS = {"Paradeigma II", "Superchain I", "Paradeigma III"}
 
 def cause_label(text, mech=""):
     """Summary label for a classifier cause; tether and tower failures are named with their mechanic."""
-    text = text.split("after their earlier")[-1].split("; earlier")[0]
+    text = text.split("; earlier")[0].split("after their earlier")[-1]   # a chain's own rule, not the earlier deaths'
     for trigger, table, generic in GROUPED:   # tethers first: "clipped ... soak from the tower's outer side" is a tether failure
         if trigger in text:
             for keys, kind in table:
@@ -252,12 +257,13 @@ def mistakes_of(res):
     """Every distinct mistake in a pull: classifier entries with a culprit that are not just fallout of an earlier
     mistake, one per culprit per 2 s (a bait that kills four players is one mistake). Yields (culprit, t, cause, mechanic,
     kind, confidence): kind is "death" when any of the mistake's events killed someone, else "DD" (Damage Down only);
-    confidence is the surest of its entries'."""
+    confidence is the surest of its entries'. Culprits an entry carries over from an earlier death are counted there."""
     out = []
     for r in res:
         if r.get("derived") or not r["culprits"]: continue
         kind = "death" if r["kind"] == "death" else "DD"
         for c in r["culprits"]:
+            if c in r.get("carried", ()): continue
             same = next((i for i, m in enumerate(out) if m[0] == c and abs(m[1] - r["t"]) <= 2), None)
             if same is None: out.append((c, r["t"], r["cause"], r["mechanic"], kind, r["confidence"]))
             else:
@@ -269,28 +275,36 @@ def mistakes_of(res):
 def wipe_of(res):
     """Who lost the pull. A player jumping off the arena (a death without a hit) means the wipe was called, so only
     deaths before the first jump count, and a pull with none was called without one (the jump decides, no culprit).
-    The collapse is the last run of deaths with less than CASCADE_GAP seconds between them. A mass death in it (four
-    or more players to one ability within 3 s, like a tower explosion or Electrify) decides the wipe; otherwise its
-    first death does, or one with a culprit within 1.5 s of it (the same hit, logged in any order). When no rule
-    explains that first death and no mistake came before it in the pull (or its mechanic is not blamed yet), no one
-    lost the pull, even if a later death has a culprit, since that may be its fallout. A first death that follows an
-    earlier mistake without a rule tying it to one passes to the collapse's first death with a culprit; failing that,
-    a collapse in a mechanic not blamed yet has no culprit, and any other the last attributed death before it.
-    Earlier deaths the group recovered from do not count. Returns (culprits, the deciding entry)."""
+    The collapse is the last run of deaths with less than CASCADE_GAP seconds between them; one player outliving the
+    rest by more (an invulnerability) does not make a run of their own unless the wipe was called. A mass death in it
+    (four or more players to one ability within 3 s, or two to one that kills everyone left, RAIDWIDE) decides the
+    wipe; otherwise its first death does, or one with a culprit within 1.5 s of it (the same hit, logged in any order).
+    When no rule explains that first death and no mistake came before it in the pull (or its mechanic is not blamed
+    yet), no one lost the pull, even if a later death has a culprit, since that may be its fallout. A first death that
+    follows an earlier mistake without a rule tying it to one passes to the collapse's first death with a culprit;
+    failing that, a collapse in a mechanic not blamed yet has no culprit, and any other the last attributed death before
+    it. Deaths within SIMULTANEOUS_S of the deciding one, each to its own mistake, lost the pull with it; a raid-wide
+    mass death is its own mistake's alone. Earlier deaths the group recovered from do not count. Returns (culprits,
+    the deciding entry)."""
     jump = next((r for r in res if r.get("jump")), None)
     deaths = [r for r in res if r["kind"] == "death" and not r.get("jump") and (jump is None or r["t"] < jump["t"])]
     if not deaths: return [], jump
-    i = len(deaths) - 1
-    while i > 0 and deaths[i]["t"] - deaths[i - 1]["t"] <= CASCADE_GAP: i -= 1
+    run_start = lambda i: next(j for j in range(i, -1, -1) if j == 0 or deaths[j]["t"] - deaths[j - 1]["t"] > CASCADE_GAP)
+    i = run_start(len(deaths) - 1)
+    while jump is None and i > 0 and len({r["victim"] for r in deaths[i:]}) == 1: i = run_start(i - 1)
     collapse = deaths[i:]
-    mass = next((r for r in collapse if r["culprits"] and
-                 sum(1 for q in collapse if q["ability"] == r["ability"] and 0 <= q["t"] - r["t"] <= 3) >= 4), None)
+    same_hit = lambda r: [q for q in collapse if q["ability"] == r["ability"] and 0 <= q["t"] - r["t"] <= 3]
+    mass = next((r for r in collapse if r["culprits"] and (len(same_hit(r)) >= 4 or r["ability"] in RAIDWIDE and len(same_hit(r)) >= 2
+                                                           and r["t"] - collapse[0]["t"] <= RAIDWIDE_S)), None)
     first, near = collapse[0], next((r for r in collapse if r["culprits"] and r["t"] - collapse[0]["t"] <= 1.5), None)
     if not mass and not near and first["confidence"] in ("unattributed", "not blamed"): return [], first
     trig = mass or near or next((r for r in collapse if r["culprits"]), None)
     if not trig and (gated := next((r for r in collapse if r["confidence"] == "not blamed"), None)): return [], gated
     trig = trig or next((r for r in reversed(deaths[:i]) if r["culprits"]), None)
-    return (trig["culprits"], trig) if trig else ([], None)
+    if not trig: return [], None
+    together = same_hit(trig) if trig is mass else []
+    if not (trig is mass and trig["ability"] in RAIDWIDE): together += [q for q in collapse if abs(q["t"] - trig["t"]) <= SIMULTANEOUS_S]
+    return list(dict.fromkeys(c for q in [trig] + together for c in q["culprits"])), trig
 
 
 def wipe_label(trig):

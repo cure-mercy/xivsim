@@ -21,6 +21,8 @@ AVOIDABLE = {  # standing in it is the victim's own mistake
     "Sample": "stood on a destroyed tile as its platform fell (Sample)",
     "Palladian Ray": "stood in a Palladion puddle",
 }
+STUNG_S = 1.0   # a death this soon after an avoidable hit on them is the victim's own, whatever the HP (one mechanic's
+                # step: across the caches these gaps run 0-1.0 s; the next step's hits come 1.3 s or more later)
 MECH = [(15, 50, "Paradeigma I"), (50, 92, "Paradeigma II"), (92, 110, "Glaukopis"), (110, 160, "Superchain I"),
         (160, 190, "Dialogos"), (190, 236, "Paradeigma III"), (236, 280, "Glaukopis / Ultima Blade"),
         (280, 345, "Palladion"), (345, 395, "Superchain IIA"), (395, 470, "Superchain IIB")]
@@ -103,15 +105,18 @@ class Pull:
                 inc.append(dict(t=d["t"] - 2, kind="death", victim=d["who"], ability=ab, pos=None, jump=jump))
         for d in self.deb:
             if d["name"] == "Damage Down" and d["type"] in ("applydebuff", "refreshdebuff"):
-                src = [e for e in self.dmg if e["who"] == d["who"] and abs(e["t"] - d["t"]) <= 0.2]
+                # the hit that gave it: an avoidable one (an orb, a donut) when another landed at the same moment
+                src = sorted((e for e in self.dmg if e["who"] == d["who"] and abs(e["t"] - d["t"]) <= 0.2), key=lambda e: e["name"] not in AVOIDABLE)
                 inc.append(dict(t=d["t"], kind="DD", victim=d["who"], ability=src[0]["name"] if src else "?", pos=src[0]["pos"] if src else None))
         return sorted(inc, key=lambda i: i["t"])
 
 
-def fault(t, mech, culprits, victims, rule, conf, chain=None, ability=None):
+def fault(t, mech, culprits, victims, rule, conf, chain=None, ability=None, fallout=False):
     """chain: players whose earlier death caused this; their death's culprits are blamed instead when there is one.
-    ability: the hit the fault is about; a death to it goes to this fault before an earlier one that hit the victim."""
-    return dict(t=t, mechanic=mech, culprits=list(dict.fromkeys(culprits)), victims=set(victims), rule=rule, confidence=conf, chain=chain or [], ability=ability)
+    ability: the hit the fault is about; a death to it goes to this fault before an earlier one that hit the victim, and
+    faults about the same hit are one cause. fallout: its deaths are fallout of a mistake its culprits made earlier."""
+    return dict(t=t, mechanic=mech, culprits=list(dict.fromkeys(culprits)), victims=set(victims), rule=rule, confidence=conf,
+                chain=chain or [], ability=ability, fallout=fallout)
 
 
 # ---------- Paradeigma I: White Flame light-party baits ----------
@@ -140,8 +145,15 @@ def para1(p, lp):
         gone = sorted(x for x in lp[w - 1] if x in p.job and x in dead)
         missing = [x for x in sorted(exp) if x not in cnt]
         extra = [x for x in cnt if x not in exp] + [x for x, n in cnt.items() if n >= 2 and x in exp]
+        # an extra player hit only by lasers that also hit their own baiter stood in that baiter's line: their own mistake
+        by = collections.defaultdict(set)
+        for e in hs: by[e.get("sourceInstance")].add(e["who"])
+        lined = [x for x in extra if x not in exp and all(ws & exp for ws in by.values() if x in ws)]
         if missing:
-            out.append(fault(t, "Paradeigma I", missing, extra, f"not in the White Flame line-up (wave {w}); the laser went to {', '.join(extra) or 'someone else'}", "high" if extra else "medium"))
+            took = [x for x in extra if x not in lined]
+            out.append(fault(t, "Paradeigma I", missing, took, f"not in the White Flame line-up (wave {w}); the laser went to {', '.join(took) or 'someone else'}", "high" if took else "medium"))
+            for x in lined:
+                out.append(fault(t, "Paradeigma I", [x], [x], f"took a White Flame meant for wave {w} baiters (stood in a laser line)", "medium"))
         elif extra and len(extra) <= len(gone):   # a baiter was already dead, so their laser found someone else
             out.append(fault(t, "Paradeigma I", gone, extra, f"White Flame (wave {w}) went to {', '.join(extra)} because {'its baiter' if len(gone) == 1 else 'its baiters'} {', '.join(gone)} {'was' if len(gone) == 1 else 'were'} already dead", "consequence", chain=gone))
         elif extra:
@@ -180,6 +192,13 @@ def para1_auto(p, lp):
     else:
         out.append(fault(t, "Paradeigma I", [v] + others, [v], f"{why}: {v} held her aggro ({', '.join(others)} did not keep it)", "medium"))
     return out
+
+
+def dead_soul(p, souls, glow, t):
+    """A Glow that hits no living holder of its Soul is a dead holder's tower dropped on someone else: in every cached
+    pull, such a Glow came after a holder of its colour died and hit one player. The dead holders of its colour."""
+    asp = glow.split()[0]
+    return sorted(w for w, a in souls.items() if a == asp and w in p.dead_by(t - 0.2))
 
 
 # ---------- Paradeigma II: tethers, quadrant sweep, towers ----------
@@ -231,9 +250,12 @@ def para2(p):
         if expq[w] and quad(sp[w]) != expq[w]: wrong.add(w)
     # Glow AoEs hitting other players
     gi = collections.defaultdict(list)
-    for e in glow: gi[e.get("sourceInstance")].append(e["who"])
-    for inst, ws in gi.items():
+    for e in glow: gi[(e["name"], e.get("sourceInstance"))].append(e["who"])
+    for (nm, inst), ws in gi.items():
         owner = next((w for w in ws if w in souls), None)
+        if owner is None and (gone := dead_soul(p, souls, nm, min(e["t"] for e in glow))):
+            for v in ws: out.append(fault(min(e["t"] for e in glow), "Paradeigma II", gone, [v], f"{' and '.join(gone)} died holding a Soul; its tower dropped on {v}", "consequence", chain=gone))
+            continue
         for v in ws:
             if v == owner: continue
             if owner in wrong: out.append(fault(min(e["t"] for e in glow), "Paradeigma II", [owner], [v, owner], f"dropped their Soul in {quad(sp[owner])} instead of {expq[owner]}; its AoE hit {v}", "high"))
@@ -243,8 +265,13 @@ def para2(p):
     soaks = p.hits(("Astral Advance", "Umbral Advance"), 79, 82)
     expl = p.hits("Unmitigated Explosion", 81, 86)
     used = set()
+    boom = dict(ability="Unmitigated Explosion")
     for w, asp in souls.items():
-        if w not in sp: continue
+        if w not in sp:   # died holding the Soul: its tower dropped on someone else (see dead_soul), and nobody soaks it
+            if expl and w in p.dead_by(77):
+                out.append(fault(soaks[0]["t"] if soaks else 80.2, "Paradeigma II", [w], {e["who"] for e in expl},
+                                 f"{w} died holding a Soul; its tower went unsoaked", "consequence", chain=[w], **boom))
+            continue
         cand = [e for e in soaks if e["name"].startswith(asp) and e["pos"] and id(e) not in used and math.dist(e["pos"], sp[w]) < 3.6]   # tower radius ~3.5 y (max 3.46 in clean soaks)
         if cand:
             s = min(cand, key=lambda e: math.dist(e["pos"], sp[w])); used.add(id(s))
@@ -257,13 +284,13 @@ def para2(p):
         # unsoaked tower (timed at the soak moment so the soakers' own deaths link to it too)
         t = soaks[0]["t"] if soaks else 80.2
         if w in wrong:
-            out.append(fault(t, "Paradeigma II", [w], {e["who"] for e in expl} | {w}, f"tower unsoaked: dropped in {quad(sp[w])}, sweep says {expq[w]}", "high"))
+            out.append(fault(t, "Paradeigma II", [w], {e["who"] for e in expl} | {w}, f"tower unsoaked: dropped in {quad(sp[w])}, sweep says {expq[w]}", "high", **boom))
         elif expq.get(w) in tq:
             sk = tq[expq[w]][0]
-            if sk in p.dead_by(80): out.append(fault(t, "Paradeigma II", [sk], {e["who"] for e in expl}, f"tower unsoaked because {sk} was already dead", "consequence", chain=[sk]))
-            else: out.append(fault(t, "Paradeigma II", [sk], {e["who"] for e in expl} | {sk}, f"did not soak {w}'s tower in {expq[w]}", "high"))
+            if sk in p.dead_by(80): out.append(fault(t, "Paradeigma II", [sk], {e["who"] for e in expl}, f"tower unsoaked because {sk} was already dead", "consequence", chain=[sk], **boom))
+            else: out.append(fault(t, "Paradeigma II", [sk], {e["who"] for e in expl} | {sk}, f"did not soak {w}'s tower in {expq[w]}", "high", **boom))
         else:
-            out.append(fault(t, "Paradeigma II", [], {e["who"] for e in expl}, f"{w}'s tower unsoaked; soaker could not be determined", "low"))
+            out.append(fault(t, "Paradeigma II", [], {e["who"] for e in expl}, f"{w}'s tower unsoaked; soaker could not be determined", "low", **boom))
     # one player soaking two towers: the towers were dropped on top of each other
     for who, n in collections.Counter(s["who"] for s in soaks).items():
         if n < 2: continue
@@ -275,7 +302,7 @@ def para2(p):
     # explosion with no tower explained: blame Souls that broke the sweep
     if expl and not any("tower" in f["rule"] for f in out):
         out.append(fault(soaks[0]["t"] if soaks else 80.2, "Paradeigma II", sorted(wrong), {e["who"] for e in expl},
-                         "tower exploded; " + (f"Soul dropped off-sweep: {', '.join(f'{w} in {quad(sp[w])} (sweep {expq[w]})' for w in sorted(wrong))}" if wrong else "cause unclear"), "medium" if wrong else "low"))
+                         "tower exploded; " + (f"Soul dropped off-sweep: {', '.join(f'{w} in {quad(sp[w])} (sweep {expq[w]})' for w in sorted(wrong))}" if wrong else "cause unclear"), "medium" if wrong else "low", **boom))
     # soaks that matched no tower: extra player in a tower, a Soul holder, or the same-colour Tilt
     for s in soaks:
         if id(s) in used: continue
@@ -367,9 +394,11 @@ def para3(p, lp, priority=False):
     spos = {e["who"]: e["pos"] for e in sh if e["pos"]}
     if sh or wipe:
         t = sh[0]["t"] if sh else 214.4; dead = p.dead_by(t - 0.3); got = {e["who"] for e in sh}
-        for w in sorted(supports_all - got):
-            if w in dead: out.append(fault(t, "Paradeigma III", [w], wipe, f"{w} was already dead, so their platform tower went unsoaked (Electrify)", "consequence", chain=[w]))
-            else: out.append(fault(t, "Paradeigma III", [w], wipe | {w}, "did not soak their platform tower (Electrify)", "high"))
+        zap = dict(ability="Electrify")   # one Electrify, however many towers stood empty
+        missed = [w for w in sorted(supports_all - got) if w not in dead]
+        if missed: out.append(fault(t, "Paradeigma III", missed, wipe | set(missed), "did not soak their platform tower (Electrify)", "high", **zap))
+        for w in sorted((supports_all - got) & dead):
+            out.append(fault(t, "Paradeigma III", [w], wipe, f"{w} was already dead, so their platform tower went unsoaked (Electrify)", "consequence", chain=[w], **zap))
         for w in sorted(got - supports): out.append(fault(t, "Paradeigma III", [w], [w], "a DPS soaked a support tower", "medium"))
         # two supports in one tower leave another empty: blame whoever does not belong on that platform
         role = {**{w: "+" for w in sup["Quartered"]}, **{w: "X" for w in sup["X-Marked"]}, **{w: "bright" for w, _ in bright}}
@@ -391,7 +420,7 @@ def para3(p, lp, priority=False):
                 west = es[0]["pos"][0] < 0
                 bad = [second if west else first]
                 rule += f"; {bad[0]} belongs on the {'eastern' if west else 'western'} one (priority H1 > T1 > T2 > H2, west to east)"
-            out.append(fault(t, "Paradeigma III", bad, wipe | set(who), rule, "high" if len(bad) < len(who) else "medium"))
+            out.append(fault(t, "Paradeigma III", bad, wipe | set(who), rule, "high" if len(bad) < len(who) else "medium", **zap))
     # platforms: Quartered takes the north-most, X-Marked the south-most
     wrong_plat = {}
     for w in sup["Quartered"]:
@@ -432,10 +461,17 @@ def para3(p, lp, priority=False):
         want_centre = mside is not None and (x > 0) == (mside > 0)
         if mside is not None and centre != want_centre:
             misplaced[w] = "on its own tile instead of the centre corner" if want_centre else "at the centre instead of on its own tile"
-    for e in p.hits(("Astral Glow", "Umbral Glow"), 222, 224.5):
-        if e["who"] not in dict(bright): out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], "stood in a bright Soul's AoE", "medium"))
+    gi = collections.defaultdict(list)
+    for e in p.hits(("Astral Glow", "Umbral Glow"), 222, 224.5): gi[(e["name"], e.get("sourceInstance"))].append(e)
+    for (nm, inst), es in gi.items():
+        gone = [] if any(e["who"] in dict(bright) for e in es) else dead_soul(p, dict(bright), nm, es[0]["t"])
+        for e in es:
+            if e["who"] in dict(bright): continue
+            if gone: out.append(fault(e["t"], "Paradeigma III", gone, [e["who"]], f"{' and '.join(gone)} died holding a bright Soul; its tower dropped on {e['who']}", "consequence", chain=gone))
+            else: out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], "stood in a bright Soul's AoE", "medium"))
     # White Flame: baited by the + and X supports and the matching DPS pair
     wf = p.hits("White Flame", 222.5, 225)
+    missing, extra = [], []
     if wf:
         t = wf[0]["t"]; dead = p.dead_by(t - 0.3); hit = collections.Counter(e["who"] for e in wf)
         exp_all = set(sup["Quartered"]) | set(sup["X-Marked"]) | set(match); exp = exp_all - dead
@@ -456,20 +492,40 @@ def para3(p, lp, priority=False):
     ts = soaks[0]["t"] if soaks else 226
     for s in soaks:
         if s["who"] not in opp: out.append(fault(s["t"], "Paradeigma III", [s["who"]], [s["who"]], "soaked a bright tower without the opposite Tilt", "high"))
+    boom = dict(ability="Unmitigated Explosion")
     for w, a in bright:   # a bright Soul who died before dropping leaves their tower where they fell, and nobody soaks it
         if w not in glow and w in p.dead_by(222.5) and expl:
-            out.append(fault(ts, "Paradeigma III", [w], blown, f"{w} died before dropping their bright tower; it went unsoaked", "consequence", chain=[w]))
+            out.append(fault(ts, "Paradeigma III", [w], blown, f"{w} died before dropping their bright tower; it went unsoaked", "consequence", chain=[w], **boom))
     soaked_near = lambda pos: any(s["pos"] and math.dist(s["pos"], pos) < 6 for s in soaks)
+    dead = p.dead_by(ts - 0.3)
+    alive, gone = [x for x in opp if x not in dead], [x for x in opp if x in dead]
+    idle = [x for x in alive if x not in {s["who"] for s in soaks}]
+    unsoaked = collections.defaultdict(list)   # why -> the bright Souls whose towers went unsoaked for it
     for w, e in glow.items():
         if soaked_near(e["pos"]): continue
-        if w in misplaced:
-            out.append(fault(ts, "Paradeigma III", [w], blown | {w}, f"tower unsoaked: placed {misplaced[w]}", "high"))
+        if opp and not alive: why = "soakers dead"          # no one left to soak it, wherever it stood
+        elif w in misplaced: why = ("misplaced", w)
+        elif idle and missing and set(idle) <= set(extra): why = "swap"   # the soakers took the White Flame, its baiters did not
+        elif idle: why = "idle"
+        elif gone: why = "soaker dead"
+        elif alive: why = "other tower"                       # every living soaker took the other tower
+        else: why = "unknown"
+        unsoaked[why].append(w)
+    for why, ws in unsoaked.items():
+        towers = " and ".join(f"{w}'s" for w in ws) + (" towers" if len(ws) > 1 else " tower")
+        if why in ("soakers dead", "soaker dead"):
+            out.append(fault(ts, "Paradeigma III", gone, blown, f"{towers} unsoaked because {'its soakers were' if len(gone) > 1 else 'its soaker was'} already dead", "consequence", chain=gone, **boom))
+        elif why == "swap":
+            out.append(fault(ts, "Paradeigma III", idle + missing, blown | set(idle), f"{' and '.join(idle)} took the White Flame meant for "
+                             f"{' and '.join(missing)} instead of soaking (the DPS pairs' roles swapped): {towers} went unsoaked", "medium", **boom))
+        elif why == "idle":
+            out.append(fault(ts, "Paradeigma III", idle, blown | set(idle), f"did not soak {towers}", "high", **boom))
+        elif why == "other tower":
+            out.append(fault(ts, "Paradeigma III", alive, blown, f"{' and '.join(alive)} both soaked the other bright tower; one of them belonged on {towers}", "medium", **boom))
+        elif why == "unknown":
+            out.append(fault(ts, "Paradeigma III", [], blown, f"did not soak {towers}", "low", **boom))
         else:
-            dead = p.dead_by(ts - 0.3); idle = [x for x in opp if x not in {s["who"] for s in soaks}]
-            if idle and all(x in dead for x in idle):
-                out.append(fault(ts, "Paradeigma III", idle, blown, f"{w}'s tower unsoaked because its soaker was already dead", "consequence", chain=idle))
-            else:
-                out.append(fault(ts, "Paradeigma III", [x for x in idle if x not in dead], blown | set(idle), f"did not soak {w}'s tower", "high" if idle else "low"))
+            out.append(fault(ts, "Paradeigma III", [why[1]], blown | {why[1]}, f"tower unsoaked: placed {misplaced[why[1]]}", "high", **boom))
     return out
 
 
@@ -568,7 +624,16 @@ def superchain1(p, lp):
                 out.append(fault(t, "Superchain I", gone, {w for ws in by.values() for w in ws}, f"purple jacks out of their pairs because {', '.join(gone)} "
                                  f"{'was' if len(gone) == 1 else 'were'} already dead (a dead target's goes to someone at random)", "consequence", chain=gone))
                 continue
-            if lone and missing: out.append(fault(t, "Superchain I", missing, lone, f"not in their pair for the purple jack; {', '.join(lone)} took it alone", "high"))
+            # a lone target's seat partner left them (missing, or in another pair), when every player has a seat of their
+            # own; otherwise every missing player
+            seat = seats_all(p, lp); by_seat = {s: w for w, s in seat.items()}
+            for v in lone:
+                mate = by_seat.get((PARTNER[seat[v][0]], seat[v][1])) if v in seat and len(by_seat) == len(seat) == len(p.job) else None
+                if mate in missing or mate in hit:
+                    out.append(fault(t, "Superchain I", [mate], [v], f"not in their pair for the purple jack ({'missing' if mate in missing else 'in another pair'}); "
+                                     f"{v} took it alone", "high"))
+                elif missing:
+                    out.append(fault(t, "Superchain I", missing, [v], f"not in their pair for the purple jack; {v} took it alone", "high"))
             for ws in crowd:   # three or more: whoever's seat partner is not in it, or who stood away from it, joined
                 cul, conf, why = pair_blame(p, lp, hs, ws)
                 out.append(fault(t, "Superchain I", cul or ws, ws, "three or more in one purple-jack pair" + why, conf))
@@ -594,13 +659,19 @@ def superchain1(p, lp):
                "Umbral Impact": set(S["Umbralstrong"]) | set(S["Astralbright"]) | tilt["Astral"]}
         wrong = [(e["who"], e["name"]) for e in lt if e["who"] not in exp[e["name"]]]
         wrong_group = {w for w, _ in wrong}
-        for w, nm in wrong:   # the other laser is now a sharer short, so its group are victims too
-            out.append(fault(t, "Superchain I", [w], {e["who"] for e in lt}, f"in the wrong laser group (took {nm}); the other laser was a sharer short", "high"))
-        if not wrong:
-            dead = p.dead_by(t - 0.3)
-            for nm, ws in exp.items():
-                got = {e["who"] for e in lt if e["name"] == nm}
-                for w in sorted(ws - got - dead): out.append(fault(t, "Superchain I", [w], got, f"missed their {nm} share (fewer players split it)", "medium"))
+        # a laser not theirs, with its own colour's Tilt, is their own death (it kills through six sharers); it only
+        # helps the others in it. Listed first: a wrong-group player's death is theirs before the short laser's
+        for w, nm in wrong:
+            out.append(fault(t, "Superchain I", [w], [w], f"in the wrong laser group (took {nm})", "high"))
+        # a laser a sharer short: whoever belonged in it and lived, but took the other or neither
+        dead = p.dead_by(t - 0.3)
+        for nm, ws in exp.items():
+            got = {e["who"] for e in lt if e["name"] == nm}
+            away = sorted(ws - got - dead)
+            if not got or not away: continue
+            other = [w for w in away if w in wrong_group]
+            out.append(fault(t, "Superchain I", away, got, f"not in the {nm} group ({', '.join(other) + ' took the other laser' if other else 'missed it'}); it was a sharer short",
+                             "high" if other else "medium"))
     # Heavensflame spread
     hh = p.hits("Theos's Holy", 145.5, 149)
     by = collections.defaultdict(list)
@@ -619,15 +690,20 @@ def superchain1(p, lp):
     glow = p.hits(("Astral Glow", "Umbral Glow"), 144, 147.5)
     gi = collections.defaultdict(list)
     for e in glow: gi[(e["name"], e.get("sourceInstance"))].append(e["who"])
+    together = set()            # the bright Souls who dropped their towers on one spot
     for e in glow:
         v, owner = e["who"], next((w for w in gi[(e["name"], e.get("sourceInstance"))] if w in bright), None)
         if v == owner: continue
+        if owner is None and (gone := dead_soul(p, {w: a for a in ("Astral", "Umbral") for w in S[f"{a}bright"]}, e["name"], e["t"])):
+            out.append(fault(e["t"], "Superchain I", gone, [v], f"{' and '.join(gone)} died holding a bright Soul; its tower dropped on {v}", "consequence", chain=gone))
+            continue
         if v in strong:
             out.append(fault(e["t"], "Superchain I", [v], [v], "stepped into the tower before the bright Soul's AoE went off", "high"))
         elif owner in wrong_group:   # the laser side decides the tower side
             out.append(fault(e["t"], "Superchain I", [owner], [v], f"took the wrong laser, so their tower dropped on the wrong side; its AoE hit {v}", "high"))
-        elif v in bright:
-            out.append(fault(e["t"], "Superchain I", [v] if v in wrong_group else [owner, v] if owner else [v], [v],
+        elif v in bright:   # the owner is in it too: two bright Souls' AoEs together can kill either
+            if v not in wrong_group and owner: together = {owner, v}
+            out.append(fault(e["t"], "Superchain I", [v] if v in wrong_group else [owner, v] if owner else [v], [v] + ([owner] if owner else []),
                              f"the bright Souls dropped their towers together ({owner or 'a bright Soul'}'s AoE hit {v}); they go on opposite cardinals", "high" if v in wrong_group else "medium"))
         elif v in hf:
             out.append(fault(e["t"], "Superchain I", [v], [v], f"Heavensflame not spread away: stood in {owner + chr(39) + 's' if owner else 'a'} bright Soul's AoE as the tower dropped", "high"))
@@ -639,18 +715,25 @@ def superchain1(p, lp):
     for asp, soaker in (("Astral", S["Umbralstrong"]), ("Umbral", S["Astralstrong"])):
         got = [e for e in soaks if e["name"] == f"{asp} Advance"]
         for e in got:
-            if e["who"] not in soaker: out.append(fault(e["t"], "Superchain I", [e["who"]], [e["who"]], f"soaked the {asp} tower (meant for {', '.join(soaker)})", "high"))
-        if not got and S[f"{asp}bright"]:
+            if e["who"] in soaker: continue
+            if together and e["who"] not in together:   # both towers on one spot: soaking one meant soaking both
+                out.append(fault(e["t"], "Superchain I", sorted(together), [e["who"]], f"in the {asp} tower too, as the bright Souls dropped their towers together",
+                                 "medium", fallout=True))
+            else: out.append(fault(e["t"], "Superchain I", [e["who"]], [e["who"]], f"soaked the {asp} tower (meant for {', '.join(soaker)})", "high"))
+        # unsoaked, or soaked only by someone else (which does not hold it): it explodes
+        if not any(e["who"] in soaker for e in got) and S[f"{asp}bright"]:
             t = expl[0]["t"] if expl else 150
             dead = p.dead_by(t - 2); blown = {e["who"] for e in expl}
             b = S[f"{asp}bright"][0]
             sk = [w for w in soaker if w not in dead]
-            if b in wrong_group:   # the laser side decides the tower side, so this tower landed away from its soaker
-                out.append(fault(t, "Superchain I", [b], blown | {b}, f"{asp}bright tower unsoaked: {b} took the wrong laser, so it dropped on the wrong side", "high"))
-            elif b in p.dead_by(144):
-                out.append(fault(t, "Superchain I", [b], blown, f"{b} died before dropping the {asp}bright tower; it went unsoaked", "consequence", chain=[b]))
-            elif sk: out.append(fault(t, "Superchain I", sk, blown | set(sk), f"did not soak the {asp}bright tower", "high"))
-            else: out.append(fault(t, "Superchain I", list(soaker), blown, f"{asp}bright tower unsoaked because its soaker was already dead", "consequence", chain=list(soaker)))
+            boom = dict(ability="Unmitigated Explosion")
+            if b in p.dead_by(144):
+                out.append(fault(t, "Superchain I", [b], blown, f"{b} died before dropping the {asp}bright tower; it went unsoaked", "consequence", chain=[b], **boom))
+            elif not sk:   # wherever it dropped, no one was left to soak it
+                out.append(fault(t, "Superchain I", list(soaker), blown, f"{asp}bright tower unsoaked because its soaker was already dead", "consequence", chain=list(soaker), **boom))
+            elif b in wrong_group:   # the laser side decides the tower side, so this tower landed away from its soaker
+                out.append(fault(t, "Superchain I", [b], blown | {b}, f"{asp}bright tower unsoaked: {b} took the wrong laser, so it dropped on the wrong side", "high", **boom))
+            else: out.append(fault(t, "Superchain I", sk, blown | set(sk), f"did not soak the {asp}bright tower", "high", **boom))
     return out
 
 
@@ -694,28 +777,32 @@ def dialogos(p):
         cul = sorted(w for w in tanks if w not in in_tb or misplaced(w))
         if cul:
             out.append(fault(t, "Dialogos", cul, in_tb, f"not {where(peri)} for {nm} (the tanks' hit goes to the {'closest' if peri else 'farthest'} "
-                             f"player); it went to {target} and hit {', '.join(extra)}", "high"))
+                             f"player); it went to {target} and hit {', '.join(extra)}", "high", ability=nm))
             blamed |= set(cul)
     else:
         for x in extra:
             how = f"stood {where(peri)} with the tanks" if misplaced(x) else "stood in line with the tanks"
-            out.append(fault(t, "Dialogos", [x], [x], f"{how} for {nm} (a hit the two tanks share)", "high"))
+            out.append(fault(t, "Dialogos", [x], [x], f"{how} for {nm} (a hit the two tanks share)", "high", ability=nm))
             blamed.add(x)
         if out_t and target and is_tank(target):
-            out.append(fault(t, "Dialogos", out_t, in_tb, f"left {nm} to {', '.join(sorted(in_tb & tanks))} (the two tanks share it)", "high"))
+            out.append(fault(t, "Dialogos", out_t, in_tb, f"left {nm} to {', '.join(sorted(in_tb & tanks))} (the two tanks share it)", "high", ability=nm))
             blamed |= set(out_t)
     gone = sorted({w for w in p.job if is_tank(w)} & dead)
     if gone and not out_t and not extra and in_tb:
-        out.append(fault(t, "Dialogos", gone, in_tb, f"{', '.join(sorted(in_tb))} took {nm} alone because {', '.join(gone)} was already dead (the two tanks share it)", "consequence", chain=gone))
+        out.append(fault(t, "Dialogos", gone, in_tb, f"{', '.join(sorted(in_tb))} took {nm} alone because {', '.join(gone)} was already dead (the two tanks share it)", "consequence", chain=gone, ability=nm))
     # the stack: aimed at a tank, that tank stood where the party belongs; aimed at the party, whoever of the party
     # is not in it left it (one in the tanks' hit counts once: a culprit's faults within 2 s are one mistake)
     s_target = pick(in_st, not peri)
     if s_target and is_tank(s_target):
         cul = sorted(w for w in in_st if is_tank(w) and w not in blamed)
-        if cul: out.append(fault(st[0]["t"], "Dialogos", cul, in_st, f"stood {where(not peri)} where the party stacks for {nm}; the Dialogos stack went to them", "high"))
-    elif s_target:
-        miss = sorted(party - in_st)
-        if miss: out.append(fault(st[0]["t"], "Dialogos", miss, in_st | set(miss), f"not in the Dialogos stack: {len(in_st & party)} of the party's {len(party)} shared it", "high"))
+        if cul: out.append(fault(st[0]["t"], "Dialogos", cul, in_st, f"stood {where(not peri)} where the party stacks for {nm}; the Dialogos stack went to them", "high", ability="Dialogos"))
+    elif s_target:   # one the tanks' hit had just killed could not be in it: the stack's shortfall is that death's
+        killed = sorted(w for w in party & in_tb if any(e["who"] == w and (e.get("targetResources") or {}).get("hitPoints") == 0 for e in tb))
+        miss = sorted(party - in_st - set(killed))
+        if miss: out.append(fault(st[0]["t"], "Dialogos", miss, in_st, f"not in the Dialogos stack: {len(in_st & party)} of the party's {len(party)} shared it", "high", ability="Dialogos"))
+        if killed and not killed[0] in in_st:
+            out.append(fault(st[0]["t"], "Dialogos", killed, in_st, f"the Dialogos stack was short: {', '.join(killed)} died to {nm} just before", "consequence",
+                             chain=killed, ability="Dialogos"))
     return out
 
 
@@ -727,6 +814,21 @@ def dialogos(p):
 # NOT_YET blames no one for anything in the mechanic: the groups are still learning it or have no settled strategy.
 GENERIC, NOT_YET = "generic", "not yet"
 CONF_ORDER = {"high": 0, "medium": 1, "low": 2}   # surest first
+least_sure = lambda confs: max(confs, key=lambda c: CONF_ORDER.get(c, 1))
+
+
+def merged(fs):
+    """Faults about the same hit as one cause (an explosion of two unsoaked towers): their culprits and chains together."""
+    if len(fs) == 1: return fs[0]
+    direct = [f for f in fs if not f["chain"]]
+    culprits = list(dict.fromkeys(c for f in direct for c in f["culprits"]))
+    return dict(fs[0], culprits=culprits, chain=list(dict.fromkeys(n for f in fs for n in f["chain"])), direct=culprits,
+                direct_conf=least_sure([f["confidence"] for f in direct]) if direct else None,
+                confidence=least_sure([f["confidence"] for f in direct]) if direct else "consequence",
+                # the direct causes first: a cause's label comes from before "; earlier"
+                rule="; earlier: ".join(r for r in ("; ".join(dict.fromkeys(f["rule"] for f in direct)), "; ".join(dict.fromkeys(f["rule"] for f in fs if f["chain"]))) if r),
+                victims=set().union(*(f["victims"] for f in fs)),
+                fallout=bool(direct) and all(f["fallout"] for f in direct), parts=fs)
 RULEBOOK = {
     "Paradeigma I": [(None, lambda p, lp: para1(p, lp) + para1_auto(p, lp))],
     "Paradeigma II": [(None, lambda p, lp: para2(p))],
@@ -755,7 +857,19 @@ def classify(p, lp, day=None):
     from it), not a new mistake of their own; jump=True is a death without a hit (jumping off the arena)."""
     rules = rules_on(day)
     faults = sorted((f for rule in rules.values() if callable(rule) for f in rule(p, lp)), key=lambda f: f["t"])
-    res = []
+    res, used = [], set()       # used: faults already counted at an incident
+
+    def from_chain(i, f):
+        """Blame whoever caused the deaths behind a fault (its chain), as sure as the least sure of them, besides the
+        fault's own culprits when it merges a direct one; those carried over from the earlier deaths are not counted
+        again (carried)."""
+        direct = f.get("direct", [])
+        why = [(n, r) for n in f["chain"] for r in [next((r for r in reversed(res) if r["victim"] == n and r["kind"] == "death"), None)] if r and r["culprits"]]
+        culprits = list(dict.fromkeys(direct + [c for _, r in why for c in r["culprits"]]))
+        if not culprits: return dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=[], confidence="consequence", derived=True)
+        return dict(i, mechanic=f["mechanic"], cause=f["rule"] + ("; earlier: " + "; ".join(f"{n} {r['cause']}" for n, r in why) if why else ""),
+                    culprits=culprits, derived=not direct, carried=[c for c in culprits if c not in direct] if direct else [],
+                    confidence=least_sure(([f["direct_conf"]] if direct else []) + [r["confidence"] for _, r in why]))
 
     def add(r):
         """A mistake in a NOT_YET mechanic keeps its cause but blames no one; fallout of an earlier one keeps its blame."""
@@ -767,29 +881,50 @@ def classify(p, lp, day=None):
         if i.get("jump"):
             add(dict(i, mechanic=mech, cause="left the arena without taking a hit (jumped off: wipe called?)", culprits=[], confidence="unattributed"))
             continue
-        # the earliest fault that hit them, unless one is about the very hit that killed them
+        # the faults about the very hit that killed them (one cause together), else, unless the hit was an avoidable one,
+        # the earliest fault that hit them
         near = [f for f in faults if i["victim"] in f["victims"] and -1.5 <= i["t"] - f["t"] <= 4.5]
-        f = next((f for f in near if f.get("ability") == i["ability"]), near[0] if near else None)
-        if f is None and i["ability"] == "Unmitigated Explosion":
-            f = next((f for f in faults if "tower" in f["rule"] and abs(i["t"] - f["t"]) <= 4.5), None)
+        about = [f for f in near if f.get("ability") == i["ability"]]
+        f = merged(about) if about else None if i["ability"] in AVOIDABLE else near[0] if near else None
+        # an avoidable hit just before a death blamed on others (or no one) makes it the victim's own mistake (fallout
+        # of that hit's incident, if it had one)
+        stung = i["kind"] == "death" and i["ability"] not in AVOIDABLE and not (f and not f["chain"] and f["culprits"] == [i["victim"]]) and next(
+            (e for e in reversed(p.dmg) if e["who"] == i["victim"] and e["name"] in AVOIDABLE and 0 <= i["t"] - e["t"] <= STUNG_S), None)
+        if stung:
+            hit = next((r for r in reversed(res) if r["victim"] == i["victim"] and r["ability"] == stung["name"] and i["victim"] in r["culprits"]
+                        and abs(r["t"] - stung["t"]) <= 0.5), None)
+            cause = AVOIDABLE[stung["name"]]
+            add(dict(i, mechanic=mech, culprits=[i["victim"]], confidence="high",
+                     **(dict(cause=f"after their earlier {hit['kind']}: {cause}", derived=True) if hit else dict(cause=f"{cause}, then {i['ability']} killed them"))))
+            continue
+        # the faults about the very hit that killed them (one cause together), else, unless the hit was an avoidable one,
+        # the earliest fault that hit them
+        near =[f for f in faults if i["victim"] in f["victims"] and -1.5 <= i["t"] - f["t"] <= 4.5]
+        about = [f for f in near if f.get("ability") == i["ability"]]
+        f = merged(about) if about else None if i["ability"] in AVOIDABLE else near[0] if near else None
+        if f is None and i["ability"] == "Unmitigated Explosion":   # an explosion that reached someone no tower fault names
+            tw = [f for f in faults if f.get("ability") == i["ability"] and abs(i["t"] - f["t"]) <= 4.5] \
+                 or [f for f in faults if "tower" in f["rule"] and abs(i["t"] - f["t"]) <= 4.5][:1]
+            f = merged(tw) if tw else None
         own = None
-        if f is None and i["ability"] not in AVOIDABLE:   # later fallout of the victim's own earlier mistake in the same mechanic
-            own = next((f for f in reversed(faults) if f["mechanic"] == mech and 0 < i["t"] - f["t"] <= 15 and (i["victim"] in f["victims"] or i["victim"] in f["culprits"])), None)
+        if f is None and i["ability"] not in AVOIDABLE:   # later fallout of a mistake that hurt them earlier in the same mechanic
+            hurt = [g for g in reversed(faults) if g["mechanic"] == mech and 0 < i["t"] - g["t"] <= 15 and i["victim"] in g["victims"]]
+            own = next((g for g in hurt if i["victim"] in g["culprits"]), hurt[0] if hurt else None)   # their own first
         prev = next((r for r in reversed(res) if r["victim"] == i["victim"] and r["culprits"] and 0 <= i["t"] - r["t"] <= 10), None)
-        if f and f["chain"]:   # blame whoever caused the earlier death behind this fault
-            why = [(n, r) for n in f["chain"] for r in [next((r for r in reversed(res) if r["victim"] == n and r["culprits"]), None)] if r]
-            if why:   # as sure as the least sure of the deaths it comes from
-                add(dict(i, mechanic=f["mechanic"], cause=f["rule"] + "; earlier: " + "; ".join(f"{n} {r['cause']}" for n, r in why),
-                                culprits=list(dict.fromkeys(c for _, r in why for c in r["culprits"])), derived=True,
-                                confidence=max((r["confidence"] for _, r in why), key=lambda c: CONF_ORDER.get(c, 1))))
-            else:
-                add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=[], confidence="consequence", derived=True))
+        if f and f["chain"]:
+            add(from_chain(i, f))
         elif f:
-            add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"]))
+            used.update(id(g) for g in f.get("parts", [f]))
+            add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"], **({"derived": True} if f["fallout"] else {})))
         elif prev and i["ability"] not in AVOIDABLE:
             add(dict(i, mechanic=mech, cause=f"after their earlier {prev['kind']}: {prev['cause']}", culprits=prev["culprits"], confidence="medium", derived=True))
-        elif own:
+        elif own and own["chain"]:
+            add(from_chain(i, own))
+        elif own and id(own) in used:   # the mistake was already counted at an earlier incident
             add(dict(i, mechanic=mech, cause=f"after their earlier mistake: {own['rule']}", culprits=own["culprits"], confidence="medium", derived=True))
+        elif own:   # the mistake's first incident: it counts here
+            used.add(id(own))
+            add(dict(i, mechanic=own["mechanic"], cause=own["rule"], culprits=own["culprits"], confidence=own["confidence"]))
         elif i["ability"] in AVOIDABLE:
             add(dict(i, mechanic=mech, cause=AVOIDABLE[i["ability"]], culprits=[i["victim"]], confidence="high"))
         elif i["ability"] == "Shockwave":
