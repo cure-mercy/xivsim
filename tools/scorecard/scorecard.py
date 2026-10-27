@@ -242,6 +242,34 @@ def fetch_wf(data):
     data["wf"] = out
 
 
+P3_WINDOW = (205, 215.5)   # seconds into the pull: Paradeigma III's add tethers, up to the DPS lasers
+
+
+def p3_compact(f, events):
+    """One pull's Paradeigma III tethers, for the classifier (Pull.p3): {tethers: [[t, add instance, player id]]}, times
+    in seconds from the pull. Each add's last tether before its laser names the laser's holder; the calculated hits
+    cannot when a laser goes through two DPS or its holder died as it fired."""
+    players, seen, out = set(f["friendlyPlayers"]), set(), []
+    for e in events:
+        k = json.dumps(e, sort_keys=True)
+        if e["type"] != "tether" or k in seen or e.get("targetID") not in players: continue
+        seen.add(k)
+        out.append([round((e["timestamp"] - f["startTime"]) / 1000, 3), e.get("sourceInstance"), e["targetID"]])
+    return dict(tethers=sorted(out))
+
+
+def fetch_p3(data):
+    """The add tethers before Paradeigma III's DPS lasers for every pull that lasts into them (p3_compact)."""
+    fights, out = [f for f in data["fights"] if f["endTime"] - f["startTime"] > P3_WINDOW[0] * 1000], {}
+    for i in range(0, len(fights), 8):
+        part = fights[i:i + 8]
+        q = "query($c:String!){reportData{report(code:$c){" + " ".join(WF_EVENTS % (f["id"], f["id"], f["startTime"] + int(P3_WINDOW[0] * 1000),
+            min(f["endTime"], f["startTime"] + int(P3_WINDOW[1] * 1000)), "Enemies") for f in part) + "}}}"
+        r = fflogs.gql(q, {"c": data["code"]})["reportData"]["report"]
+        for f in part: out[str(f["id"])] = p3_compact(f, r[f"f{f['id']}"]["data"])
+    data["p3"] = out
+
+
 def pot_gain(data, fid, y):
     """DPS over 0:00-2:00 a tincture added to this table row, as build_benchmark.py reckons the clears': the seconds under
     it at the player's 0:00-0:38 damage rate, times the tincture's share."""
@@ -257,7 +285,8 @@ def fetch(code, refresh, bench):
                                 ("otables", lambda: fetch_opener(data), "opener damage"), ("echo_pulls", lambda: fetch_echo(data), "the Echo check"),
                                 ("tables_given", lambda: fetch_tables(data, [f for f in data["fights"] if str(f["id"]) in data["tables"]]),
                                  "the rDPS raid buffs gave others"),
-                                ("pots", lambda: fetch_pots(data), "tinctures"), ("wf", lambda: fetch_wf(data), "positions at White Flame")):
+                                ("pots", lambda: fetch_pots(data), "tinctures"), ("wf", lambda: fetch_wf(data), "positions at White Flame"),
+                                ("p3", lambda: fetch_p3(data), "tethers at Paradeigma III")):
             if key not in data:   # reports cached before this part existed
                 if CACHED_ONLY: print(f"  {code}: no {what} in the cache, left out (--cached)", file=sys.stderr); continue
                 print(f"  {code}: fetching {what}", file=sys.stderr); fill(); cf.write_text(json.dumps(data))
@@ -284,6 +313,7 @@ def fetch(code, refresh, bench):
     fetch_echo(data)
     fetch_pots(data)
     fetch_wf(data)
+    fetch_p3(data)
     fflogs.CACHE.mkdir(exist_ok=True); cf.write_text(json.dumps(data))
     return data
 
@@ -394,7 +424,7 @@ def analyse(group, data, bench):
                 hp={k: v for k, v in data.get("hp", {}).items() if k not in echo})
     names = {a["id"]: a["name"] for a in data["masterData"]["actors"] if a["subType"] in ROLE}
     rep = {"masterData": data["masterData"], "deaths": data["deaths"]}
-    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf")}
+    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf"), "p3": data.get("p3")}
     import acts                                 # the players' casts, for the rules that read them (the Glaukopis swap)
     A = acts.report(data["code"], data["fights"])
     pulls = [Pull(data["code"], f, rep, ev, acts=A.get(str(f["id"]))) for f in data["fights"]]

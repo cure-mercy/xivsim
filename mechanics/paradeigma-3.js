@@ -71,6 +71,7 @@
         <circle cx="300" cy="300" r="120" fill="none" stroke="rgba(247,147,30,0.45)" stroke-width="1.6" stroke-dasharray="4 6" pointer-events="none"/>
 
         <g id="p3-tiles"></g>
+        <g id="p3-waymarks" pointer-events="none"></g>
         <g id="p3-chains"></g>
         <g id="p3-adds"></g>
 
@@ -141,7 +142,7 @@
           <li>Quartered Soul takes the <b>north-most</b> platform and X-marked the <b>south-most</b>. The two bright souls take the middle two by priority <b>H1 &gt; T1 &gt; T2 &gt; H2</b>, west to east: the first of them the western one, the other the eastern.</li>
           <li><b>Middle platforms:</b> the plain tower sits by the outer wall, right where the two DPS stretch their tethers, and their lasers run <b>east–west</b> across it. Soak it from its side <b>away from the arena's horizontal centre line</b>, in the gap the two lasers leave, or a DPS laser clips you.</li>
           <li>Each bright soul then drops an aspected tower. Compare your aspect with the tether colour of the two DPS on your tile: <b>same colour</b> and you drop it on the arena-centre corner so it spills onto the other middle platform; <b>opposite</b> and you drop it in the middle of your own tile, clear of the X's arm. Then step out of it.</li>
-          <li>DPS stretch their tether to the <b>opposite</b> middle platform. The one whose add lines up with it has the <b>straight</b> tether and stands at the platform's <b>horizontal centre, level with the add</b>, so the laser runs dead east–west. That is only just the minimum stretch the tether needs, so not a step closer to the add; the other has the <b>crossed</b> tether and stands at the <b>middle of the platform's outer edge</b> — top middle on the northern platform, bottom middle on the southern — so the laser angles across.</li>
+          <li>DPS stretch their tether to the <b>opposite</b> middle platform. The one whose add lines up with it has the <b>straight</b> tether and stands <b>level with the add on the line of waymark B or D</b> (B east, D west, 10 yalms out), so the laser runs dead east–west. That is 35 yalms from the add, only half a yalm past the 34.5 where a holder's own laser kills them outright, so right on the waymark's line: not a step closer, and no further out or the laser clips another player; the other has the <b>crossed</b> tether and stands at the <b>middle of the platform's outer edge</b> — top middle on the northern platform, bottom middle on the southern — so the laser angles across.</li>
           <li>The DPS pair whose colour is opposite the towers soaks them — <b>straight</b> tether takes the centre tower, <b>crossed</b> tether the one in the middle of the platform — waiting clear of the bright souls' small AoEs until they have gone off. The matching-colour pair, along with the + and X supports, bait the two <b>White Flame</b> lasers away from the middle: each DPS the yellow add closest to them, from the corner of their tile that faces it. The + and X are <b>delayed</b>: step out of your own arms first. The + support baits from just beside the northern add, away from the middle; an arm of the X runs right through the southern add, so the X support waits for the X to go off, then baits from just below it.</li>
         </ol>
       </details>
@@ -220,8 +221,18 @@
     const TOWER_R = 36, LASER_HALF = 28, FLAME_HALF = 28, ARM_HALF = 26, GLOW_R = 36;
     // A + or X dropped more than 3 yalms from its planned spot is off it, even when it hits nobody.
     const MARK_NEAR = 36;
-    // A tether is stretched far enough about 29 yalms from its add: the straight spot is 31 away, so a little leeway.
-    const MIN_STRETCH = 352;
+    // A tether laser kills its own holder outright closer than about 34.5 yalms to its add (742 lasers in the logs:
+    // ~600,000 damage under it, ~50,000 from it). The wall adds are drawn 21.3 yalms out to fit the arena, but stand
+    // 25 out in the fight, 3 either side of the centre line, so the stretch is measured where they really are.
+    const MIN_STRETCH_Y = 34.5;
+    const stretchYalms = (add, p) => Math.hypot(Math.sign(add[0] - 300) * 25 - (p[0] - 300) / 12, (add[1] - p[1]) / 12);
+    // The groups' waymarks (their in-game preset "Clockspots", as in the raidplan), 10 yalms out from the centre: A north,
+    // B east, C south, D west, 1-4 on the intercardinals from the north-east, clockwise, in the game's colours (letters
+    // round, numbers square), at their size in the game: a letter's circle 1.25 yalms in radius, a number's square 2.2
+    // across (the Waymark Studio plugin's Waymark.cs).
+    const WAYMARK = 120, WAYMARK_R = 15, WAYMARK_HALF = 13.2;
+    const WAYMARKS = [['A', 0, -1, '#e5534b'], ['B', 1, 0, '#e8c547'], ['C', 0, 1, '#4a9ae0'], ['D', -1, 0, '#b07ae8'],
+                      ['1', 1, -1, '#e5534b'], ['2', 1, 1, '#e8c547'], ['3', -1, 1, '#4a9ae0'], ['4', -1, -1, '#b07ae8']];
     // Everyone runs at 7 yalms a second (a little above the real 6), and the rest of the party moves off about
     // 2 seconds after each thing they need to read, as in the other drills.
     const SPEED = 84, REACT = 2.0, STEP_OFF = 0.05, TICK_MS = 33;
@@ -254,9 +265,9 @@
     const centreCorner = (t, inset) => [t.col === 'L' ? t.x + t.w - inset : t.x + inset, t.row === 2 ? t.y + t.h - inset : t.y + inset];
 
     // The two DPS on a middle platform are always tethered to the far wall, so they can stretch.
-    // The DPS whose add lines up with the platform has the straight tether and stands at the platform's
-    // horizontal centre, level with the add, so the laser runs dead horizontal. That is only just far enough
-    // to stretch the tether, so no closer. The crossed tether stands at the middle of
+    // The DPS whose add lines up with the platform has the straight tether and stands on the line of waymark B
+    // (east) or D (west), level with the add, so the laser runs dead horizontal: 35 yalms from the add, half a yalm
+    // past the lethal 34.5, so no closer; further out than the waymark it clips others (the raidplan). The crossed tether stands at the middle of
     // the platform's outer edge (top on the northern platform, bottom on the southern), so its laser
     // angles across. Between them the two lasers leave an outer gap on the plain tower for the support.
     // The wall adds stand 3 yalms either side of the centre line, as in the log.
@@ -267,7 +278,7 @@
       const slantAddY = t.cy === 240 ? 360 : 240;
       const color = fromSide === 'west' ? st.westColor : st.eastColor;
       return [
-        { straight:true,  x:t.cx, y:WALL_ADD_Y[t.cy], addX:wallX, addY:WALL_ADD_Y[t.cy], color, side:fromSide },
+        { straight:true,  x:300 + Math.sign(t.cx - 300) * WAYMARK, y:WALL_ADD_Y[t.cy], addX:wallX, addY:WALL_ADD_Y[t.cy], color, side:fromSide },
         { straight:false, x:t.cx, y:t.row === 2 ? t.y + 18 : t.y + t.h - 18, addX:wallX, addY:WALL_ADD_Y[slantAddY], color, side:fromSide }
       ];
     }
@@ -623,7 +634,7 @@
     const inSaltire = (c, p) => { const dx = p[0] - c[0], dy = p[1] - c[1]; return Math.min(Math.abs(dx - dy), Math.abs(dx + dy)) / Math.SQRT2 <= ARM_HALF; };
 
     function platformRule(){
-      if(shared.role === 'dps') return `Your add is on the <b>${st.mySide}</b> wall, so you stretch across to the <b>${tileName(st.home).toLowerCase()}</b> platform. Yours is the <b>${st.straight ? 'straight' : 'crossed'}</b> tether: ${st.straight ? "stand at the platform's horizontal centre, level with your add, so the laser runs dead east–west" : `stand at the middle of the platform's ${st.home.row === 2 ? 'top' : 'bottom'} edge, so the laser angles across`}.`;
+      if(shared.role === 'dps') return `Your add is on the <b>${st.mySide}</b> wall, so you stretch across to the <b>${tileName(st.home).toLowerCase()}</b> platform. Yours is the <b>${st.straight ? 'straight' : 'crossed'}</b> tether: ${st.straight ? `stand level with your add on the line of waymark ${st.home.col === 'R' ? 'B' : 'D'}, so the laser runs dead east–west (any closer to the add and it kills you)` : `stand at the middle of the platform's ${st.home.row === 2 ? 'top' : 'bottom'} edge, so the laser angles across`}.`;
       if(st.mySoul === 'quartered') return `Quartered Soul takes the tower on the <b>north-most</b> platform.`;
       if(st.mySoul === 'xmarked') return `X-marked Soul takes the tower on the <b>south-most</b> platform.`;
       const west = st.brightWest, east = st.brightSlots.find(s => s !== west);
@@ -671,7 +682,7 @@
             ? `When your laser fired at ${sec(LIVE.lasers)} you were still on the middle platform beside your own add, and that close the hit is lethal. ${platformRule()}`
             : `When your laser fired at ${sec(LIVE.lasers)} you were on the ${tileName(on).toLowerCase()} platform with its support, who took it with you. The DPS take the middle two. ${platformRule()}`, a.stretch);
         }
-        if(dist(a.add, p) < MIN_STRETCH) return liveFail('Not stretched far enough', `When your laser fired at ${sec(LIVE.lasers)} you were only ${yalms(dist(a.add, p))} yalms from your add. It needs about ${yalms(MIN_STRETCH)}, so the hit was lethal. ${platformRule()}`, a.stretch);
+        if(stretchYalms(a.add, p) < MIN_STRETCH_Y) return liveFail('Not stretched far enough', `When your laser fired at ${sec(LIVE.lasers)} you were only ${stretchYalms(a.add, p).toFixed(1)} yalms from your add. Closer than about ${MIN_STRETCH_Y} the laser kills you outright. ${platformRule()}`, a.stretch);
         const clipped = st.ids.filter(id => id !== me && inLine(a.add, p, pos[id], LASER_HALF));
         if(clipped.length) return liveFail('Laser through a party member', `Your add's laser runs from the add through you and on across the arena, and when it fired at ${sec(LIVE.lasers)} ${names(clipped)} ${clipped.length > 1 ? 'were' : 'was'} in its path. Only you may take it. ${platformRule()}`, a.stretch);
       }
@@ -952,6 +963,22 @@
             stroke:'var(--astral)', 'stroke-width':2, 'stroke-dasharray':'6 6', opacity:0.55, class:'stripe' }));
         }
       }));
+      drawWaymarks();
+    }
+
+    // The waymarks stay put whichever way the zigzag runs: they are where the group places them.
+    function drawWaymarks(){
+      const host = layer('p3-waymarks');
+      WAYMARKS.forEach(([label, dx, dy, colour]) => {
+        const x = 300 + dx * WAYMARK, y = 300 + dy * WAYMARK;
+        const g = el('g', { opacity:0.85 });
+        g.appendChild(/[A-D]/.test(label) ? el('circle', { cx:x, cy:y, r:WAYMARK_R, fill:'rgba(10,9,22,0.6)', stroke:colour, 'stroke-width':2 })
+                                          : el('rect', { x:x-WAYMARK_HALF, y:y-WAYMARK_HALF, width:2*WAYMARK_HALF, height:2*WAYMARK_HALF, rx:2, fill:'rgba(10,9,22,0.6)', stroke:colour, 'stroke-width':2 }));
+        const t = el('text', { x:x, y:y+5.5, 'text-anchor':'middle', 'font-family':'Space Mono, monospace', 'font-size':16, 'font-weight':700, fill:colour });
+        t.textContent = label;
+        g.appendChild(t);
+        host.appendChild(g);
+      });
     }
 
     function crystal(host, x, y, color, r){
@@ -1342,7 +1369,7 @@
     function phaseText(i){
       if(shared.role === 'dps'){
         if(i === 0) return ['Paradeigma III', `Wait by Athena for your tether: Engravement of Souls is going out.`];
-        if(i === 1) return ['Step 1 · Stretch', `Stretch your tether across to the middle platform on the far side from your add.<span class="hint"> The tiles chained by Unnatural Enchainment fall as it ends. If your add lines up with the platform yours is the <b>straight</b> tether: stand at its horizontal centre, level with your add, no closer. Otherwise it is <b>crossed</b>: stand at the middle of its outer edge, top on the northern platform, bottom on the southern.</span>`];
+        if(i === 1) return ['Step 1 · Stretch', `Stretch your tether across to the middle platform on the far side from your add.<span class="hint"> The tiles chained by Unnatural Enchainment fall as it ends. If your add lines up with the platform yours is the <b>straight</b> tether: stand level with your add on the line of waymark B (eastern platform) or D (western), no closer: under about 34.5 yalms from the add its laser kills you. Otherwise it is <b>crossed</b>: stand at the middle of its outer edge, top on the northern platform, bottom on the southern.</span>`];
         return ['Step 2 · Soak or bait', `Soak a tower or bait White Flame, by your Tilt against the towers' colour.<span class="hint"> Opposite colour soaks: wait clear of the bright souls' small AoEs, then the <b>straight</b> tether takes the tower on the centre corner, the <b>crossed</b> tether the one in the middle of your platform. Same colour baits: the yellow add closest to you, from the corner of your platform facing it.</span>`];
       }
       if(i === 0) return ['Paradeigma III', `Wait by Athena for your Soul: Engravement of Souls is going out.`];
@@ -1456,7 +1483,7 @@
         tethers.appendChild(el('line', { x1:ax, y1:WALL_ADD_Y[st.myAddY], x2:300, y2:264,
           stroke: aspectSoft(st.myColor), 'stroke-width':3, opacity:0.95, 'stroke-linecap':'round' }));
         unit(actors, 300, 264, 'dps', { me:true, color: aspectSoft(st.myColor) });
-        instr(`Your tether runs to the <span class="hl">${st.myAddY === 240 ? 'northern' : 'southern'}</span> of the two <span class="hl">${lightWord(st.myColor)}</span> adds on the <span class="hl">${st.mySide}</span> wall. Click the spot you take.<span class="hint"> Stretch it across: both DPS from one wall cross to the <b>opposite middle platform</b>: if your add lines up with it yours is the <b>straight</b> tether, at the platform's horizontal centre level with your add (only just far enough, so no closer); otherwise yours is <b>crossed</b>, at the middle of the platform's outer edge (top on the northern platform, bottom on the southern).</span>`);
+        instr(`Your tether runs to the <span class="hl">${st.myAddY === 240 ? 'northern' : 'southern'}</span> of the two <span class="hl">${lightWord(st.myColor)}</span> adds on the <span class="hl">${st.mySide}</span> wall. Click the spot you take.<span class="hint"> Stretch it across: both DPS from one wall cross to the <b>opposite middle platform</b>: if your add lines up with it yours is the <b>straight</b> tether, level with your add right on the line of waymark B or D (only half a yalm past where its laser kills you, so no closer, and no further out than the waymark); otherwise yours is <b>crossed</b>, at the middle of the platform's outer edge (top on the northern platform, bottom on the southern).</span>`);
         spotHits(dpsCandidates(), answerSpot);
       }
       else if(st.step === 2){
@@ -1549,7 +1576,7 @@
       const far = st.mySide === 'west' ? 'east' : 'west';
       const lead = `Your add is on the <b>${st.mySide}</b> wall, so you cross to the <b>mid ${far}</b> platform — both DPS from one wall share that tile, and the distance is what cuts the proximity damage.`;
       const why = st.straight
-        ? lead + ` Your add lines up with that platform, so yours is the <b>straight</b> tether: stand at its <b>horizontal centre, level with your add</b>, so your laser runs dead east–west. That is only just the minimum stretch your tether needs, so do not stand any closer to the add.`
+        ? lead + ` Your add lines up with that platform, so yours is the <b>straight</b> tether: stand <b>level with your add on the line of waymark ${st.home.col === 'R' ? 'B' : 'D'}</b>, so your laser runs dead east–west. That is only half a yalm past where your own laser kills you outright (about 34.5 yalms from the add), so stand right on the waymark's line: not any closer to the add, and no further out.`
         : lead + ` Your add does not line up with it, so yours is the <b>crossed</b> tether: stand at the <b>middle of the platform's outer edge</b> — ${st.home.row === 2 ? 'top middle, as this is the northern middle platform' : 'bottom middle, as this is the southern middle platform'} — so your laser angles across. Together the two lasers leave an outer gap on the plain tower for the support.`;
       judge(ok, ok ? 'Good spot' : 'Wrong spot', why, 2);
     }

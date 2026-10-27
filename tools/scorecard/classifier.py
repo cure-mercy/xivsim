@@ -64,6 +64,7 @@ class Pull:
                     for e in ev["dmg"] if inf(e) and e["type"] == "calculateddamage" and e.get("sourceID") not in self.players
                     and (sr := e.get("sourceResources")) and "x" in sr]
         self.wf = (ev.get("wf") or {}).get(str(self.fid))   # White Flame's lasers and positions around them (scorecard.wf_compact)
+        self.p3 = (ev.get("p3") or {}).get(str(self.fid))   # Paradeigma III's add tethers (scorecard.p3_compact)
 
     # helpers
     def white_flame(self, lo, hi):
@@ -559,10 +560,11 @@ def para1_auto(p, lp):
 
 
 # Paradeigma III's DPS tether seats (the simulator's dpsSpots, in yalms): each DPS stretches to the middle platform
-# across from their add's wall, 10 y from the centre line; the straight tether (its add, 3 y off the horizontal centre
-# line, on the platform's side) stands level with it, 3 y out, the crossed one at the platform's outer edge, 8.5 y out.
-# From 2026-10-25 half the DPS stand within 0.9 (crossed) / 1.2 y (straight) of theirs, 90% within 1.9 / 3.1.
-TETHER_SEAT = 10, 3, 8.5
+# across from their add's wall: the straight tether (its add, 3 y off the horizontal centre line, on the platform's
+# side) level with it, 3 y out, on the line of waymark B / D (the groups' preset: 10 y from the centre line, 35 y from
+# the add, half a yalm past the lethal 34.5); the crossed one 10 y out at the platform's outer edge, 8.5 y out. From
+# 2026-10-25 half the DPS stand within 0.9 (crossed) / 1.2 y (straight) of theirs, 90% within 1.9 / 3.1 (the 10 y seats).
+TETHER_SEAT = 10, 3, 8.5, 10   # straight x, straight y, crossed y, crossed x
 TETHER_HALF = 3.0     # a tether laser hits up to ~3 y from its line, past its holder too (scratch/para3tether/width.py)
 TETHER_SURE = 0.5     # medium only when the deciding seat clears the laser by this much more (its reach is ~3.0 +- 0.3)
 sure = lambda gap: "medium" if gap > TETHER_HALF + TETHER_SURE else "low"
@@ -576,8 +578,9 @@ def line_off(a, b, q):
 def tether_lasers(p, supports):
     """Paradeigma III's DPS tether lasers from their calculated hits, which name every target even when another laser
     killed one first and their own left no damage event: {instance: (ability, its add's position, holder, {target:
-    position})}. A laser calculated on one DPS is theirs, one through two belongs to the one holding no other, and of
-    two on one DPS (a dead holder's laser goes to someone) theirs is the one whose add is farther: a DPS stretches away."""
+    position})}. The holder is the add's last tether before the laser (Pull.p3); without it, a laser calculated on one
+    DPS is theirs, one through two belongs to the one holding no other, and of two on one DPS (a dead holder's laser
+    goes to someone) theirs is the one whose add is farther: a DPS stretches away."""
     by, add = collections.defaultdict(dict), {}
     for e in p.calc:
         if e["name"] in ("Searing Radiance", "Shadowsear") and 214.5 <= e["t"] <= 217.5:
@@ -592,6 +595,10 @@ def tether_lasers(p, supports):
     owner = {}
     for (inst, nm), ws in sorted(by.items(), key=first):
         if len(free := {w for w in ws if w not in supports} - set(owner.values())) == 1: owner[inst] = free.pop()
+    # the add's last tether before its laser names the holder outright (a laser through two DPS, a holder dying as it fired)
+    t0 = min((e["t"] for e in p.calc if e["name"] in ("Searing Radiance", "Shadowsear") and 214.5 <= e["t"] <= 217.5), default=None)
+    for t, inst, pid in (p.p3 or {}).get("tethers", ()):
+        if t0 is not None and t < t0 and pid in p.players: owner[inst] = p.players[pid]
     return {inst: (nm, add.get(inst), owner.get(inst), ws) for (inst, nm), ws in by.items()}
 
 
@@ -607,8 +614,15 @@ def tether_seats(lasers):
         if not (o and a): continue
         col = -math.copysign(1, a[0]); row = row_w if col < 0 else -row_w
         straight = math.copysign(1, a[1]) == row
-        out[o] = ((col * TETHER_SEAT[0], row * TETHER_SEAT[1 if straight else 2]), straight)
+        out[o] = ((col * TETHER_SEAT[0 if straight else 3], row * TETHER_SEAT[1 if straight else 2]), straight)
     return out
+
+
+def gone_before(p, t, o, laser):
+    """Whether holder o was dead before their laser landed at t: not when it was their own laser that killed them (alive
+    as it fired; it ran on through whoever stood in its line)."""
+    own = any(e["who"] == o and e["name"] == laser[0] and (e.get("targetResources") or {}).get("hitPoints") == 0 and 214.5 <= e["t"] <= 217.5 for e in p.dmg)
+    return o in p.dead_by(t) and not own
 
 
 def tether_cross(p, t, v, o, laser, seat):
@@ -617,7 +631,7 @@ def tether_cross(p, t, v, o, laser, seat):
     fired, the holder by aiming it from theirs); either way, whoever's seat clears it by more (the lasers are angled: a
     step of the holder's moves the line less near the add), both within 0.5 y of each other (low)."""
     nm, a, _, ws = laser
-    if o in p.dead_by(t):
+    if gone_before(p, t, o, laser):
         return fault(t, "Paradeigma III", [o], [v], f"{o} died before their tether laser landed; aimed where they died, it hit {v}", "consequence", chain=[o])
     pv, po = ws.get(v), ws.get(o)
     if not (a and pv and po and v in seat and o in seat):
@@ -638,7 +652,7 @@ def tether_clip(p, e, laser, seat):
     t, v = e["t"], e["who"]
     nm, a, o, ws = laser or (None,) * 4
     if o and a and o in seat and ws.get(o) and (pv := ws.get(v) or e["pos"]):
-        if o in p.dead_by(t):
+        if gone_before(p, t, o, laser):
             return fault(t, "Paradeigma III", [o], [v], f"{o} died before their tether laser landed; aimed where they died, it clipped {v}", "consequence", chain=[o])
         if (gap := line_off(a, seat[o][0], pv)) > TETHER_HALF:
             return fault(t, "Paradeigma III", [o], [v], f"{o}: off their seat, their tether laser hit {v} at the tower ({o} {math.dist(ws[o], seat[o][0]):.1f} y off their seat)", sure(gap))
