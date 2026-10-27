@@ -146,7 +146,7 @@
           <li>Read its two shapes: a <b>Blue donut</b> means get in, a <b>Green orb</b> is point-blank so stay out; an <b>Orange spiked ball</b> cones every player so spread, a <b>Purple jack</b> cones one role so pair up across roles. The spots are relative to Athena, as for the lasers: facing her from the cluster, the tanks in front, then melee, healers and ranged behind, the 1s on your right and the 2s on your left. To pair, each DPS stacks with the support beside it (M1 with T1, M2 with T2, R1 with H1, R2 with H2), midway between their spots.</li>
           <li>Rotate 90° to the cluster chained to <b>only a blue donut</b> — that's where the Impact lasers land. Astral Impact can only be shared by Umbral-family players and vice versa, so the split is <b>Astralstrong + Umbralbright + both Umbral Tilts</b> against <b>Umbralstrong + Astralbright + both Astral Tilts</b>. Note each <b>strong</b> soul stands with the group named opposite to it — it's their own laser being shared. Facing the boss, the first group is on your <b>left</b> and the second on your <b>right</b>. The debuff icons show it: the figure on each Tilt leans to its side (Astral right, Umbral left), and each strong soul's laser aims to its side (Astral left, Umbral right).</li>
           <li>Rotate again to the last cluster, chained to both a green orb and a blue donut. The <b>shorter chain resolves first</b>, so it's either out-then-in or in-then-out.</li>
-          <li>At the last cast the jobs split three ways: the <b>bright</b> souls drop the towers on the two cardinals beside the last cluster at max melee, the two <b>strong</b> souls soak them now that their own lasers have fired, and the four <b>Heavensflame</b> players spread well away from everyone before their AoEs land: melee run through Athena all the way to the far side, ranged run back into the corner behind the last cluster, the 1s on the right and the 2s on the left. Heavensflame never soaks.</li>
+          <li>At the last cast the jobs split three ways: the <b>bright</b> souls drop the towers on the two cardinals beside the last cluster at max melee (about 11 yalms out, just outside Athena's target circle), the two <b>strong</b> souls soak them now that their own lasers have fired, and the four <b>Heavensflame</b> players spread well away from everyone before their AoEs land: melee run through Athena all the way to the far side, ranged run back into the corner behind the last cluster, the 1s on the right and the 2s on the left. Heavensflame never soaks.</li>
           <li>A tower takes the <b>opposite Tilt</b>. Each bright soul drops a tower of its own aspect, and each strong soul holds the Tilt of its own laser, so <b>Umbralstrong</b> soaks Astralbright's tower and <b>Astralstrong</b> soaks Umbralbright's. Facing the boss, the Astral tower is on the <b>right</b> and the Umbral one on the <b>left</b>: each pair already shared a laser group, so nobody crosses over.</li>
         </ol>
       </details>
@@ -256,9 +256,10 @@ ${T.SHAPE_LEGEND}
     const STEP_SPEED = SPEED * 2;
     // In yalms times 12: inside the donut's gap within 6, the orb reaches 7, each cone is 30° across,
     // an Impact laser 6 wide (the game's data, Action 33544-33545; the logs agree: hit up to about 3 off the line),
-    // a tower 5 wide, a bright Soul's AoE 3 and Heavensflame 6 in radius.
-    const DONUT_SAFE = 72, ORB_R = 84, CONE_HALF = 15, LASER_HALF = 36, TOWER_R = 30, GLOW_R = 36, FLAME_R = 72;
-    const IN_AT = 36, OUT_AT = 108, MAX_MELEE = 156;
+    // a tower and a bright Soul's AoE 3 in radius and Heavensflame 6 (the game's data, Action 33550-33551, 33548-33549,
+    // 33542). The towers drop at max melee, 11 yalms out, just outside Athena's target circle (the logs: a median 10.9).
+    const DONUT_SAFE = 72, ORB_R = 84, CONE_HALF = 15, LASER_HALF = 36, TOWER_R = 36, GLOW_R = 36, FLAME_R = 72;
+    const IN_AT = 36, OUT_AT = 108, MAX_MELEE = 132;
 
     let pace = 'steps';
     try{ if(localStorage.getItem('twelfth-sc-pace') === 'live') pace = 'live'; }catch(e){}

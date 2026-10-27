@@ -65,6 +65,7 @@ class Pull:
                     and (sr := e.get("sourceResources")) and "x" in sr]
         self.wf = (ev.get("wf") or {}).get(str(self.fid))   # White Flame's lasers and positions around them (scorecard.wf_compact)
         self.p3 = (ev.get("p3") or {}).get(str(self.fid))   # Paradeigma III's add tethers (scorecard.p3_compact)
+        self.sc1 = (ev.get("sc1") or {}).get(str(self.fid))   # Superchain I's towers, last cluster and positions (scorecard.sc1_compact)
 
     # helpers
     def white_flame(self, lo, hi):
@@ -348,9 +349,11 @@ def wf_replay(p, lo, hi, w, t, lp):
     replay not picking the adds' targets (each replayed laser paired with a logged line holding its target). Each picked
     laser hits whom the log says it did (a player at its edge either way) until a correction moves its target; a victim
     no correction of up to WF_FIX_MAX players spares is left to the other rules. Spots: a baiter's line-up seat, everyone else the stack; players within WF_SURE[0] of
-    theirs are not moved (they stood there). Of the corrections, the one with fewest players within their spot's
-    tolerance (SEAT_OFF, WF_STACK_R), then the victim's own, then the farthest off, is blamed; when every one has
-    someone within it and there are several, all of them as undecided (low: the user's ruling, said as such). Sure when every culprit stood over WF_SURE[0] past that tolerance and an
+    theirs are not moved (they stood there). Of the corrections, those with fewest players within their spot's
+    tolerance (SEAT_OFF, WF_STACK_R) are blamed, all of them: with everyone in them out of place, each correction's
+    players made a mistake either way (the user's rule, 2026-10-27, as for Superchain I's lasers and towers; it was the
+    victim's own, else the farthest off); when every one has someone within it and there are several, all of them as
+    undecided (low: the user's ruling, said as such). Sure when every culprit stood over WF_SURE[0] past that tolerance and an
     interloper over WF_SURE[0] nearer the add than the baiters it out-stood, each margin also past how far the players
     in it could have run (WF_RUN) between the cast and their nearest position reading: then high for baiters out of the
     line-up (nearer the stack than their seat, or unhit over 2 * SEAT_OFF from it), medium for the rest (at most medium
@@ -393,16 +396,16 @@ def wf_replay(p, lo, hi, w, t, lp):
     victims = [x for x in alive if n[x] > (x in bait)]
     movable, tried, blame, alone, undecided = [x for x in alive if off[x] > WF_SURE[0]], {}, {}, {}, set()
     for v in victims:
-        score = lambda c: (sum(not out_of_place[x] for x in c), v not in c, -sum(off[x] for x in c))
+        score = lambda c: sum(not out_of_place[x] for x in c)   # players inside their spot's tolerance
         for k in range(1, WF_FIX_MAX + 1):
             ok = [c for c in itertools.combinations(movable, k) if (tried[c] if c in tried else tried.setdefault(c, counts(c)))[v] <= (v in bait)]
             if ok: break
         else: continue
         best = min(map(score, ok))   # options all within tolerance: no telling them apart, so all of them, undecided
-        opts = [c for c in ok if (score(c)[0] == best[0] if best[0] else score(c) == best)]
+        opts = [c for c in ok if score(c) == best]
         blame[v] = tuple(sorted({x for c in opts for x in c}))
         alone[blame[v]] = k == 1
-        if best[0] and len(opts) > 1: undecided.add(blame[v])
+        if best and len(opts) > 1: undecided.add(blame[v])
     targets = {tg for _, tg, _ in real}
 
     def role(x):
@@ -1011,6 +1014,10 @@ def para3(p, lp, priority=False):
 # Athena in clean spreads (median, degrees; quartiles within 7-15 of it, except ranged, who stand wider).
 MELEE_JOBS = {"Monk", "Dragoon", "Ninja", "Samurai", "Reaper", "Viper"}
 CLUSTER, SPOT_ANGLE, SPOT_MARGIN = 8.25, {"T": 17, "M": 50, "H": 98, "R": 146}, 20
+CONE_HALF = 15      # degrees either side of an orange or purple cone's aim
+# how far off their seat's angle each row stands in clean orange spreads, 9 times in 10 (2026-10-06 on): past it, off
+# their spot (healers and ranged stand much wider than tanks: a flat 20 called a healer at 24 off it)
+SPOT_TOL = {"T": 14, "M": 25, "H": 36, "R": 78}
 PARTNER = {"T": "M", "M": "T", "H": "R", "R": "H"}
 
 
@@ -1038,21 +1045,28 @@ def spot_frame(p, lp, hs):
 
 
 def cone_blame(p, lp, hs, group):
-    """Who of a group sharing an orange cone left their spot around the cluster: (culprits, confidence, why). The one
-    further off their seat's angle by at least SPOT_MARGIN degrees; all of them when each is that far off (a swap);
-    otherwise they share it."""
+    """Who of a group in one orange cone made it so: (culprits, confidence, why). Whoever's move alone to their seat's
+    angle around the cluster puts them over CONE_HALF degrees from the others (the cones are 30 degrees wide: pairs one
+    hit stood a median 11 apart, pairs none did over 15; scratch/sc1audit/cones.py). Several would: those off their
+    spot (past their row's SPOT_TOL); all when they all are; none, it cannot be decided (all, low). None alone: all of
+    them. High when SPOT_MARGIN past it. The user's rule as for the other mechanics, 2026-10-27 (it was the one further
+    off by SPOT_MARGIN, else a share)."""
     fr = spot_frame(p, lp, hs)
     if not fr or not all(w in fr[0] and w in fr[1] for w in group): return sorted(group), "low", ""
     seat, ang, want = fr
-    off = {w: abs((ang[w] - want[w] + 180) % 360 - 180) for w in group}
-    far = sorted(group, key=off.get, reverse=True)
+    gap = lambda a, b: abs((a - b + 180) % 360 - 180)
+    off = {w: gap(ang[w], want[w]) for w in group}
     name = lambda w: "".join(map(str, seat[w]))
-    if off[far[0]] - off[far[1]] >= SPOT_MARGIN:
-        w = far[0]
-        return [w], "high" if off[w] - off[far[1]] >= 2 * SPOT_MARGIN else "medium", f"; {w} ({name(w)}) stood {off[w]:.0f} degrees off their spot around the cluster"
-    if off[far[-1]] >= SPOT_MARGIN:
-        return sorted(group), "medium", "; " + ", ".join(f"{w} ({name(w)}) {off[w]:.0f}" for w in far) + " degrees off their spots"
-    return sorted(group), "low", ""
+    told = ", ".join(f"{w} ({name(w)}) {off[w]:.0f}" for w in sorted(group, key=off.get, reverse=True)) + " degrees off their spots"
+    fixes = [w for w in group if all(gap(want[w], ang[o]) > CONE_HALF for o in group if o != w)]
+    past = lambda w: off[w] - SPOT_TOL[seat[w][0]]     # degrees past their row's tolerance
+    out = [w for w in fixes if past(w) > 0]
+    if len(fixes) == 1 or len(out) == 1:
+        w = fixes[0] if len(fixes) == 1 else out[0]
+        return [w], "high" if past(w) >= SPOT_MARGIN else "medium", f"; {w} ({name(w)}) stood {off[w]:.0f} degrees off their spot around the cluster ({told})"
+    if out: return sorted(out), "medium", f"; each of them back at their spot would have done ({told})"
+    if fixes: return sorted(group), "low", f"; could not be decided who stood in whose orange cone ({told})"
+    return sorted(group), "medium" if any(past(w) > 0 for w in group) else "low", f"; no one of them alone back at their spot would have done ({told})"
 
 
 def pair_blame(p, lp, hs, crowd):
@@ -1073,7 +1087,7 @@ def pair_blame(p, lp, hs, crowd):
     return [], "low", ""
 
 
-# Superchain I's lasers run from Athena, each aimed at its Strong Soul, about 4 y wide. Seen from Athena the two laser
+# Superchain I's lasers run from Athena, each aimed at its Strong Soul, 6 y wide (the game's data). Seen from Athena the two laser
 # groups stand a median 17 degrees apart in pulls where no one took both; where someone did, a median 5 (2026-10-26)
 LASER_STRONG = {"Astral Impact": "Astralstrong", "Umbral Impact": "Umbralstrong"}
 CAMPS_APART = 10    # degrees: groups closer than this stood on top of each other, and the Strong Souls aim the lines
@@ -1115,6 +1129,148 @@ def clip_geometry(p, lt, exp, S, w, clip):
     if diff(a, mean(ours)) < diff(a, mean(theirs)):
         return [s], f"took both lasers ({clip} too): {s}, who aims it, stood nearer {w}'s laser group than their own", "medium"
     return [w], f"took both lasers ({clip} too): stood toward the {clip} group", "medium"
+
+
+# The lasers replayed (scratch/sc1audit/lasers.py, 2026-10-27; the user's rule the same day): each runs from Athena at
+# the centre through its Strong Soul as its hits are calculated, hitting everyone within SC1_LASER_HALF of the line (the
+# game's data; the cast's logged source is stale), which reproduces 88% of lasers exactly. Each laser group stands
+# SC1_GROUP_R out, SC1_GROUP_ANG degrees either side of the laser cluster's bearing (the donut-only cluster; the Astral
+# laser's group clockwise of it): clean pulls' sharers stand a median 1.0 y from that spot, 95% within SC1_GROUP_TOL, in
+# every group. A position read more than SC1_GROUP_STALE s from a sample makes a verdict at most medium.
+SC1_LASER_HALF, SC1_GROUP_R, SC1_GROUP_ANG, SC1_GROUP_TOL, SC1_GROUP_STALE = 3.0, 11.3, 15, 2.6, 0.5
+
+
+def sc1_laser_replay(p, exp, S):
+    """The lasers from positions (Pull.sc1), or None without them: dict(hits(laser, movers) -> who it hits with the
+    movers at their group's spot, fits {laser: the replay reproduces its calculated hits}, off {player: y from their
+    group's spot}, gap {player: s to their nearest position sample}, strong {laser: its Strong Soul})."""
+    sc = p.sc1 or {}
+    calc = [e for e in p.calc if e["name"] in LASER_STRONG and 134 <= e["t"] <= 140]
+    if not calc: return None
+    t, shapes = min(e["t"] for e in calc), collections.defaultdict(set)
+    for c in sc.get("cluster", ()):
+        if 134 <= c[0] <= 139: shapes[(round(c[2]), round(c[3]))].add(c[1])
+    lc = [k for k, v in shapes.items() if v == {"Coil"}]
+    if len(lc) != 1: return None
+    b = math.atan2(lc[0][1], lc[0][0])
+    spot = {nm: (SC1_GROUP_R * math.cos(b + math.radians(a)), SC1_GROUP_R * math.sin(b + math.radians(a)))
+            for nm, a in (("Astral Impact", SC1_GROUP_ANG), ("Umbral Impact", -SC1_GROUP_ANG))}
+    group = {w: nm for nm, ws in exp.items() for w in ws}
+    dead = p.dead_by(t - 2)     # death events before the calculation (dead_by dates a death 2 s back)
+    pos = {w: q for w in p.job if w not in dead and (q := sc1_where(p, w, t))}
+    strong = {nm: next((x for x in S[k] if x in pos), None) for nm, k in LASER_STRONG.items()}
+
+    def hits(nm, movers=()):
+        pp = {w: spot[group[w]] if w in movers and w in group else q[0] for w, q in pos.items()}
+        s = pp.get(strong[nm])
+        if not s: return None
+        n = math.hypot(*s) or 1e-9
+        return {w for w, q in pp.items() if (q[0] * s[0] + q[1] * s[1]) / n > 0 and abs(q[0] * s[1] - q[1] * s[0]) / n <= SC1_LASER_HALF}
+    got = {nm: {e["who"] for e in calc if e["name"] == nm} for nm in LASER_STRONG}
+    return dict(hits=hits, fits={nm: strong[nm] is not None and hits(nm) == got[nm] for nm in LASER_STRONG},
+                off={w: math.dist(q[0], spot[group[w]]) for w, q in pos.items() if w in group}, gap={w: q[1] for w, q in pos.items()}, strong=strong)
+
+
+def sc1_laser_fix(R, nm, w, want):
+    """Whose move alone to their laser group's spot would have put `w` where they belong for laser nm (in it when
+    `want`, else out of it): w, or the laser's Strong Soul, who aims it. (culprits, confidence, why) or None. Both
+    would: the one off their spot (past SC1_GROUP_TOL); both when both are (two mistakes, medium); when neither is, it
+    cannot be decided (both, low). Neither alone: both together (medium)."""
+    s = R["strong"][nm]
+    ok = lambda movers: (w in (R["hits"](nm, movers) or set())) == want
+    opts = list(dict.fromkeys(x for x in (w, s) if x and ok((x,))))
+    far = lambda x: R["off"].get(x, 0) > SC1_GROUP_TOL
+    at = lambda x: f"{x} {R['off'].get(x, 0):.1f} y from their group's spot"
+    sure = lambda xs: "high" if all(far(x) for x in xs) and all(R["gap"].get(x, 9) <= SC1_GROUP_STALE for x in {w, *xs}) else "medium"
+    if len(opts) == 2:
+        out = [x for x in opts if far(x)]
+        if not out: return [w, s], "low", f"either at their spot would have done ({at(w)}, {at(s)})"
+        if len(out) == 2: return [w, s], "medium", f"both away from their spots, either back would have done ({at(w)}, {at(s)})"
+        opts = out
+    if len(opts) == 1:
+        x = opts[0]
+        return [x], sure([x]), at(x) if x == w else f"{s}, who aims it, stood {R['off'].get(s, 0):.1f} y from their group's spot"
+    if s and s != w and ok((w, s)): return [w, s], "medium", f"both away from their spots ({at(w)}, {at(s)})"
+    return None
+
+
+# The bright Souls' towers (scratch/sc1audit, 2026-10-27): each drops on the cardinal beside the last cluster on its
+# side, Astral on the right and Umbral on the left as you face Athena from the cluster, SC1_TOWER_R out (the median).
+# Soaked towers landed within SC1_OFF of that spot nine times in ten, and their soakers came from within SC1_REACH as it
+# dropped (99%; the tower resolves 3 s after it drops). A position read more than SC1_STALE s from a sample is unsure.
+# A tower, and the bright Soul's AoE as it drops, takes whoever stands within SC1_ON of it (the game's data, Action
+# 33550-33551, 33548-33549). A Strong Soul SC1_STEP y nearer their tower than a second before was stepping in.
+SC1_TOWER_R, SC1_OFF, SC1_REACH, SC1_STALE, SC1_ON, SC1_STEP = 10.9, 6.9, 15.2, 1.0, 3.0, 1.0
+# Heavensflame (Theos's Holy) reaches SC1_FLAME y (the game's data, Action 33542); who walked in is read over the last
+# SC1_FLAME_WINDOW s, and within SC1_FLAME_EDGE of the edge it cannot be told.
+SC1_FLAME, SC1_FLAME_WINDOW, SC1_FLAME_EDGE = 6.0, 1.5, 0.5
+
+
+def sc1_where(p, w, at):
+    """(position, seconds to the nearest sample it is read from) of player `w` at `at` (Pull.sc1), or None."""
+    s = sorted((t, (x, y)) for t, pid, x, y in (p.sc1 or {}).get("pos", ()) if p.players.get(pid) == w)
+    if not s: return None
+    before, after = [v for v in s if v[0] <= at], [v for v in s if v[0] > at]
+    if not before: return after[0][1], after[0][0] - at
+    if not after: return before[-1][1], at - before[-1][0]
+    (ta, pa), (tb, pb) = before[-1], after[0]
+    k = (at - ta) / (tb - ta) if tb > ta else 0
+    return (pa[0] + k * (pb[0] - pa[0]), pa[1] + k * (pb[1] - pa[1])), min(at - ta, tb - at)
+
+
+def sc1_spot(p, asp):
+    """(the tower [t, x, y] where it dropped, its planned spot (x, y)) for one bright tower (Pull.sc1), or None."""
+    sc = p.sc1 or {}
+    tw = next(([t, x, y] for t, a, x, y in sc.get("towers", ()) if a == asp), None)
+    cl = [c for c in sc.get("cluster", ()) if c[0] >= 139]   # the last cluster's orb and donut
+    if not tw or not cl: return None
+    cx, cy = sum(c[2] for c in cl) / len(cl), sum(c[3] for c in cl) / len(cl)
+    # the cardinal beside the cluster on the tower's side: facing Athena (-cx, -cy), right is clockwise (y points south)
+    card = [(0, math.copysign(1, cy)), (math.copysign(1, cx), 0)]
+    want = next(((v[0] * SC1_TOWER_R, v[1] * SC1_TOWER_R) for v in card if (-cx * v[1] + cy * v[0] > 0) == (asp == "Astral")), None)
+    return (tw, want) if want else None
+
+
+def sc1_dropped_on(p, asp, v, at):
+    """A Strong Soul hit by a bright Soul's AoE (at `at`): (why, confidence) when its owner dropped the tower on them,
+    well off its spot (past SC1_OFF), while they stood clear of the spot (past its SC1_ON) and were not stepping in
+    (under SC1_STEP y nearer it over the second before), else None: they stepped in early. Clean pulls' soakers wait
+    clear of their tower's spot (all over 3 y from the tower as it drops), so a tower on its spot never lands on them."""
+    sp, q, q1 = sc1_spot(p, asp), sc1_where(p, v, at), sc1_where(p, v, at - 1)
+    if not sp or not q or not q1: return None
+    (tw, want), here = sp, (sp[0][1], sp[0][2])
+    off, clear, step = math.dist(here, want), math.dist(q[0], want), math.dist(q1[0], here) - math.dist(q[0], here)
+    if off <= SC1_OFF or clear <= SC1_ON or step >= SC1_STEP: return None
+    return (f"{off:.1f} y from its spot; {v} {math.dist(q[0], here):.1f} y from it, {clear:.1f} from the spot, {max(step, 0):.1f} y nearer than a second before",
+            "high" if q[1] <= SC1_STALE and q1[1] <= SC1_STALE else "medium")
+
+
+def sc1_tower(p, asp, soaker, owner):
+    """Whose move alone to their spot would have saved an unsoaked bright tower, from where it dropped and where its
+    soaker stood as it did: (culprits, confidence, why, off plan) or None without the positions. The soaker's when it
+    dropped on its spot (could they reach it or not: they were not where they should be); its dropper's when it dropped
+    out of the soaker's reach and its spot was in it, or off its spot right on them (its AoE gave them the wrong Tilt);
+    when it dropped off its spot but within reach, undecided (either could have saved it, the user's call, 2026-10-27);
+    when neither its spot nor where it dropped was in reach, both."""
+    sp = sc1_spot(p, asp)
+    if not sp: return None
+    tw, want = sp
+    glow = [e["t"] for e in p.calc if e["name"] == f"{asp} Glow" and tw[0] - 5 <= e["t"] <= tw[0]]
+    q = sc1_where(p, soaker, min(glow) if glow else tw[0] - 3)
+    if not q: return None
+    at = (tw[1], tw[2])
+    d, dp, off = math.dist(q[0], at), math.dist(q[0], want), math.dist(at, want)
+    sure = q[1] <= SC1_STALE
+    facts = f"it dropped {off:.1f} y from its spot, {soaker} {d:.1f} y from it and {dp:.1f} from the spot"
+    if off <= SC1_OFF:
+        return [soaker], "high" if sure else "medium", f"{soaker} could reach it ({facts})" if d <= SC1_REACH else f"{soaker} was not near it ({facts})", off
+    if d <= SC1_ON:   # off its spot right on them: its AoE gave them the wrong Tilt
+        return [owner], "high" if sure else "medium", f"{owner} dropped it on {soaker}, off its spot ({facts})", off
+    if d <= SC1_REACH:
+        return [soaker, owner], "low", f"undecided: {owner} dropped it off its spot, but {soaker} could still reach it ({facts})", off
+    if dp <= SC1_REACH:
+        return [owner], "high" if sure else "medium", f"{owner} dropped it out of {soaker}'s reach ({facts})", off
+    return [soaker, owner], "medium", f"both away from it ({facts})", off
 
 
 def superchain1(p, lp):
@@ -1178,8 +1334,19 @@ def superchain1(p, lp):
         # a laser not theirs, with its own colour's Tilt, is their own death (it kills through six sharers); it only
         # helps the others in it. Listed first: a wrong-group player's death is theirs before the short laser's. Both
         # lasers on one player is a mistake even when they live (it leaves them low for what comes next)
+        # where the replay reproduces a laser, whose move alone to their group's spot would have set it right (the
+        # user's rule, 2026-10-27); the rules below are the fallback
+        R = sc1_laser_replay(p, exp, S)
+        fix = lambda nm, w, want: sc1_laser_fix(R, nm, w, want) if R and R["fits"][nm] and not any(x in p.dead_by(t - 0.3) for x in S[LASER_STRONG[nm]]) else None
+        undecided = lambda w, nm: f"could not be decided whose spot put {w} in the {nm}"
         for w, nm in wrong:
-            if w in both and any(w in ws for ws in exp.values()):
+            clip = w in both and any(w in ws for ws in exp.values())
+            if rf := fix(nm, w, False):
+                cul, conf, why = rf
+                lead = f"took both lasers ({nm} too)" if clip else f"took {nm}, not their laser group's"
+                rule = f"{undecided(w, nm)} ({'both lasers' if clip else 'not their laser'}): {why}" if conf == "low" else f"{lead}: {why}"
+                out.append(fault(t, "Superchain I", cul, [w], rule, conf, ability=nm, hit=clip))
+            elif clip:
                 cul, why, conf, chain = clip_blame(p, lt, exp, S, w, nm, both)
                 out.append(fault(t, "Superchain I", cul, [w], why, conf, chain=chain, ability=nm, hit=True))
             else: out.append(fault(t, "Superchain I", [w], [w], f"in the wrong laser group (took {nm})", "high"))
@@ -1189,20 +1356,61 @@ def superchain1(p, lp):
             got = {e["who"] for e in lt if e["name"] == nm}
             away = sorted(ws - got - dead)
             if not got or not away: continue
+            if all(fix(nm, w, True) for w in away):   # one fault for the sharers it left out, each with its reason
+                rs = [fix(nm, w, True) for w in away]
+                cul, conf = list(dict.fromkeys(x for r in rs for x in r[0])), min((r[1] for r in rs), key=lambda c: -CONF_ORDER[c])
+                miss = ", ".join(away)
+                rule = (f"could not be decided whose spot left {miss} out of the {nm}; it was a sharer short: " if conf == "low"
+                        else f"{nm} a sharer short ({miss} not in it): ") + "; ".join(r[2] for r in rs)
+                out.append(fault(t, "Superchain I", cul, got, rule, conf))
+                continue
             other = [w for w in away if w in wrong_group]
             out.append(fault(t, "Superchain I", away, got, f"not in the {nm} group ({', '.join(other) + ' took the other laser' if other else 'missed it'}); it was a sharer short",
                              "high" if other else "medium"))
-    # Heavensflame spread
+    # Heavensflame spread: each AoE lands on its owner and hits whoever is within SC1_FLAME of them (an owner standing
+    # clear never hit anyone else in 1,478 AoEs). A Strong Soul at or stepping into their tower is where they must be:
+    # the Heavensflame player's, who keeps clear of the towers. Anyone else (a bright Soul stepping back, another
+    # Heavensflame player; their spots vary by 10-30 y between groups): whoever closed the distance over the last
+    # SC1_FLAME_WINDOW s, both when both did; within SC1_FLAME_EDGE of its edge either way, or together all along, it
+    # cannot be decided (both, low). The user's rule, 2026-10-27 (scratch/sc1audit/flame_moves.py)
     hh = p.hits("Theos's Holy", 145.5, 149)
     by = collections.defaultdict(list)
     for e in hh: by[e.get("sourceInstance")].append(e["who"])
-    hf = set(S["Heavensflame"])
+    hf, told = set(S["Heavensflame"]), set()
+    tc = min((e["t"] for e in p.calc if e["name"] == "Theos's Holy" and 144 <= e["t"] <= 149), default=hh[0]["t"] - 0.7 if hh else None)
+    tower_of = {w: next((x[2:] for x in (p.sc1 or {}).get("towers", ()) if x[1] == OPP[k[:6]]), None)
+                for k in ("Astralstrong", "Umbralstrong") for w in S[k]}
+
+    def flame(o, v):
+        """(culprits, confidence, why) for owner o's Heavensflame on v, or None without positions."""
+        q = [sc1_where(p, w, at) for w in (o, v) for at in (tc, tc - SC1_FLAME_WINDOW)]
+        if not all(q): return None
+        (qo, qo0, qv, qv0) = q
+        tw = tower_of.get(v)
+        if tw and (math.dist(qv[0], tw) <= SC1_ON + SC1_FLAME_EDGE or math.dist(qv0[0], tw) - math.dist(qv[0], tw) >= SC1_STEP):
+            return [o], "medium", f"Heavensflame did not keep clear of the towers; hit {v} at their tower"
+        d, o_stayed, v_stayed = math.dist(qo[0], qv[0]), math.dist(qo0[0], qv[0]), math.dist(qo[0], qv0[0])
+        facts = f"{d:.1f} y apart; {o_stayed:.1f} had {o} stayed, {v_stayed:.1f} had {v}"
+        if d > SC1_FLAME + SC1_FLAME_EDGE:   # the positions do not even put them within reach: they cannot tell who walked in
+            return [o, v], "low", f"could not be decided who walked into whose Heavensflame ({facts}: the positions miss the hit)"
+        o_in, v_in = o_stayed > SC1_FLAME + SC1_FLAME_EDGE, v_stayed > SC1_FLAME + SC1_FLAME_EDGE
+        o_out, v_out = o_stayed <= SC1_FLAME - SC1_FLAME_EDGE, v_stayed <= SC1_FLAME - SC1_FLAME_EDGE   # still within reach with that move undone
+        if o_in and v_in: return [o, v], "medium", f"Heavensflame did not spread far enough: {o} and {v} both moved within reach ({facts})"
+        if o_in and v_out: return [o], "medium", f"Heavensflame did not spread far enough: {o} moved within reach of {v} ({facts})"
+        if v_in and o_out: return [v], "medium", f"{v} walked into {o}'s Heavensflame ({facts})"
+        return [o, v], "low", f"could not be decided who walked into whose Heavensflame ({facts})"
     for ws in by.values():
         owner = next((w for w in ws if w in hf), None)
         for v in ws:
-            if v == owner: continue
-            if v in hf: out.append(fault(hh[0]["t"], "Superchain I", [owner, v], [owner, v], "two Heavensflame players overlapped (pair did not split)", "medium", ability="Theos's Holy"))
-            else: out.append(fault(hh[0]["t"], "Superchain I", [owner], [v], f"Heavensflame did not spread far enough; hit {v}", "medium", ability="Theos's Holy"))
+            if v == owner or frozenset((owner, v)) in told: continue
+            told.add(frozenset((owner, v)))
+            r = flame(owner, v) if owner and tc is not None else None
+            if v in hf:
+                cul, conf, why = r or ([owner, v], "medium", "pair did not split")
+                out.append(fault(hh[0]["t"], "Superchain I", cul, [owner, v], f"two Heavensflame players overlapped: {why}", conf, ability="Theos's Holy"))
+            else:
+                cul, conf, why = r or ([owner], "medium", f"Heavensflame did not spread far enough; hit {v}")
+                out.append(fault(hh[0]["t"], "Superchain I", cul, [v], why, conf, ability="Theos's Holy"))
     # the bright Souls' small AoE as they drop their towers: only the owner belongs in it. Strong Souls wait beside it
     # before stepping in, the two bright Souls drop on opposite cardinals, and Heavensflame spreads well away from
     # everyone (a Heavensflame player in it, left low, often dies to their own Theos's Holy next, matched to this too)
@@ -1217,7 +1425,9 @@ def superchain1(p, lp):
         if owner is None and (gone := dead_soul(p, {w: a for a in ("Astral", "Umbral") for w in S[f"{a}bright"]}, e["name"], e["t"])):
             out.append(fault(e["t"], "Superchain I", gone, [v], f"{' and '.join(gone)} died holding a bright Soul; its tower dropped on {v}", "consequence", chain=gone))
             continue
-        if v in strong:
+        if v in strong and owner and (dr := sc1_dropped_on(p, e["name"].split()[0], v, e["t"])):   # dropped on them, off its spot
+            out.append(fault(e["t"], "Superchain I", [owner], [v], f"{owner} dropped their tower on {v}, off its spot ({dr[0]})", dr[1]))
+        elif v in strong:
             out.append(fault(e["t"], "Superchain I", [v], [v], "stepped into the tower before the bright Soul's AoE went off", "high"))
         elif owner in wrong_group:   # the laser side decides the tower side
             out.append(fault(e["t"], "Superchain I", [owner], [v], f"took the wrong laser, so their tower dropped on the wrong side; its AoE hit {v}", "high"))
@@ -1234,35 +1444,64 @@ def superchain1(p, lp):
     expl = p.hits("Unmitigated Explosion", 149, 156)
     for asp, soaker in (("Astral", S["Umbralstrong"]), ("Umbral", S["Astralstrong"])):
         got = [e for e in soaks if e["name"] == f"{asp} Advance"]
+        # anyone in it holding its Tilt (the opposite of its colour) holds it, not only its Strong Soul: 47 of 47 towers held
+        # by others with that Tilt did not explode, nor 31 with players of the wrong Tilt in them too (2026-10-27,
+        # scratch/sc1audit/tower_fates.py); with a dead Strong Soul that is a save, not a mistake
+        held = {e["who"] for e in got} & (p.has_debuff_at(f"{OPP[asp]} Tilt", got[0]["t"] - 0.1) if got else set())
+        holder, cover = [w for w in soaker if w in held], sorted(held - set(soaker))
         for e in got:
-            if e["who"] in soaker: continue
+            if e["who"] in soaker or e["who"] in cover and not holder: continue   # covering for its Strong Soul: judged below
             if together and e["who"] not in together:   # both towers on one spot: soaking one meant soaking both
                 out.append(fault(e["t"], "Superchain I", sorted(together), [e["who"]], f"in the {asp} tower too, as the bright Souls dropped their towers together",
                                  "medium", fallout=True))
             else: out.append(fault(e["t"], "Superchain I", [e["who"]], [e["who"]], f"soaked the {asp} tower (meant for {', '.join(soaker)})", "high"))
-        # unsoaked, or soaked only by someone else (which does not hold it): it explodes
-        if not any(e["who"] in soaker for e in got) and S[f"{asp}bright"]:
+        # unsoaked, or soaked only by others with the wrong Tilt: it explodes. Held by others in its Strong Soul's place,
+        # it does not, but it kills them (39 of 39 Heavensflame players, 23 of 32 others; its Strong Soul lives 9 times in
+        # 10): their deaths are whoever's the explosion would have been
+        left = S[f"{asp}bright"] and not any(e["who"] in soaker for e in got)   # its Strong Soul not in it (in it with the wrong Tilt: below)
+        sub = {e["who"] for e in got if e["who"] in cover and (e.get("targetResources") or {}).get("hitPoints", 1) == 0} if left and cover else set()
+        if left and (not held or sub):
             t = expl[0]["t"] if expl else 150
-            dead = p.dead_by(t - 2); blown = {e["who"] for e in expl}
+            # dead before it went off, but not in the explosion itself: its deaths can come within dead_by's 2 s of the
+            # towers resolving (2026-10-27: soakers alive at the resolve counted already dead)
+            bt = min((e["t"] for e in p.calc if e["name"] == "Unmitigated Explosion" and e["t"] >= 147), default=t)
+            dead = ({w for w in p.dead_by(t - 2) if not any(d["who"] == w and d["t"] >= bt - 0.3 for d in p.deaths)} if not sub
+                    else p.dead_by(got[0]["t"]))   # held, with no explosion: dead as it resolved
             b = S[f"{asp}bright"][0]
             sk = [w for w in soaker if w not in dead]
-            boom = dict(ability="Unmitigated Explosion")
+            if sub:   # no explosion: the substitutes it killed are the victims, the absent soaker not hurt
+                t, blown, mine_too = got[0]["t"], sub, False
+                how, boom = f"; {', '.join(cover)} held it in their place and died to it", dict(ability=f"{asp} Advance")
+            else: blown, mine_too, how, boom = {e["who"] for e in expl}, True, "", dict(ability="Unmitigated Explosion")
+            hurt = lambda cul: blown | set(cul) if mine_too else blown
+            # those who held it in its Strong Soul's place and died to it saved the pull: the site says so on their deaths
+            put = lambda f: out.append(dict(f, saved=sorted(sub)) if sub else f)
+            said = lambda r: r.replace("tower unsoaked", "tower not soaked by its Strong Soul") + how if sub else r   # it held: not "unsoaked"
             if b in p.dead_by(144):
-                out.append(fault(t, "Superchain I", [b], blown, f"{b} died before dropping the {asp}bright tower; it went unsoaked", "consequence", chain=[b], **boom))
+                put(fault(t, "Superchain I", [b], blown, f"{b} died before dropping the {asp}bright tower" + (how if sub else "; it went unsoaked"),
+                                 "consequence", chain=[b], **boom))
             elif not sk:   # wherever it dropped, no one was left to soak it
-                out.append(fault(t, "Superchain I", list(soaker), blown, f"{asp}bright tower unsoaked because its soaker was already dead", "consequence", chain=list(soaker), **boom))
+                put(fault(t, "Superchain I", list(soaker), blown, f"{asp}bright tower's soaker was already dead{how}" if sub else
+                                 f"{asp}bright tower unsoaked because its soaker was already dead", "consequence", chain=list(soaker), **boom))
+            elif rp := sc1_tower(p, asp, sk[0], b):   # where it dropped, and where its soaker stood
+                cul, conf, why, off = rp
+                lsr = f"{b} took the wrong laser, so it dropped on the wrong side; " if b in wrong_group and b in cul else ""
+                rule = (f"did not soak the {asp}bright tower: {why}" if cul == [sk[0]] else f"{asp}bright tower unsoaked, {why}" if conf == "low"
+                        else f"{asp}bright tower unsoaked: {lsr}{why}")
+                put(fault(t, "Superchain I", cul, hurt(cul), said(rule), conf, **boom))
             elif b in wrong_group:   # the laser side decides the tower side, so this tower landed away from its soaker
-                out.append(fault(t, "Superchain I", [b], blown | {b}, f"{asp}bright tower unsoaked: {b} took the wrong laser, so it dropped on the wrong side", "high", **boom))
-            else: out.append(fault(t, "Superchain I", sk, blown | set(sk), f"did not soak the {asp}bright tower", "high", **boom))
+                put(fault(t, "Superchain I", [b], hurt([b]), said(f"{asp}bright tower unsoaked: {b} took the wrong laser, so it dropped on the wrong side"), "high", **boom))
+            else: put(fault(t, "Superchain I", sk, hurt(sk), said(f"did not soak the {asp}bright tower"), "high", **boom))
         # soaked by its Strong Soul, but with the wrong Tilt (the tower takes the opposite one): it explodes all the same,
         # whether they live or not (2026-10-26: 81 such towers exploded, 7 did not, in pulls that had already ended).
         # The Tilt came from the bright Soul's AoE when they stepped in early, or from the other laser
         mine = [e["who"] for e in got if e["who"] in soaker]
-        if mine and S[f"{asp}bright"] and not set(mine) & p.has_debuff_at(f"{OPP[asp]} Tilt", got[0]["t"] - 0.1):
+        if mine and S[f"{asp}bright"] and not held:
             w, t, blown, boom = mine[0], expl[0]["t"] if expl else 150, {e["who"] for e in expl}, dict(ability="Unmitigated Explosion")
-            src = next((f for f in out if f["victims"] == {w} and (f["rule"].startswith("stepped into the tower") or f.get("ability") in LASER_STRONG
-                                                                    or "wrong laser group" in f["rule"])), None)
+            src = next((f for f in out if f["victims"] == {w} and (f["rule"].startswith("stepped into the tower") or "dropped their tower on" in f["rule"]
+                                                                    or f.get("ability") in LASER_STRONG or "wrong laser group" in f["rule"])), None)
             why = ("the bright Soul's AoE gave it as they stepped in early" if src and src["rule"].startswith("stepped into the tower")
+                   else "the bright Soul's AoE gave it, dropped on them" if src and "dropped their tower on" in src["rule"]
                    else "from the laser they took" if src else "cause unclear")
             rule = f"the {asp} tower failed: {w} soaked it with the wrong Tilt ({why})"
             if src: out.append(fault(t, "Superchain I", src["culprits"], blown, rule, src["confidence"], chain=src["chain"], after=src, **boom))
@@ -1363,7 +1602,7 @@ def merged(fs):
                 # the direct causes first: a cause's label comes from before "; earlier"
                 rule="; earlier: ".join(r for r in ("; ".join(dict.fromkeys(f["rule"] for f in direct)), "; ".join(dict.fromkeys(f["rule"] for f in fs if f["chain"]))) if r),
                 victims=set().union(*(f["victims"] for f in fs)),
-                fallout=bool(direct) and all(f["fallout"] for f in direct), parts=fs)
+                fallout=bool(direct) and all(f["fallout"] for f in direct), parts=fs, saved=sorted({w for f in fs for w in f.get("saved", ())}))
 RULEBOOK = {
     "Paradeigma I": [(None, AVOIDABLE_ONLY),   # before the group's strategy: only avoidable hits (Trinity of Souls)
                      ("2026-09-29", lambda p, lp: para1(p, lp) + para1_auto(p, lp))],   # the strategy took effect
@@ -1531,11 +1770,12 @@ def classify(p, lp, day=None):
             prior = [g["after"] for g in direct if g.get("after")]
             again = bool(direct) and len(prior) == len(direct) and all(id(g) in used for g in prior)
             used.update(id(g) for g in parts + prior)
+        saved = {"saved": True} if f and i["victim"] in f.get("saved", ()) else {}   # died holding what would have lost the pull
         if f and f["chain"]:
             r = from_chain(i, f)
-            add(dict(r, derived=True, carried=[]) if again and r["culprits"] else r)
+            add(dict(r, derived=True, carried=[], **saved) if again and r["culprits"] else dict(r, **saved))
         elif f:
-            add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"], **({"derived": True} if f["fallout"] or again else {})))
+            add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"], **saved, **({"derived": True} if f["fallout"] or again else {})))
         elif prev and i["ability"] not in AVOIDABLE:
             add(dict(i, mechanic=mech, cause=f"after their earlier {prev['kind']}: {prev['cause']}", culprits=prev["culprits"], confidence="medium", derived=True))
         elif own and own["chain"]:

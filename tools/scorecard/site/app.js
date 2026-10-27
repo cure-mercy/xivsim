@@ -1031,6 +1031,9 @@ function groupPage(day, group) {
     el("p", { class: "note" }, `Light parties inferred from the White Flame baits: LP1 ${r.light_parties[0].join(", ")} · LP2 ${r.light_parties[1].join(", ")}.`));
 }
 
+// a death's place in the pull: what decided the wipe, the collapse after it, or a death that saved the pull
+const wipeCell = d => d.saved && !d.when ? el("td", { class: "good" }, "saved the pull")   // not once the pull was lost
+  : el("td", { class: "muted" }, d.when === "lost" ? "decided the wipe" : d.when === "after" ? "after the wipe" : "");
 function playerPage(day, group, name) {
   const r = findGroup(day, group);
   const entries = r ? r.players.filter(p => p.name === name) : [];
@@ -1174,7 +1177,7 @@ function playerPage(day, group, name) {
   const inGroup = new Set(r.players.map(q => q.name));
   const culprit = d => !d.culprits.length ? el("span", { class: "muted" }, "none found")
     : names(d.culprits.map(c => c === name ? "self" : inGroup.has(c) ? el("a", { href: `#/day/${day}/${group}/${encodeURIComponent(c)}` }, c) : c));
-  app.append(heading("h2", "Deaths", "Every death of theirs, pull by pull: the hit that killed them, what the classifier says happened, and whose mistake it was (self: their own; none found: no rule explains it, often healing or mitigation, or fallout of an earlier death), with how sure it is of the culprit. Decided the wipe: the death, or the mass death, that lost the pull. After the wipe: the collapse once the pull was already lost, where deaths are forced."),
+  app.append(heading("h2", "Deaths", "Every death of theirs, pull by pull: the hit that killed them, what the classifier says happened, and whose mistake it was (self: their own; none found: no rule explains it, often healing or mitigation, or fallout of an earlier death), with how sure it is of the culprit. Decided the wipe: the death, or the mass death, that lost the pull. After the wipe: the collapse once the pull was already lost, where deaths are forced. Saved the pull: they died holding what would otherwise have lost it (a Superchain I tower held in its Strong Soul's place)."),
     el("p", { class: "lede" }, r.pulls.some(q => q.death_list) ? `${died.length} deaths in ${p.pulls} pulls; ${before.length} before the pull was lost: ${own} their own mistake, ${others} someone else's, ${before.length - own - others} no culprit found.`
       : "Not recorded for this report yet: rebuild the site (build_site.py --reanalyse)."),
     el("div", { class: "table-wrap" }, died.length ? el("table", {},
@@ -1183,7 +1186,7 @@ function playerPage(day, group, name) {
         el("td", { class: "num" }, el("a", { href: `#/day/${day}/${group}/pulls/${d.pull}` }, String(d.pull))), el("td", { class: "num" }, mmss(d.t)),
         el("td", {}, shortMech(d.mechanic || "")), el("td", {}, d.ability || "?"), el("td", { class: "wrap" }, deathLink(r, d), whatHappened(d)), el("td", {}, culprit(d)),
         el("td", {}, d.culprits.length ? confCell(d.confidence) : ""),
-        el("td", { class: "muted" }, d.when === "lost" ? "decided the wipe" : d.when === "after" ? "after the wipe" : "")))))
+        wipeCell(d)))))
       : el("div", { class: "empty", style: "padding:14px" }, "No deaths recorded.")));
   // across raid days
   const hist = reports().flatMap(x => x.players.filter(q => q.name === name).map(q => ({ ...q, day: x.day, group: x.group }))).sort((a, c) => a.day.localeCompare(c.day));
@@ -1307,13 +1310,13 @@ function pullPage(day, group, n) {
   const died = [...(p.death_list || [])].sort((a, c) => a.t - c.t), inGroup = new Set(r.players.map(q => q.name));
   const link = c => inGroup.has(c) ? el("a", { href: `#/day/${day}/${group}/${encodeURIComponent(c)}` }, c) : c;
   const culprit = d => !d.culprits.length ? el("span", { class: "muted" }, "none found") : names(d.culprits.map(c => c === d.who ? "self" : link(c)));
-  app.append(heading("h2", "Deaths in order", "Every death in this pull: the hit that killed them, what the classifier says happened, and whose mistake it was (self: their own; none found: no rule explains it, often healing or mitigation, or fallout of an earlier death), with how sure it is of the culprit. Decided the wipe: the death, or the mass death, that lost the pull. After the wipe: the collapse once the pull was already lost, where deaths are forced."),
+  app.append(heading("h2", "Deaths in order", "Every death in this pull: the hit that killed them, what the classifier says happened, and whose mistake it was (self: their own; none found: no rule explains it, often healing or mitigation, or fallout of an earlier death), with how sure it is of the culprit. Decided the wipe: the death, or the mass death, that lost the pull. After the wipe: the collapse once the pull was already lost, where deaths are forced. Saved the pull: they died holding what would otherwise have lost it (a Superchain I tower held in its Strong Soul's place)."),
     el("div", { class: "table-wrap" }, died.length ? el("table", {},
       el("thead", {}, el("tr", {}, ["Time", "Who", "Mechanic", "Killed by", "What happened", "Culprit", "Confidence", ""].map((h, i) => el("th", { class: i === 0 ? "num" : null }, h)))),
       el("tbody", {}, died.map(d => el("tr", { class: d.when === "after" ? "muted" : null },
         el("td", { class: "num" }, mmss(d.t)), el("td", {}, link(d.who)), el("td", {}, shortMech(d.mechanic || "")), el("td", {}, d.ability || "?"),
         el("td", { class: "wrap" }, whatHappened(d)), el("td", {}, culprit(d)), el("td", {}, d.culprits.length ? confCell(d.confidence) : ""),
-        el("td", { class: "muted" }, d.when === "lost" ? "decided the wipe" : d.when === "after" ? "after the wipe" : "")))))
+        wipeCell(d)))))
       : el("div", { class: "empty", style: "padding:14px" }, p.death_list ? "No deaths recorded." : "Not recorded for this report yet: rebuild the site (build_site.py --reanalyse).")));
 }
 
