@@ -55,7 +55,7 @@ CAUSES = [("pulled Athena early", "Early pull"), ("broken gear", "Broken gear (l
           ("dropped their towers together", "Bright Souls' towers dropped together"), ("bright Soul's AoE", "Bright Soul's AoE"),
           ("Trinity of Souls", "Trinity of Souls: on the cleaved side"), ("green orb", "Green orb (Superchain)"),
           ("Ray of Light", "Ray of Light column"), ("donut", "Donut (Superchain)"),
-          ("took both lasers", "Both Superchain lasers on one player"), ("White Flame line-up", "Missed White Flame bait"), ("did not bait their White Flame", "Missed White Flame bait"),
+          ("took both lasers", "Both Superchain lasers on one player"), ("White Flame line-up", "Missed White Flame bait"), ("closer to the White Flame add", "Too close to a White Flame add"), ("off their spot in the White Flame line", "Off their White Flame line-up spot"), ("did not bait their White Flame", "Missed White Flame bait"),
           ("White Flame", "White Flame line"), ("tether laser", "Tether laser"), ("laser group", "Superchain laser group"),
           ("share", "Superchain laser group"), ("Heavensflame", "Heavensflame spread"), ("orange cone", "Orange cone overlap"),
           ("purple jack", "Purple pair"), ("purple-jack pair", "Purple pair"), ("Soul AoE", "Soul AoE"), ("the + ", "+ / X placement"), ("the X ", "+ / X placement"),
@@ -75,6 +75,8 @@ TOWERS = [(("platform tower", "same tower"), "support tower left empty (Electrif
 # tether laser failures (Paradeigma II and III), labelled the same way
 TETHERS = [(("not stretched",), "tether not stretched far enough"),
            (("clipped them",), "tether laser clipped a soaking support"),
+           (("their tether laser hit", "'s tether laser hit"), "tether laser through another DPS (holder off their seat)"),   # Paradeigma III's; II's "a tether laser hit" is not
+           (("died before their tether laser landed",), "a dead DPS's tether laser hit another"),
            (("stood in", "two DPS tether"), "stood in another player's tether laser")]
 GROUPED = (("tether laser", TETHERS, "Tether"), ("tower", TOWERS, "Tower"), ("Soul in", TOWERS, "Tower"))
 MECHS = {"Paradeigma II", "Superchain I", "Paradeigma III"}
@@ -201,6 +203,45 @@ def fetch_pots(data):
     data["pots"] = out
 
 
+WF_WINDOW = (35, 47)   # seconds into the pull: Paradeigma I's two White Flame waves
+WF_EVENTS = '''f%d:events(fightIDs:[%d],startTime:%d,endTime:%d,dataType:All,hostilityType:%s,includeResources:true,limit:10000){data}'''
+
+
+def wf_compact(f, events, abilities):
+    """One pull's White Flame lasers and every position the log has around them, for the classifier (Pull.wf):
+    {lasers: [[t, laser instance, add x, add y]], adds: [[t, add instance, x, y]], pos: [[t, player id, x, y]]}, times in
+    seconds from the pull. Each add fires at its two nearest players at the laser cast, ~0.7 s before the hits; the
+    damage events hold only the hit players' positions, at the hit. The adds' own White Flame cast, ~0.9 s before the
+    lasers, has where they are; half the waves' lasers still log Athena's spot."""
+    players, seen, lasers, adds, pos = set(f["friendlyPlayers"]), set(), [], [], []
+    xy = lambda r: (round((r["x"] - 10000) / 100, 2), round((r["y"] - 10000) / 100, 2)) if r and "x" in r else None
+    for e in events:
+        k = json.dumps(e, sort_keys=True)   # the Enemies and Friendlies queries both return events between the sides
+        if k in seen: continue
+        seen.add(k)
+        t = round((e["timestamp"] - f["startTime"]) / 1000, 3)
+        if e["type"] == "cast" and abilities.get(str(e.get("abilityGameID"))) == "White Flame" and (p := xy(e.get("sourceResources"))):
+            # the adds' own White Flame cast targets themselves; the lasers do not
+            (adds if e.get("targetID") == e.get("sourceID") else lasers).append([t, e.get("sourceInstance"), *p])
+        for side in ("source", "target"):
+            if e.get(f"{side}ID") in players and (p := xy(e.get(f"{side}Resources"))): pos.append([t, e[f"{side}ID"], *p])
+    return dict(lasers=sorted(lasers), adds=sorted(adds), pos=sorted(pos))
+
+
+def fetch_wf(data):
+    """Positions around Paradeigma I's White Flame for every pull that lasts into it (wf_compact)."""
+    fights, out = [f for f in data["fights"] if f["endTime"] - f["startTime"] > WF_WINDOW[0] * 1000], {}
+    for i in range(0, len(fights), 8):
+        part, evs = fights[i:i + 8], collections.defaultdict(list)
+        for h in ("Enemies", "Friendlies"):
+            q = "query($c:String!){reportData{report(code:$c){" + " ".join(WF_EVENTS % (f["id"], f["id"], f["startTime"] + WF_WINDOW[0] * 1000,
+                min(f["endTime"], f["startTime"] + WF_WINDOW[1] * 1000), h) for f in part) + "}}}"
+            r = fflogs.gql(q, {"c": data["code"]})["reportData"]["report"]
+            for f in part: evs[f["id"]] += r[f"f{f['id']}"]["data"]
+        for f in part: out[str(f["id"])] = wf_compact(f, evs[f["id"]], data["abilities"])
+    data["wf"] = out
+
+
 def pot_gain(data, fid, y):
     """DPS over 0:00-2:00 a tincture added to this table row, as build_benchmark.py reckons the clears': the seconds under
     it at the player's 0:00-0:38 damage rate, times the tincture's share."""
@@ -216,7 +257,7 @@ def fetch(code, refresh, bench):
                                 ("otables", lambda: fetch_opener(data), "opener damage"), ("echo_pulls", lambda: fetch_echo(data), "the Echo check"),
                                 ("tables_given", lambda: fetch_tables(data, [f for f in data["fights"] if str(f["id"]) in data["tables"]]),
                                  "the rDPS raid buffs gave others"),
-                                ("pots", lambda: fetch_pots(data), "tinctures")):
+                                ("pots", lambda: fetch_pots(data), "tinctures"), ("wf", lambda: fetch_wf(data), "positions at White Flame")):
             if key not in data:   # reports cached before this part existed
                 if CACHED_ONLY: print(f"  {code}: no {what} in the cache, left out (--cached)", file=sys.stderr); continue
                 print(f"  {code}: fetching {what}", file=sys.stderr); fill(); cf.write_text(json.dumps(data))
@@ -242,6 +283,7 @@ def fetch(code, refresh, bench):
     fetch_opener(data)
     fetch_echo(data)
     fetch_pots(data)
+    fetch_wf(data)
     fflogs.CACHE.mkdir(exist_ok=True); cf.write_text(json.dumps(data))
     return data
 
@@ -352,7 +394,7 @@ def analyse(group, data, bench):
                 hp={k: v for k, v in data.get("hp", {}).items() if k not in echo})
     names = {a["id"]: a["name"] for a in data["masterData"]["actors"] if a["subType"] in ROLE}
     rep = {"masterData": data["masterData"], "deaths": data["deaths"]}
-    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"]}
+    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf")}
     import acts                                 # the players' casts, for the rules that read them (the Glaukopis swap)
     A = acts.report(data["code"], data["fights"])
     pulls = [Pull(data["code"], f, rep, ev, acts=A.get(str(f["id"]))) for f in data["fights"]]

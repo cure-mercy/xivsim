@@ -47,7 +47,9 @@ def report_entry(code, group, data, bench):
     for row in g["pull_rows"]:   # boss HP at each checkpoint the pull reached
         row["hp"] = {} if row["id"] in data.get("echo_pulls", []) else {m: round(100 * (1 - v / boss), 1) for m, v in data["hp"].get(str(row["id"]), {}).items()}
         row["echo"] = row["id"] in data.get("echo_pulls", [])
-    return plain(dict(code=code, group=group, day=g["date"].date().isoformat(), start=g["date"], title=data.get("title"),
+    # the report's start (ms) and each player's actor id, for links into the report on FFLogs
+    actors = {a["name"]: a["id"] for a in data["masterData"]["actors"] if a["subType"] in S.ROLE}
+    return plain(dict(code=code, group=group, day=g["date"].date().isoformat(), start=g["date"], start_ms=data["startTime"], actors=actors, title=data.get("title"),
                       pulls_total=g["pulls"], kills=g["kills"], best=g["best"], longest=g["longest"], clean2=g["clean2"], party=g["party"],
                       hp=g["hp"], causes=dict(g["causes"]), wipe_causes=dict(g["wipe_causes"]), coverage=dict(g["coverage"]),
                       light_parties=[sorted(g["lp"][0]), sorted(g["lp"][1])], players=g["players"], pulls=g["pull_rows"],
@@ -88,7 +90,8 @@ def benchmark_summary(bench, codes=()):
                 sec_per_hp=bench["pools"]["clears"]["kill_median_s"] / 100, raise_penalty=S.RAISE_PENALTY, raise_s=S.RAISE_S,
                 dd_penalty=S.DD_PENALTY, mistake_times=mistake_times(codes),
                 # when each mechanic a mistake is filed under starts (s), for rates per pull that reached it
-                mech_start=dict({"other": 0.0}, **{m: float(lo) for lo, hi, m in C.MECH}))
+                mech_start=dict({"other": 0.0}, **{m: float(lo) for lo, hi, m in C.MECH}),
+                mech_end={m: float(hi) for lo, hi, m in C.MECH})   # and when it ends, for links to the whole mechanic on FFLogs
 
 
 def publish(out):

@@ -49,9 +49,11 @@ class Pull:
         self.casts = None if acts is None else [(t, acts["players"][str(pid)][0], acts["names"].get(str(ab))) for t, pid, ab in acts["casts"]]
         inf = lambda e: e.get("fight") == self.fid and self.s - 30000 <= e["timestamp"] <= self.e + 3000
         self.dmg = [e for e in ev["dmg"] if inf(e) and e["type"] == "damage" and e.get("targetID") in self.players]
+        # the game's damage calculation, ~0.7 s before each hit: it names every target, also one killed by another hit first
+        self.calc = [e for e in ev["dmg"] if inf(e) and e["type"] == "calculateddamage" and e.get("targetID") in self.players]
         self.deb = [e for e in ev["debuffs"] if inf(e) and e.get("targetID") in self.players]
         self.deaths = [e for e in rep["deaths"] if inf(e) and e.get("targetID") in self.players]
-        for e in self.dmg + self.deb + self.deaths:
+        for e in self.dmg + self.calc + self.deb + self.deaths:
             e["t"] = (e["timestamp"] - self.s) / 1000
             e["who"] = self.players[e["targetID"]]
             e["name"] = self.ab.get(e.get("abilityGameID"), "?")
@@ -61,8 +63,44 @@ class Pull:
         self.src = [((e["timestamp"] - self.s) / 1000, self.ab.get(e.get("abilityGameID"), "?"), ((sr["x"] - 10000) / 100, (sr["y"] - 10000) / 100))
                     for e in ev["dmg"] if inf(e) and e["type"] == "calculateddamage" and e.get("sourceID") not in self.players
                     and (sr := e.get("sourceResources")) and "x" in sr]
+        self.wf = (ev.get("wf") or {}).get(str(self.fid))   # White Flame's lasers and positions around them (scorecard.wf_compact)
 
     # helpers
+    def white_flame(self, lo, hi):
+        """The White Flame laser cast between lo and hi, when each add picks its two nearest players: (its time,
+        {add position: its laser instances}, where, unsure), where(player) giving (position, seconds to the nearest
+        sample it is read from) or None, and unsure the lasers that could be either add's. In half the waves the lasers
+        log Athena's spot (stale): the adds' positions then come from their own White Flame cast just before, and each
+        laser goes to the add it fits (wf_pair: 93% right, 0.4% wrong, the rest unsure and counted for both). None
+        without the positions (scorecard.fetch_wf)."""
+        if not self.wf: return None
+        ls = [l for l in self.wf["lasers"] if lo <= l[0] <= hi]
+        if not ls: return None
+        t1, adds, samples, unsure = min(l[0] for l in ls), collections.defaultdict(set), collections.defaultdict(list), set()
+        stale = not all(abs(x) >= WF_WALL for _, _, x, _ in ls)
+        if not stale:
+            for _, inst, x, y in ls: adds[(x, y)].add(inst)
+        else:
+            adds = {(x, y): set() for t, _, x, y in self.wf.get("adds", ()) if t1 - 2 <= t <= t1 and abs(x) >= WF_WALL}
+        for t, pid, x, y in self.wf["pos"]:
+            if pid in self.players: samples[self.players[pid]].append((t, (x, y)))
+
+        def where(w):
+            s = samples.get(w)
+            if not s: return None
+            before, after = [v for v in s if v[0] <= t1], [v for v in s if v[0] > t1]
+            if not before: return after[0][1], after[0][0] - t1
+            if not after: return before[-1][1], t1 - before[-1][0]
+            (ta, pa), (tb, pb) = before[-1], after[0]   # linear between the samples either side
+            k = (t1 - ta) / (tb - ta) if tb > ta else 0
+            return (pa[0] + k * (pb[0] - pa[0]), pa[1] + k * (pb[1] - pa[1])), min(t1 - ta, tb - t1)
+        if stale and adds:
+            for inst, ok in wf_pair(self, lo, hi, t1, adds, where).items():
+                for a in ok or adds: adds[a].add(inst)
+                if len(ok) != 1: unsure.add(inst)
+        return t1, dict(adds), where, unsure
+
+
     def source_at(self, names, lo, hi):
         """Where the first of these enemy abilities between lo and hi came from, or None."""
         return next((pos for t, n, pos in self.src if n in names and lo <= t <= hi), None)
@@ -135,23 +173,147 @@ def fault(t, mech, culprits, victims, rule, conf, chain=None, ability=None, fall
 
 
 # ---------- Paradeigma I: White Flame light-party baits ----------
+# Each add fires White Flame at its two nearest living players at the laser cast (positions then fit 916 of 924 adds,
+# scratch/whiteflame); a baiter in the line-up can lose their laser to a non-baiter who stands, or runs past, closer.
+WF_WALL = 20          # an add's logged x when out at the wall (25); nearer the centre its position is stale
+WF_BAIT_MAX = 27.3    # y from their add at the laser cast: as far as a fitting add's second target stood (99th percentile)
+WF_SURE = 0.5, 0.1    # medium needs the non-baiter this much closer (y) and both positions sampled this close to the cast (s)
+WF_WAVES = ((1, (37, 41.5)), (2, (42, 46.5)))
+WF_FLAME = 3.0        # y a White Flame line reaches from its centre, as the tether lasers' (scratch/para3tether/width.py)
+# the line-up's spots, y from Athena toward the adds' half at the laser cast: tank, melee, healer, ranged by the wall
+# (medians of 527 clean waves' baiters ranked by it, scratch/whiteflame/seatspots.py; players keep their rank: 182 of 184)
+SEAT_ALONG = (1.3, 6.7, 12.5, 17.9)
+SEAT_OFF = 2.5        # y from their spot, off the line through Athena too: past 95% of clean waves' baiters (2.3 y;
+                      # scratch/whiteflame/seats2d.py). The add nearer the centre takes the two spots nearer Athena (519 of 527)
+
+
+class LightParties(tuple):
+    """(light party 1, light party 2), with `seats`: {(wave, player): their rank in the line-up, 0-3 from Athena}."""
+    seats = {}
+
+
+def along(wf, x):
+    """Player x's distance from Athena toward the adds' half at the laser cast (the line-up's axis), or None."""
+    q = wf[2](x)
+    return q and q[0][1] * math.copysign(1, next(iter(wf[1]))[1])
+
+
+def seat_off(wf, seats, w, b):
+    """How far baiter b stood from their line-up spot as the lasers fired (along the line and off it), or None."""
+    if (w, b) not in seats or not (q := wf[2](b)): return None
+    return math.hypot(q[0][0], along(wf, b) - SEAT_ALONG[seats[(w, b)]])
+
+
+def seat_add(wf, seats, w, b):
+    """The add whose laser baiter b's spot draws: the one nearer the centre for the two spots nearer Athena."""
+    adds = sorted(wf[1], key=lambda a: abs(a[1]))
+    return adds[0 if seats[(w, b)] < 2 else -1] if (w, b) in seats and adds else None
+
+
+def wf_pair(p, lo, hi, t1, adds, where):
+    """{laser instance: the adds it fits}: a laser starts at its add and runs through its target, one of the add's two
+    nearest living players, with everyone else in it within WF_FLAME of that line (scratch/whiteflame/pairing.py)."""
+    alive = [x for x in p.job if x not in p.dead_by(t1) and where(x)]
+    near2 = {a: {x for _, x in sorted((math.dist(where(x)[0], a), x) for x in alive)[:2]} for a in adds}
+    out = {}
+    for inst, ys in wf_aimed(p, lo, hi, p.hits("White Flame", lo, hi)).items():
+        pos = {y: q[0] for y in ys if (q := where(y))}
+        out[inst] = [a for a in adds if any(all(line_off(a, pos[tg], q) <= WF_FLAME for q in pos.values()) for tg in pos if tg in near2[a])]
+    return out
+
+
+def wf_aimed(p, lo, hi, hs):
+    """{laser instance: the players in its line}: the calculated hits, which also name a player another laser killed
+    first, else the hits."""
+    out = collections.defaultdict(set)
+    for e in [e for e in p.calc if e["name"] == "White Flame" and lo <= e["t"] <= hi] or hs: out[e.get("sourceInstance")].add(e["who"])
+    return out
+
+
+def line_up_seats(pulls, lp):
+    """{(wave, player): rank} from the clean waves (every baiter alive and hit once, no one else): the baiters ranked by
+    `along`, each player's most common rank."""
+    c = collections.defaultdict(collections.Counter)
+    for p in pulls:
+        for w, (lo, hi) in WF_WAVES:
+            hs, wf = p.hits("White Flame", lo, hi), p.white_flame(lo, hi)
+            if not hs or not wf or not wf[1]: continue
+            exp, cnt = {x for x in lp[w - 1] if x in p.job}, collections.Counter(e["who"] for e in hs)
+            if len(exp) != 4 or set(cnt) != exp or any(n != 1 for n in cnt.values()): continue
+            al = sorted((a, x) for x in exp if (a := along(wf, x)) is not None)
+            if len(al) == 4:
+                for r, (_, x) in enumerate(al): c[(w, x)][r] += 1
+    return {k: v.most_common(1)[0][0] for k, v in c.items()}
+
+
+def wf_lined(p, lo, hi, w, t, xs, exp, hs, seats):
+    """Faults for xs, who stood in a laser line: each their own, except a baiter in two or more lasers, sharing them
+    with others (in line with another target), when someone in them stood over SEAT_OFF from their line-up spot as they
+    fired and another did not: those off it. A baiter in two lasers that hit only them was each add's pick: their own."""
+    out, done, wf = [], set(), p.white_flame(lo, hi)
+    aimed = wf_aimed(p, lo, hi, hs)
+    by_far = collections.defaultdict(list)
+    for x in (xs if wf and wf[1] and seats else ()):
+        mine = [s for s in aimed.values() if x in s]
+        if x not in exp or len(mine) < 2 or not any(len(s) > 1 for s in mine): continue
+        off = {b: d for b in set().union(*mine) if b in exp and (d := seat_off(wf, seats, w, b)) is not None}
+        far = tuple(sorted(b for b, d in off.items() if d > SEAT_OFF))
+        if far and len(far) < len(off) and x in off: by_far[far].append(x)
+    for far, vs in by_far.items():
+        offs = {b: seat_off(wf, seats, w, b) for b in far}
+        out.append(fault(t, "Paradeigma I", list(far), vs, f"{', '.join(far)}: off their spot in the White Flame line as wave {w} fired "
+                         f"({', '.join(f'{b} {offs[b]:.1f} y from it' for b in far)}): {', '.join(vs)} took two or more lasers in line with them", "medium"))
+        done |= set(vs)
+    return out + [fault(t, "Paradeigma I", [x], [x], f"took a White Flame meant for wave {w} baiters (stood in a laser line)", "medium") for x in xs if x not in done]
+
+
+def wf_closer(p, lo, hi, missing, exp, hs, seats=None, w=None):
+    """{missing baiter: ([(interloper, their distance, sure)], the baiter's distance, the players their add's lasers hit,
+    whether one of those lasers could be the other add's)} for the missing baiters within WF_BAIT_MAX of their add at
+    the laser cast (the one their seat draws, else the nearest), whose add's lasers also went through a baiter (the
+    line-up was there; a whole light party missing is theirs) and an interloper closer to it than they were: a
+    non-baiter, or a baiter of the other add over SEAT_OFF from their spot. The nearest such took the laser (the others
+    it hit stood behind them in its line), with whoever stood within WF_SURE[0] of them (low: either could have)."""
+    wf, seats = p.white_flame(lo, hi), seats or {}
+    if not wf or not wf[1]: return {}
+    t1, adds, where, unsure = wf
+    aimed = wf_aimed(p, lo, hi, hs)
+    out = {}
+    for x in missing:
+        if not (px := where(x)): continue
+        add = seat_add(wf, seats, w, x) or min(adds, key=lambda a: math.dist(px[0], a))
+        dx = math.dist(px[0], add)
+        if dx > WF_BAIT_MAX or (seat_off(wf, seats, w, x) or 0) > SEAT_OFF: continue   # not in the line-up: theirs
+        hit = {y for i, ys in aimed.items() if i in adds[add] for y in ys}
+        if not hit & exp: continue
+        stray = lambda y: y not in exp or (seat_add(wf, seats, w, y) not in (add, None) and (seat_off(wf, seats, w, y) or 0) > SEAT_OFF)
+        near = sorted((dy, y, py[1]) for y in hit if y != x and stray(y) and (py := where(y)) and (dy := math.dist(py[0], add)) < dx)
+        if not near: continue
+        near = [v for v in near if v[0] - near[0][0] <= WF_SURE[0]]
+        sure = len(near) == 1 and dx - near[0][0] > WF_SURE[0] and max(near[0][2], px[1]) <= WF_SURE[1]
+        out[x] = [(y, dy, sure) for dy, y, _ in near], dx, sorted(hit), bool(adds[add] & unsure)
+    return out
+
+
 def infer_light_parties(pulls):
-    """LP1 baits the first White Flame wave, LP2 the second; learn who is who from clean single hits."""
+    """LP1 baits the first White Flame wave, LP2 the second; learn who is who from clean single hits, then their seats."""
     c1, c2 = collections.Counter(), collections.Counter()
     for p in pulls:
-        for (lo, hi), c in (((37, 41.5), c1), ((42, 46.5), c2)):
+        for (_, (lo, hi)), c in zip(WF_WAVES, (c1, c2)):
             by = collections.defaultdict(list)
             for e in p.hits("White Flame", lo, hi): by[e.get("sourceInstance")].append(e["who"])
             for ws in by.values():
                 if len(ws) == 1: c[ws[0]] += 1
     lp1 = {w for w, _ in c1.most_common(4)}
     lp2 = [w for w, n in c2.most_common() if w not in lp1][:4]   # keep the count order, not set order, before cutting to four
-    return lp1, set(lp2)
+    lp = LightParties((lp1, set(lp2)))
+    lp.seats = line_up_seats(pulls, lp)
+    return lp
 
 
 def para1(p, lp):
-    out = []
-    for w, (lo, hi) in ((1, (37, 41.5)), (2, (42, 46.5))):
+    out, seats = [], getattr(lp, "seats", {})
+    for w, (lo, hi) in WF_WAVES:
         hs = p.hits("White Flame", lo, hi)
         if not hs: continue
         t = min(e["t"] for e in hs); dead = p.dead_by(t - 0.5)
@@ -164,16 +326,29 @@ def para1(p, lp):
         by = collections.defaultdict(set)
         for e in hs: by[e.get("sourceInstance")].add(e["who"])
         lined = [x for x in extra if x not in exp and all(ws & exp for ws in by.values() if x in ws)]
+        aimed = wf_aimed(p, lo, hi, hs)
         if missing:
             took = [x for x in extra if x not in lined]
-            out.append(fault(t, "Paradeigma I", missing, took, f"not in the White Flame line-up (wave {w}); the laser went to {', '.join(took) or 'someone else'}", "high" if took else "medium"))
-            for x in lined:
-                out.append(fault(t, "Paradeigma I", [x], [x], f"took a White Flame meant for wave {w} baiters (stood in a laser line)", "medium"))
+            # a baiter in the line-up whose add found someone out of place closer: theirs, not the baiter's
+            for x, (ys, dx, hit, unsure) in wf_closer(p, lo, hi, missing, exp, hs, seats, w).items():
+                missing.remove(x)
+                cul = [y for y, *_ in ys]
+                # the add's lasers' victims are theirs; with a laser that could be the other add's, only the non-baiters
+                # in a laser with them (a baiter in two goes to wf_lined below, by the seats)
+                lost = [v for v in took if v in hit and (not unsure or v not in exp and any(v in s and set(cul) & s for s in aimed.values()))]
+                took = [v for v in took if v not in lost]
+                out.append(fault(t, "Paradeigma I", cul, lost, f"{', '.join(cul)}: closer to the White Flame add than its baiter {x} as wave {w} fired "
+                                 f"({', '.join(f'{y} {dy:.1f} y' for y, dy, _ in ys)}, {x} {dx:.1f} y)" + (f"; the laser went to {', '.join(lost)}" if lost else ""),
+                                 "medium" if all(s for *_, s in ys) else "low"))
+            if missing:
+                out.append(fault(t, "Paradeigma I", missing, took, f"not in the White Flame line-up (wave {w}); the laser went to {', '.join(took) or 'someone else'}", "high" if took else "medium"))
+            else:   # every missing baiter's laser explained: anyone else it hit (a baiter twice) stood in a laser line
+                lined += took
+            out += wf_lined(p, lo, hi, w, t, lined, exp, hs, seats)
         elif extra and len(extra) <= len(gone):   # a baiter was already dead, so their laser found someone else
             out.append(fault(t, "Paradeigma I", gone, extra, f"White Flame (wave {w}) went to {', '.join(extra)} because {'its baiter' if len(gone) == 1 else 'its baiters'} {', '.join(gone)} {'was' if len(gone) == 1 else 'were'} already dead", "consequence", chain=gone))
         elif extra:
-            for x in extra:
-                out.append(fault(t, "Paradeigma I", [x], [x], f"took a White Flame meant for wave {w} baiters (stood in a laser line)", "medium"))
+            out += wf_lined(p, lo, hi, w, t, extra, exp, hs, seats)
     return out
 
 
@@ -207,6 +382,93 @@ def para1_auto(p, lp):
     else:
         out.append(fault(t, "Paradeigma I", [v] + others, [v], f"{why}: {v} held her aggro ({', '.join(others)} did not keep it)", "medium"))
     return out
+
+
+# Paradeigma III's DPS tether seats (the simulator's dpsSpots, in yalms): each DPS stretches to the middle platform
+# across from their add's wall, 10 y from the centre line; the straight tether (its add, 3 y off the horizontal centre
+# line, on the platform's side) stands level with it, 3 y out, the crossed one at the platform's outer edge, 8.5 y out.
+# From 2026-10-25 half the DPS stand within 0.9 (crossed) / 1.2 y (straight) of theirs, 90% within 1.9 / 3.1.
+TETHER_SEAT = 10, 3, 8.5
+TETHER_HALF = 3.0     # a tether laser hits up to ~3 y from its line, past its holder too (scratch/para3tether/width.py)
+TETHER_SURE = 0.5     # medium only when the deciding seat clears the laser by this much more (its reach is ~3.0 +- 0.3)
+sure = lambda gap: "medium" if gap > TETHER_HALF + TETHER_SURE else "low"
+
+
+def line_off(a, b, q):
+    """How far q stands from the line through a and b."""
+    return abs((q[0] - a[0]) * (b[1] - a[1]) - (q[1] - a[1]) * (b[0] - a[0])) / max(math.dist(a, b), 1e-9)
+
+
+def tether_lasers(p, supports):
+    """Paradeigma III's DPS tether lasers from their calculated hits, which name every target even when another laser
+    killed one first and their own left no damage event: {instance: (ability, its add's position, holder, {target:
+    position})}. A laser calculated on one DPS is theirs, one through two belongs to the one holding no other, and of
+    two on one DPS (a dead holder's laser goes to someone) theirs is the one whose add is farther: a DPS stretches away."""
+    by, add = collections.defaultdict(dict), {}
+    for e in p.calc:
+        if e["name"] in ("Searing Radiance", "Shadowsear") and 214.5 <= e["t"] <= 217.5:
+            by[(e.get("sourceInstance"), e["name"])][e["who"]] = e["pos"]
+            if (sr := e.get("sourceResources")) and "x" in sr: add[e.get("sourceInstance")] = ((sr["x"] - 10000) / 100, (sr["y"] - 10000) / 100)
+
+    def first(kv):
+        (inst, _), ws = kv
+        dps = [w for w in ws if w not in supports]
+        far = math.dist(add[inst], ws[dps[0]]) if len(dps) == 1 and inst in add and ws[dps[0]] else 0
+        return len(dps), -far
+    owner = {}
+    for (inst, nm), ws in sorted(by.items(), key=first):
+        if len(free := {w for w in ws if w not in supports} - set(owner.values())) == 1: owner[inst] = free.pop()
+    return {inst: (nm, add.get(inst), owner.get(inst), ws) for (inst, nm), ws in by.items()}
+
+
+def tether_seats(lasers):
+    """{holder: (seat, straight)}. The two middle platforms lie in different rows: the west one's is the row its pair
+    stood further into than the east pair (one player off their tile does not flip it)."""
+    ys = collections.defaultdict(list)
+    for nm, a, o, ws in lasers.values():
+        if o and a and ws.get(o): ys[-math.copysign(1, a[0])].append(ws[o][1])
+    row_w = math.copysign(1, sum(ys[-1]) - sum(ys[1]))
+    out = {}
+    for nm, a, o, ws in lasers.values():
+        if not (o and a): continue
+        col = -math.copysign(1, a[0]); row = row_w if col < 0 else -row_w
+        straight = math.copysign(1, a[1]) == row
+        out[o] = ((col * TETHER_SEAT[0], row * TETHER_SEAT[1 if straight else 2]), straight)
+    return out
+
+
+def tether_cross(p, t, v, o, laser, seat):
+    """v hit by o's tether laser. A holder dead before it lands aimed it where they died (off a falling tile, say): their
+    death's. Otherwise whichever of them alone at their seat would have cleared it (the victim from the laser as it
+    fired, the holder by aiming it from theirs); either way, whoever's seat clears it by more (the lasers are angled: a
+    step of the holder's moves the line less near the add), both within 0.5 y of each other (low)."""
+    nm, a, _, ws = laser
+    if o in p.dead_by(t):
+        return fault(t, "Paradeigma III", [o], [v], f"{o} died before their tether laser landed; aimed where they died, it hit {v}", "consequence", chain=[o])
+    pv, po = ws.get(v), ws.get(o)
+    if not (a and pv and po and v in seat and o in seat):
+        return fault(t, "Paradeigma III", [v], [v], f"stood in {o}'s tether laser", "medium")
+    dv, do = math.dist(pv, seat[v][0]), math.dist(po, seat[o][0])
+    how = f"({v} {dv:.1f} y off their seat, {o} {do:.1f})"
+    vgap, ogap = line_off(a, po, seat[v][0]), line_off(a, seat[o][0], pv)   # the victim's distance from the line, either seated
+    vfix, ofix = vgap > TETHER_HALF, ogap > TETHER_HALF
+    if vfix and ofix and abs(vgap - ogap) > 0.5: vfix, ofix = vgap > ogap, ogap > vgap
+    if vfix and not ofix: return fault(t, "Paradeigma III", [v], [v], f"stood in {o}'s tether laser, off their seat {how}", sure(vgap))
+    if ofix and not vfix: return fault(t, "Paradeigma III", [o], [v], f"{o}: off their seat, their tether laser hit {v} {how}", sure(ogap))
+    return fault(t, "Paradeigma III", [v, o], [v], f"{v} and {o}: both off their seats, {o}'s tether laser hit {v} {how}", "low")
+
+
+def tether_clip(p, e, laser, seat):
+    """A support clipped by a DPS tether laser: theirs (the outer gap the seated lasers leave on the tower), unless the
+    laser, its holder at their seat, would have missed them where they stood: the holder's then."""
+    t, v = e["t"], e["who"]
+    nm, a, o, ws = laser or (None,) * 4
+    if o and a and o in seat and ws.get(o) and (pv := ws.get(v) or e["pos"]):
+        if o in p.dead_by(t):
+            return fault(t, "Paradeigma III", [o], [v], f"{o} died before their tether laser landed; aimed where they died, it clipped {v}", "consequence", chain=[o])
+        if (gap := line_off(a, seat[o][0], pv)) > TETHER_HALF:
+            return fault(t, "Paradeigma III", [o], [v], f"{o}: off their seat, their tether laser hit {v} at the tower ({o} {math.dist(ws[o], seat[o][0]):.1f} y off their seat)", sure(gap))
+    return fault(t, "Paradeigma III", [v], [v], "a DPS tether laser clipped them (soak from the tower's outer side)", "high")
 
 
 def dead_soul(p, souls, glow, t):
@@ -445,14 +707,20 @@ def para3(p, lp, priority=False):
     # DPS tethers: Searing Radiance -> Umbral Tilt, Shadowsear -> Astral Tilt
     tl = p.hits(("Searing Radiance", "Shadowsear"), 215, 217.5)
     per_inst = collections.Counter(e.get("sourceInstance") for e in tl)
-    tilt = {}
+    lasers = tether_lasers(p, supports)
+    seat = tether_seats(lasers)
+    tilt = {o: "Umbral" if nm == "Searing Radiance" else "Astral" for nm, _, o, _ in lasers.values() if o}
+    mine = set()
     # a DPS's own tether is the laser that hit only them; a second laser through them is someone else's
     for e in sorted(tl, key=lambda e: per_inst[e.get("sourceInstance")]):
         if e["who"] in supports:
-            out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], "a DPS tether laser clipped them (soak from the tower's outer side)", "high"))
+            out.append(tether_clip(p, e, lasers.get(e.get("sourceInstance")), seat))
         else:
-            if e["who"] in tilt: out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], "hit by two DPS tether lasers", "medium")); continue
-            tilt[e["who"]] = "Umbral" if e["name"] == "Searing Radiance" else "Astral"
+            o = lasers.get(e.get("sourceInstance"), (None,) * 4)[2]
+            if o and o != e["who"]:
+                out.append(tether_cross(p, e["t"], e["who"], o, lasers[e.get("sourceInstance")], seat)); continue
+            if e["who"] in mine: out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], "hit by two DPS tether lasers", "medium")); continue
+            mine.add(e["who"]); tilt.setdefault(e["who"], "Umbral" if e["name"] == "Searing Radiance" else "Astral")
             if (e.get("targetResources") or {}).get("hitPoints") == 0:
                 out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], "died to their own tether laser (not stretched far enough)", "high"))
     match = [w for w, a in tilt.items() if a == asp]; opp = [w for w, a in tilt.items() if a != asp]
@@ -519,10 +787,10 @@ def para3(p, lp, priority=False):
     for w, e in glow.items():
         if soaked_near(e["pos"]): continue
         if opp and not alive: why = "soakers dead"          # no one left to soak it, wherever it stood
+        elif gone and not idle: why = "soaker dead"         # a soaker short and the living ones at the other tower: likewise
         elif w in misplaced: why = ("misplaced", w)
         elif idle and missing and set(idle) <= set(extra): why = "swap"   # the soakers took the White Flame, its baiters did not
         elif idle: why = "idle"
-        elif gone: why = "soaker dead"
         elif alive: why = "other tower"                       # every living soaker took the other tower
         else: why = "unknown"
         unsoaked[why].append(w)
