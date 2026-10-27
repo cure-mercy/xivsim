@@ -216,9 +216,10 @@
       end: 29.6                   // On the Soul starts: the floor is coming back
     };
     // In yalms times 12, from the logs: a tower takes whoever is within 3 yalms (the soaks reach 2.3 nine times in ten),
-    // a tether laser or White Flame line is about 4.7 wide, an arm of the + or X about 4.3 (the widest any log caught:
-    // 2.2 off the line) and a bright Soul's AoE 3 in radius.
-    const TOWER_R = 36, LASER_HALF = 28, FLAME_HALF = 28, ARM_HALF = 26, GLOW_R = 36;
+    // an arm of the + or X about 4.3 wide (the widest any log caught: 2.2 off the line) and a bright Soul's AoE 3 in
+    // radius. The lines from the game's data: a tether laser (Searing Radiance, Shadowsear) is 6 yalms wide, a White
+    // Flame line 4 (Action 33521-33522, 33520), as the logs bear out (hit up to about 3 and 2 off the line).
+    const TOWER_R = 36, LASER_HALF = 36, FLAME_HALF = 24, ARM_HALF = 26, GLOW_R = 36;
     // A + or X dropped more than 3 yalms from its planned spot is off it, even when it hits nobody.
     const MARK_NEAR = 36;
     // A tether laser kills its own holder outright closer than about 34.5 yalms to its add (742 lasers in the logs:
@@ -420,8 +421,8 @@
     function supTowerSpot(t){
       const [x, y] = plainTower(t);
       // on a middle platform, on the tower's side away from the arena's horizontal centre line: the gap the two
-      // DPS lasers leave
-      return (t.row === 2 || t.row === 3) ? [x, y + (t.row === 2 ? -22 : 22)] : [x, y];
+      // DPS lasers leave, at its widest still inside the tower (just under a yalm clear of both lasers and the edge)
+      return (t.row === 2 || t.row === 3) ? [x + (t.col === 'R' ? 10 : -10), y + (t.row === 2 ? -22 : 22)] : [x, y];
     }
     function stackSpot(id){
       const a = st.ring.indexOf(id) * Math.PI / 4;
@@ -670,24 +671,26 @@
     function checkLasers(){
       const pos = party(LIVE.lasers), dps = st.ids.filter(isDps);
       if(!st.over) drawLive(LIVE.lasers);
-      T.playBeams(document.getElementById('p3-lasers'), dps.map(id => ({ from: st.actors[id].add, through: pos[id] })));
+      T.playBeams(document.getElementById('p3-lasers'), dps.map(id => ({ from: st.actors[id].add, through: pos[id], half: LASER_HALF })));
       st.tagged = true;
       const me = st.me, p = pos[me];
+      const geometry = lethal => mark => drawLaserGeometry(mark, pos, lethal);
+      const drawn = ` The red line marks ${MIN_STRETCH_Y} yalms from your add: you had to be outside it.`;
       if(isDps(me)){
         const a = st.actors[me], on = tileAt(p);
         if(!on) return;                       // off every platform: the fall has it
         if(on.key !== st.home.key){
           const near = on.row === 2 || on.row === 3;
           return liveFail(near ? 'Tether not stretched' : 'Wrong platform', near
-            ? `When your laser fired at ${sec(LIVE.lasers)} you were still on the middle platform beside your own add, and that close the hit is lethal. ${platformRule()}`
-            : `When your laser fired at ${sec(LIVE.lasers)} you were on the ${tileName(on).toLowerCase()} platform with its support, who took it with you. The DPS take the middle two. ${platformRule()}`, a.stretch);
+            ? `When your laser fired at ${sec(LIVE.lasers)} you were still on the middle platform beside your own add, and that close the hit is lethal.${drawn} ${platformRule()}`
+            : `When your laser fired at ${sec(LIVE.lasers)} you were on the ${tileName(on).toLowerCase()} platform with its support, who took it with you. The DPS take the middle two. ${platformRule()}`, a.stretch, geometry(near));
         }
-        if(stretchYalms(a.add, p) < MIN_STRETCH_Y) return liveFail('Not stretched far enough', `When your laser fired at ${sec(LIVE.lasers)} you were only ${stretchYalms(a.add, p).toFixed(1)} yalms from your add. Closer than about ${MIN_STRETCH_Y} the laser kills you outright. ${platformRule()}`, a.stretch);
+        if(stretchYalms(a.add, p) < MIN_STRETCH_Y) return liveFail('Not stretched far enough', `When your laser fired at ${sec(LIVE.lasers)} you were only ${stretchYalms(a.add, p).toFixed(1)} yalms from your add. Closer than about ${MIN_STRETCH_Y} the laser kills you outright.${drawn} ${platformRule()}`, a.stretch, geometry(true));
         const clipped = st.ids.filter(id => id !== me && inLine(a.add, p, pos[id], LASER_HALF));
-        if(clipped.length) return liveFail('Laser through a party member', `Your add's laser runs from the add through you and on across the arena, and when it fired at ${sec(LIVE.lasers)} ${names(clipped)} ${clipped.length > 1 ? 'were' : 'was'} in its path. Only you may take it. ${platformRule()}`, a.stretch);
+        if(clipped.length) return liveFail('Laser through a party member', `Your add's laser runs from the add through you and on across the arena, and when it fired at ${sec(LIVE.lasers)} ${names(clipped)} ${clipped.length > 1 ? 'were' : 'was'} in its path. Only you may take it. ${platformRule()}`, a.stretch, geometry(false));
       }
       const by = dps.find(id => id !== me && inLine(st.actors[id].add, pos[id], p, LASER_HALF));
-      if(by) return liveFail('Caught in a laser', `When the tether lasers fired at ${sec(LIVE.lasers)} you were in the one from ${st.actors[by].add[0] < 300 ? 'the west' : 'the east'} wall through ${whoName(by)}. ${platformRule()}`, plan(me, 'first'));
+      if(by) return liveFail('Caught in a laser', `When the tether lasers fired at ${sec(LIVE.lasers)} you were in the one from ${st.actors[by].add[0] < 300 ? 'the west' : 'the east'} wall through ${whoName(by)}. ${platformRule()}`, plan(me, 'first'), geometry(false));
     }
     // Quartered and X-marked Soul run out: the + and X drop where their holders stand, and go off three seconds later
     function placeMarks(){
@@ -788,7 +791,7 @@
     }
     function checkFlame(){
       const pos = party(LIVE.flame), me = st.me, lines = flameTargets(pos);
-      T.playBeams(document.getElementById('p3-lasers'), [].concat(...lines.map(l => l.ids.map(id => ({ from: l.from, through: pos[id] })))));
+      T.playBeams(document.getElementById('p3-lasers'), [].concat(...lines.map(l => l.ids.map(id => ({ from: l.from, through: pos[id], half: FLAME_HALF })))));
       const B = baitTile();
       const want = [holderOf('quartered'), holderOf('xmarked')].concat(st.ids.filter(id => isDps(id) && st.actors[id].tile.key === B.key));
       const got = [].concat(...lines.map(l => l.ids));
@@ -829,7 +832,8 @@
     function fellOff(){
       liveFail('You fell off the platform', `Once the chained tiles have gone there is only the void between the platforms, and you walked off the edge of yours.<br><br><i>Enchained Soul will not let you jump. The void below the Twelfth Circle is very, very dark. Honey B will mourn your soul ❤️ </i><br><br><b>*** You have died ***</b><br><br>${clock.t < LIVE.laserHit ? platformRule() : jobRule()}`, null);
     }
-    function liveFail(title, why, target){
+    // `overlay(mark)` draws over the dimmed floor what decided the failure, beneath the target ring
+    function liveFail(title, why, target, overlay){
       if(st.over) return;
       st.over = true;
       stopClock();
@@ -837,9 +841,38 @@
       drawLive();
       renderLive();
       const host = layer('p3-target');
-      if(target) T.drawTarget(host, target, here(clock.t));
+      if(target){
+        const mark = T.drawTarget(host, target, here(clock.t));
+        if(overlay) overlay(mark);
+      }
       fb.dataset.noUndo = '1';
       showFeedback(fb, false, title, why, 'New pull ↻', () => newRound());
+    }
+    // After a tether laser failure, the geometry that decided it: the four lasers at the width that hits, each from
+    // its add through its DPS and on across the arena (yours solid, the others dashed), and, when your own laser
+    // killed you, the line 34.5 yalms from your add, measured from where it really stands (25 yalms out, past the
+    // drawn wall), inside which the laser is lethal.
+    function drawLaserGeometry(mark, pos, lethal){
+      const g = el('g', { 'clip-path':'url(#arenaClip)' });
+      if(lethal){
+        const add = st.actors[st.me].add, side = Math.sign(add[0] - 300), c = [300 + side * 300, add[1]], r = MIN_STRETCH_Y * 12;
+        g.appendChild(el('circle', { cx:c[0], cy:c[1], r, fill:'rgba(229,83,75,0.14)', stroke:'var(--bad)', 'stroke-width':2, 'stroke-dasharray':'8 5' }));
+        // the label sits on the arc away from you, inside it
+        const y = pos[st.me][1] < 300 ? 505 : 95, x = c[0] - side * Math.sqrt(r * r - (y - c[1]) ** 2);
+        const label = el('text', { x: x + side * 8, y: y + 3.5, 'text-anchor': side < 0 ? 'end' : 'start', class:'target-label', style:'fill:var(--bad)' });
+        label.textContent = `LETHAL INSIDE ${MIN_STRETCH_Y} y`;
+        g.appendChild(label);
+      }
+      st.ids.filter(isDps).forEach(id => {
+        const from = st.actors[id].add, mine = id === st.me;
+        const turn = Math.atan2(pos[id][1] - from[1], pos[id][0] - from[0]) * 180 / Math.PI;
+        const band = el('g', { transform:`translate(${from[0]},${from[1]}) rotate(${turn.toFixed(2)})` });
+        band.appendChild(el('rect', Object.assign({ x:0, y:-LASER_HALF, width:900, height:2 * LASER_HALF,
+          fill:`rgba(247,147,30,${mine ? 0.3 : 0.16})`, stroke:'var(--aether)', 'stroke-width':mine ? 2 : 1.2 }, mine ? {} : { 'stroke-dasharray':'6 4' })));
+        band.appendChild(el('line', { x1:0, y1:0, x2:900, y2:0, stroke:'var(--aether)', 'stroke-width':1, opacity:0.55 }));
+        g.appendChild(band);
+      });
+      mark.insertBefore(g, mark.firstChild.nextSibling);
     }
     function liveClear(){
       if(st.over) return;
@@ -1208,7 +1241,7 @@
     // each wall add fires its line at the DPS it is tethered to, as the second step opens
     function fireTethers(){
       const pos = positions('two');
-      T.playBeams(document.getElementById('p3-lasers'), st.ids.filter(isDps).map(id => ({ from: st.actors[id].add, through: pos[id] })));
+      T.playBeams(document.getElementById('p3-lasers'), st.ids.filter(isDps).map(id => ({ from: st.actors[id].add, through: pos[id], half: LASER_HALF })));
     }
     function drawCast(stage, pos){
       stage = stage || (st.step < 3 ? 'two' : 'pre3');

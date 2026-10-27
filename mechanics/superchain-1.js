@@ -255,8 +255,9 @@ ${T.SHAPE_LEGEND}
     // step by step nobody is racing the clock, so everyone runs twice as fast
     const STEP_SPEED = SPEED * 2;
     // In yalms times 12: inside the donut's gap within 6, the orb reaches 7, each cone is 30° across,
-    // an Impact laser about 4 wide, a tower 5 wide, a bright Soul's AoE 3 and Heavensflame 6 in radius.
-    const DONUT_SAFE = 72, ORB_R = 84, CONE_HALF = 15, LASER_HALF = 24, TOWER_R = 30, GLOW_R = 36, FLAME_R = 72;
+    // an Impact laser 6 wide (the game's data, Action 33544-33545; the logs agree: hit up to about 3 off the line),
+    // a tower 5 wide, a bright Soul's AoE 3 and Heavensflame 6 in radius.
+    const DONUT_SAFE = 72, ORB_R = 84, CONE_HALF = 15, LASER_HALF = 36, TOWER_R = 30, GLOW_R = 36, FLAME_R = 72;
     const IN_AT = 36, OUT_AT = 108, MAX_MELEE = 156;
 
     let pace = 'steps';
@@ -514,7 +515,7 @@ ${T.SHAPE_LEGEND}
     function fireLasers(pos){
       fxShape(st.second, 'donut');
       fxShape(st.decoy, 'orb');
-      T.playBeams(document.getElementById('sc-beams'), SLOTS.filter(s => kindOf(s) === 'strong').map(s => ({ from: CENTRE, through: pos[s] })));
+      T.playBeams(document.getElementById('sc-beams'), SLOTS.filter(s => kindOf(s) === 'strong').map(s => ({ from: CENTRE, through: pos[s], half: LASER_HALF })));
     }
     // the towers drop, the bright souls' small AoEs go off, then Heavensflame
     // Everyone to their tower spots (you to `mine`, if given), then the towers drop, Heavensflame goes off,
@@ -686,7 +687,7 @@ ${T.SHAPE_LEGEND}
       const pos = party(LIVE.lasers);
       const strongs = SLOTS.filter(s => kindOf(s) === 'strong');
       const hits = {}; strongs.forEach(s => { hits[s] = lineHits(pos[s], pos); });
-      T.playBeams(document.getElementById('sc-beams'), strongs.map(s => ({ from: CENTRE, through: pos[s] })));
+      T.playBeams(document.getElementById('sc-beams'), strongs.map(s => ({ from: CENTRE, through: pos[s], half: LASER_HALF })));
       const mine = SLOTS.filter(s => GROUP[st.deb[s]] === GROUP[st.key]);
       const myStrong = strongs.find(s => GROUP[st.deb[s]] === GROUP[st.key]);
       const other = strongs.find(s => s !== myStrong);
