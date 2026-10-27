@@ -139,7 +139,7 @@
           <li><b>Paradeigma</b> spawns Anthropos adds from four blue crystals — two on the west wall, two on the east — plus two yellow crystals on opposite intercardinals. Every add on the same wall carries the <b>same tether colour</b>.</li>
           <li><b>Engravement of Souls</b> gives the supports one <b>Quartered Soul</b>, one <b>X-marked Soul</b> and two matching bright souls. Everyone gets <b>Enchained Soul</b>: no jumping, so you are stuck on a single tile.</li>
           <li><b>Unnatural Enchainment</b> tethers four alternating tiles and destroys them, leaving a zigzag of four platforms. A plain tower lands on each one and a support has to soak it.</li>
-          <li>Quartered Soul takes the <b>north-most</b> platform and X-marked the <b>south-most</b>. The two bright souls take the middle two by priority <b>H1 &gt; T1 &gt; T2 &gt; H2</b>, west to east: the first of them the western one, the other the eastern.</li>
+          <li>Quartered Soul takes the <b>north-most</b> platform and X-marked the <b>south-most</b>. The two bright souls take the middle two by priority <b>H1 &gt; T1 &gt; T2 &gt; H2</b>, east to west: the first of them the eastern one, the other the western.</li>
           <li><b>Middle platforms:</b> the plain tower sits by the outer wall, right where the two DPS stretch their tethers, and their lasers run <b>east–west</b> across it. Soak it from its side <b>away from the arena's horizontal centre line</b>, in the gap the two lasers leave, or a DPS laser clips you.</li>
           <li>Each bright soul then drops an aspected tower. Compare your aspect with the tether colour of the two DPS on your tile: <b>same colour</b> and you drop it on the arena-centre corner so it spills onto the other middle platform; <b>opposite</b> and you drop it in the middle of your own tile, clear of the X's arm. Then step out of it.</li>
           <li>DPS stretch their tether to the <b>opposite</b> middle platform. The one whose add lines up with it has the <b>straight</b> tether and stands <b>level with the add on the line of waymark B or D</b> (B east, D west, 10 yalms out), so the laser runs dead east–west. That is 35 yalms from the add, only half a yalm past the 34.5 where a holder's own laser kills them outright, so right on the waymark's line: not a step closer, and no further out or the laser clips another player; the other has the <b>crossed</b> tether and stands at the <b>middle of the platform's outer edge</b> — top middle on the northern platform, bottom middle on the southern — so the laser angles across.</li>
@@ -317,8 +317,8 @@
       st.slotSoul = {};
       PRIORITY.forEach((s, i) => { st.slotSoul[s] = souls[i]; });
       st.brightSlots = PRIORITY.filter(s => st.slotSoul[s] === 'bright');
-      // The bright souls go by priority, west to east: the first of them takes the western middle platform.
-      st.brightWest = st.brightSlots[0];
+      // The bright souls go by priority, east to west: the first of them takes the eastern middle platform.
+      st.brightEast = st.brightSlots[0];
       st.mySlot = shared.role === 'support' ? shared.slot : PRIORITY[Math.floor(Math.random() * 4)];
       // where each support happens to stand in the stack by Athena before the cast resolves
       st.stackOrder = shuffle(PRIORITY);
@@ -331,7 +331,7 @@
       if(shared.role === 'support'){
         if(st.mySoul === 'quartered')   st.home = st.north;
         else if(st.mySoul === 'xmarked') st.home = st.south;
-        else st.home = (st.mySlot === st.brightWest) ? st.midW : st.midE;
+        else st.home = (st.mySlot === st.brightEast) ? st.midE : st.midW;
         // The DPS sharing your platform are tethered to the wall opposite it.
         st.myDpsColor = st.home.col === 'L' ? st.eastColor : st.westColor;
         st.towerSpot  = (st.myDpsColor === st.bright) ? 'centre' : 'tile';
@@ -376,7 +376,7 @@
       st.actors = {};
       PRIORITY.forEach(s => {
         const soul = st.slotSoul[s];
-        const home = soul === 'quartered' ? st.north : soul === 'xmarked' ? st.south : (s === st.brightWest ? st.midW : st.midE);
+        const home = soul === 'quartered' ? st.north : soul === 'xmarked' ? st.south : (s === st.brightEast ? st.midE : st.midW);
         st.actors[s] = { kind:'support', slot:s, soul, tile:home };
       });
       [st.midW, st.midE].forEach(t => dpsSpots(t).forEach(d => {
@@ -391,7 +391,7 @@
     function supportOn(t){
       if(t.key === st.north.key) return { slot: PRIORITY.find(s => st.slotSoul[s] === 'quartered'), soul:'quartered' };
       if(t.key === st.south.key) return { slot: PRIORITY.find(s => st.slotSoul[s] === 'xmarked'), soul:'xmarked' };
-      return { slot: t.key === st.midW.key ? st.brightWest : st.brightSlots.find(s => s !== st.brightWest), soul: st.bright };
+      return { slot: t.key === st.midE.key ? st.brightEast : st.brightSlots.find(s => s !== st.brightEast), soul: st.bright };
     }
     // The DPS on a middle platform are tethered to the far wall.
     const dpsColorOn = t => t.col === 'L' ? st.eastColor : st.westColor;
@@ -637,8 +637,8 @@
       if(shared.role === 'dps') return `Your add is on the <b>${st.mySide}</b> wall, so you stretch across to the <b>${tileName(st.home).toLowerCase()}</b> platform. Yours is the <b>${st.straight ? 'straight' : 'crossed'}</b> tether: ${st.straight ? `stand level with your add on the line of waymark ${st.home.col === 'R' ? 'B' : 'D'}, so the laser runs dead east–west (any closer to the add and it kills you)` : `stand at the middle of the platform's ${st.home.row === 2 ? 'top' : 'bottom'} edge, so the laser angles across`}.`;
       if(st.mySoul === 'quartered') return `Quartered Soul takes the tower on the <b>north-most</b> platform.`;
       if(st.mySoul === 'xmarked') return `X-marked Soul takes the tower on the <b>south-most</b> platform.`;
-      const west = st.brightWest, east = st.brightSlots.find(s => s !== west);
-      return `The bright souls are <b>${west}</b> and <b>${east}</b>: they go by priority H1 &gt; T1 &gt; T2 &gt; H2, west to east, so <b>${st.mySlot}</b> takes the tower on the <b>${st.mySlot === west ? 'western' : 'eastern'}</b> middle platform. Soak it from its side away from the arena's horizontal centre line, in the gap the two DPS lasers leave.`;
+      const east = st.brightEast, west = st.brightSlots.find(s => s !== east);
+      return `The bright souls are <b>${east}</b> and <b>${west}</b>: they go by priority H1 &gt; T1 &gt; T2 &gt; H2, east to west, so <b>${st.mySlot}</b> takes the tower on the <b>${st.mySlot === east ? 'eastern' : 'western'}</b> middle platform. Soak it from its side away from the arena's horizontal centre line, in the gap the two DPS lasers leave.`;
     }
     function jobRule(){
       if(shared.role === 'dps'){
@@ -1373,7 +1373,7 @@
         return ['Step 2 · Soak or bait', `Soak a tower or bait White Flame, by your Tilt against the towers' colour.<span class="hint"> Opposite colour soaks: wait clear of the bright souls' small AoEs, then the <b>straight</b> tether takes the tower on the centre corner, the <b>crossed</b> tether the one in the middle of your platform. Same colour baits: the yellow add closest to you, from the corner of your platform facing it.</span>`];
       }
       if(i === 0) return ['Paradeigma III', `Wait by Athena for your Soul: Engravement of Souls is going out.`];
-      if(i === 1) return ['Step 1 · Plain tower', `Take the plain tower on your platform before the chained tiles fall.<span class="hint"> Quartered Soul takes the <b>north-most</b> platform and X-marked the <b>south-most</b>; the two bright souls take the middle two by priority <b>H1 &gt; T1 &gt; T2 &gt; H2</b>, west to east. On a middle platform soak from the tower's side away from the arena's centre line, in the gap the DPS lasers leave.</span>`];
+      if(i === 1) return ['Step 1 · Plain tower', `Take the plain tower on your platform before the chained tiles fall.<span class="hint"> Quartered Soul takes the <b>north-most</b> platform and X-marked the <b>south-most</b>; the two bright souls take the middle two by priority <b>H1 &gt; T1 &gt; T2 &gt; H2</b>, east to west. On a middle platform soak from the tower's side away from the arena's centre line, in the gap the DPS lasers leave.</span>`];
       if(i === 2){
         if(st.mySoul === 'bright') return ['Step 2 · Your tower', `Drop your aspected tower as your Soul runs out.<span class="hint"> DPS on your platform the <b>opposite</b> colour: in the middle of your platform, clear of the X's arm. The <b>same</b> colour: on your platform's arena-centre corner, as close to the middle as you can, so it spills onto the other middle platform.</span>`];
         return ['Step 2 · Your AoE', `Drop your ${st.mySoul === 'quartered' ? 'plus' : 'X'} as your Soul runs out, then step out of its arms.<span class="hint"> Both are fixed to true north: the <b>plus</b> from the north platform's outer corner, so its arms run along the walls; the <b>X</b> from the south wall, so its arms run out to the corners.</span>`];
@@ -1417,7 +1417,7 @@
       const soulKey = st.mySoul === 'bright' ? st.bright : st.mySoul;
       if(st.step === 1){
         pill('Step 1 · Take your tower');
-        instr(`Unnatural Enchainment is casting and the red tiles are going away. A plain tower is landing on each platform that survives. Holding <span class="hl">${SOUL[soulKey].label}</span> as <span class="hl">${st.mySlot}</span>, which tower do you soak?<span class="hint"> <b>Quartered Soul</b> takes the north-most platform and <b>X-marked</b> the south-most; the two bright souls take the middle two by priority <b>H1 &gt; T1 &gt; T2 &gt; H2</b>, west to east.</span>`);
+        instr(`Unnatural Enchainment is casting and the red tiles are going away. A plain tower is landing on each platform that survives. Holding <span class="hl">${SOUL[soulKey].label}</span> as <span class="hl">${st.mySlot}</span>, which tower do you soak?<span class="hint"> <b>Quartered Soul</b> takes the north-most platform and <b>X-marked</b> the south-most; the two bright souls take the middle two by priority <b>H1 &gt; T1 &gt; T2 &gt; H2</b>, east to west.</span>`);
         const towers = layer('p3-towers');
         st.safe.forEach(t => { const [x, y] = plainTower(t); tower(towers, x, y, null, null); });
         // every support's soul is on show, so the priority can be worked out from the party
@@ -1590,8 +1590,8 @@
       } else if(st.mySoul === 'xmarked'){
         why = `X-marked Soul always takes the tower on the <b>south-most</b> platform — this pull the ${st.south.col === 'L' ? 'west' : 'east'} tile on the bottom row.`;
       } else {
-        const west = st.brightWest, east = st.brightSlots.find(s => s !== west);
-        why = `The bright souls went to <b>${west}</b> and <b>${east}</b>. They go by priority H1 &gt; T1 &gt; T2 &gt; H2, west to east, so ${west} takes the tower on the <b>western</b> middle platform and ${east} the one on the <b>eastern</b>. You are ${st.mySlot}. Soak it from its side <b>away from the arena's horizontal centre line</b>: the DPS on your platform stretch their tethers right beside it, and you have to stand in the outer gap their two lasers leave, or one clips you.`;
+        const east = st.brightEast, west = st.brightSlots.find(s => s !== east);
+        why = `The bright souls went to <b>${east}</b> and <b>${west}</b>. They go by priority H1 &gt; T1 &gt; T2 &gt; H2, east to west, so ${east} takes the tower on the <b>eastern</b> middle platform and ${west} the one on the <b>western</b>. You are ${st.mySlot}. Soak it from its side <b>away from the arena's horizontal centre line</b>: the DPS on your platform stretch their tethers right beside it, and you have to stand in the outer gap their two lasers leave, or one clips you.`;
       }
       judge(ok, ok ? 'Right tower' : 'Wrong tower', why, 2);
     }
@@ -1728,5 +1728,5 @@
     newRound();
   }
 
-  T.register({ id: 'para3', label: 'Paradeigma III', phase: 'Athena', players: 'supports', playersNote: 'Supports are seated by priority, H1 > T1 > T2 > H2 west to east, so each has their own place; all four DPS play it the same way.', markup: MARKUP, styles: STYLES, init: initPara3 });
+  T.register({ id: 'para3', label: 'Paradeigma III', phase: 'Athena', players: 'supports', playersNote: 'Supports are seated by priority, H1 > T1 > T2 > H2 east to west, so each has their own place; all four DPS play it the same way.', markup: MARKUP, styles: STYLES, init: initPara3 });
 })(window.Twelfth);
