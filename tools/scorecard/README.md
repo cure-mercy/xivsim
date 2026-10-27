@@ -488,7 +488,7 @@ latest introduction date, 2026-10-25), so they keep testing them. A mass death t
 |---|---|
 | Paradeigma I, Paradeigma II, Glaukopis (both) | `AVOIDABLE_ONLY` until the group's strategies took effect on 2026-09-29 (Trinity of Souls and Ray of Light still blamed); their rules from then (the raid day of 2026-09-23 is before it). |
 | Superchain I, Dialogos | `AVOIDABLE_ONLY` until the group's strategy was introduced on 2026-10-06; its rules from then (the raid days of 2026-09-23, 09-30 and 10-04 are before it). |
-| Paradeigma III | `AVOIDABLE_ONLY` until the original strategy arrived on 2026-10-25. From then: two bright Souls in one middle tower share the blame. From 2026-10-26: the priority H1 > T1 > T2 > H2, west to east, says which of them belongs on the other platform, and only they are blamed. The seats come from the light parties learned in Paradeigma I (light party 1 is T1, H1, M1, R1). |
+| Paradeigma III | `AVOIDABLE_ONLY` until the original strategy arrived on 2026-10-25. From then: two bright Souls in one middle tower share the blame. From 2026-10-26: the priority H1 > T1 > T2 > H2, east to west, says which of them belongs on the other platform, and only they are blamed. The seats come from the light parties learned in Paradeigma I (light party 1 is T1, H1, M1, R1). |
 | Palladion | `NOT_YET`. To start blaming it, add `("YYYY-MM-DD", GENERIC)` or a rule. |
 
 ## The benchmark

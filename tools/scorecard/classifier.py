@@ -830,7 +830,7 @@ def glaukopis(p, lo, hi):
     return out
 
 
-BRIGHT_PRIORITY = ("H1", "T1", "T2", "H2")   # bright Souls' middle platforms, west to east
+BRIGHT_PRIORITY = ("H1", "T1", "T2", "H2")   # bright Souls' middle platforms, east to west
 
 
 def seats(p, lp):
@@ -883,8 +883,8 @@ def para3(p, lp, priority=False):
             if priority and len(who) == 2 and set(bad) == set(who) and all(role.get(w) == "bright" and w in rank for w in who):
                 first, second = sorted(who, key=rank.get)
                 west = es[0]["pos"][0] < 0
-                bad = [second if west else first]
-                rule += f"; {bad[0]} belongs on the {'eastern' if west else 'western'} one (priority H1 > T1 > T2 > H2, west to east)"
+                bad = [first if west else second]
+                rule += f"; {bad[0]} belongs on the {'eastern' if west else 'western'} one (priority H1 > T1 > T2 > H2, east to west)"
             out.append(fault(t, "Paradeigma III", bad, wipe | set(who), rule, "high" if len(bad) < len(who) else "medium", **zap))
     # platforms: Quartered takes the north-most, X-Marked the south-most
     wrong_plat = {}
