@@ -55,7 +55,7 @@ CAUSES = [("pulled Athena early", "Early pull"), ("broken gear", "Broken gear (l
           ("dropped their towers together", "Bright Souls' towers dropped together"), ("bright Soul's AoE", "Bright Soul's AoE"),
           ("Trinity of Souls", "Trinity of Souls: on the cleaved side"), ("green orb", "Green orb (Superchain)"),
           ("Ray of Light", "Ray of Light column"), ("donut", "Donut (Superchain)"),
-          ("took both lasers", "Both Superchain lasers on one player"), ("White Flame line-up", "Missed White Flame bait"), ("closer to the White Flame add", "Too close to a White Flame add"), ("off their spot in the White Flame line", "Off their White Flame line-up spot"), ("did not bait their White Flame", "Missed White Flame bait"),
+          ("took both lasers", "Both Superchain lasers on one player"), ("could not be decided who drew the White Flame", "White Flame bait undecided (both blamed)"), ("White Flame line-up", "Missed White Flame bait"), ("closer to the White Flame add", "Too close to a White Flame add"), ("off their spot in the White Flame line", "Off their White Flame line-up spot"), ("did not bait their White Flame", "Missed White Flame bait"),
           ("White Flame", "White Flame line"), ("tether laser", "Tether laser"), ("laser group", "Superchain laser group"),
           ("share", "Superchain laser group"), ("Heavensflame", "Heavensflame spread"), ("orange cone", "Orange cone overlap"),
           ("purple jack", "Purple pair"), ("purple-jack pair", "Purple pair"), ("Soul AoE", "Soul AoE"), ("the + ", "+ / X placement"), ("the X ", "+ / X placement"),
