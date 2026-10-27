@@ -537,6 +537,16 @@ function whatHappened(x, who) {
   const head = own(tr.rule || `${tr.parts.length} failures at once`);
   return el("div", {}, head, el("details", { class: "trace" }, el("summary", {}, `how it came about: ${deaths.size} earlier death${deaths.size === 1 ? "" : "s"}`), list(tr)));
 }
+// a death in FFLogs: the Deaths view for the one who died, over the whole mechanic it happened in, on to the death when
+// that came later (the whole pull when in none); null for a report built before the site kept its start time and actor ids
+function deathLink(r, d) {
+  const q = r.pulls.find(x => x.n === d.pull), id = (r.actors || {})[d.who];
+  if (!q || r.start_ms == null || id == null) return null;
+  const lo = DATA.benchmark.mech_start[d.mechanic], hi = (DATA.benchmark.mech_end || {})[d.mechanic], t0 = q.at - r.start_ms;
+  const span = hi == null ? "" : `&start=${Math.round(t0 + lo * 1000)}&end=${Math.round(t0 + Math.max(hi, d.t + 5) * 1000)}`;   // d.t is the lethal hit; the death event lands up to 4 s later
+  return [el("a", { href: `https://www.fflogs.com/reports/${r.code}?fight=${q.id}&type=deaths&source=${id}${span}`, target: "_blank", rel: "noopener",
+    title: `${d.who}'s deaths in ${hi == null ? "the pull" : d.mechanic} on FFLogs` }, "↗"), " "];
+}
 const KIND_SERIES = [{ name: "Lost the pull", color: "var(--wipe, #9e1f30)" }, { name: "Other deaths", color: "var(--div-neg)" }, { name: "Damage Down", color: "#e0a03a" },
   { name: "Survived", color: "var(--muted)" }];   // deaths and DD as in Damage lost to mistakes; survived: neither (both Superchain lasers on someone who lived)
 
@@ -1171,7 +1181,7 @@ function playerPage(day, group, name) {
       el("thead", {}, el("tr", {}, ["Pull", "Time", "Mechanic", "Killed by", "What happened", "Culprit", "Confidence", ""].map((h, i) => el("th", { class: i < 2 ? "num" : null }, h)))),
       el("tbody", {}, died.map(d => el("tr", { class: d.when === "after" ? "muted" : null },
         el("td", { class: "num" }, el("a", { href: `#/day/${day}/${group}/pulls/${d.pull}` }, String(d.pull))), el("td", { class: "num" }, mmss(d.t)),
-        el("td", {}, shortMech(d.mechanic || "")), el("td", {}, d.ability || "?"), el("td", { class: "wrap" }, whatHappened(d)), el("td", {}, culprit(d)),
+        el("td", {}, shortMech(d.mechanic || "")), el("td", {}, d.ability || "?"), el("td", { class: "wrap" }, deathLink(r, d), whatHappened(d)), el("td", {}, culprit(d)),
         el("td", {}, d.culprits.length ? confCell(d.confidence) : ""),
         el("td", { class: "muted" }, d.when === "lost" ? "decided the wipe" : d.when === "after" ? "after the wipe" : "")))))
       : el("div", { class: "empty", style: "padding:14px" }, "No deaths recorded.")));
@@ -1293,6 +1303,18 @@ function pullPage(day, group, n) {
       el("td", { class: "wrap" }, whatHappened(m, m.who)),
       el("td", { class: "muted" }, p.wipe && Math.abs(p.wipe.t - m.t) < 0.05 && p.wipe.culprits.includes(m.who) ? "lost the pull" : "")))))
     : el("div", { class: "empty", style: "padding:14px" }, "No mistakes recorded.")));
+  // every death in the pull, as on the player page
+  const died = [...(p.death_list || [])].sort((a, c) => a.t - c.t), inGroup = new Set(r.players.map(q => q.name));
+  const link = c => inGroup.has(c) ? el("a", { href: `#/day/${day}/${group}/${encodeURIComponent(c)}` }, c) : c;
+  const culprit = d => !d.culprits.length ? el("span", { class: "muted" }, "none found") : names(d.culprits.map(c => c === d.who ? "self" : link(c)));
+  app.append(heading("h2", "Deaths in order", "Every death in this pull: the hit that killed them, what the classifier says happened, and whose mistake it was (self: their own; none found: no rule explains it, often healing or mitigation, or fallout of an earlier death), with how sure it is of the culprit. Decided the wipe: the death, or the mass death, that lost the pull. After the wipe: the collapse once the pull was already lost, where deaths are forced."),
+    el("div", { class: "table-wrap" }, died.length ? el("table", {},
+      el("thead", {}, el("tr", {}, ["Time", "Who", "Mechanic", "Killed by", "What happened", "Culprit", "Confidence", ""].map((h, i) => el("th", { class: i === 0 ? "num" : null }, h)))),
+      el("tbody", {}, died.map(d => el("tr", { class: d.when === "after" ? "muted" : null },
+        el("td", { class: "num" }, mmss(d.t)), el("td", {}, link(d.who)), el("td", {}, shortMech(d.mechanic || "")), el("td", {}, d.ability || "?"),
+        el("td", { class: "wrap" }, whatHappened(d)), el("td", {}, culprit(d)), el("td", {}, d.culprits.length ? confCell(d.confidence) : ""),
+        el("td", { class: "muted" }, d.when === "lost" ? "decided the wipe" : d.when === "after" ? "after the wipe" : "")))))
+      : el("div", { class: "empty", style: "padding:14px" }, p.death_list ? "No deaths recorded." : "Not recorded for this report yet: rebuild the site (build_site.py --reanalyse).")));
 }
 
 // ---------- the optimizer's rotations (tools/rotation/dps.py --site): per job, one per GCD it was searched at ----------
