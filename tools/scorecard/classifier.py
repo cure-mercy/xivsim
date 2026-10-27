@@ -6,7 +6,7 @@ Superchain I laser groups / pairs / towers, Paradeigma III platforms) and the ta
 the logs show (Glaukopis, Dialogos). Which rules judge a mechanic depends on the raid day (RULEBOOK).
 Anything the rules cannot explain falls back to "avoidable AoE -> victim" or stays unattributed.
 """
-import collections, json, math
+import collections, itertools, json, math
 
 TANK_JOBS = {"Paladin", "Warrior", "DarkKnight", "Gunbreaker"}
 HEALER_JOBS = {"WhiteMage", "Scholar", "Astrologian", "Sage"}
@@ -296,6 +296,100 @@ def wf_closer(p, lo, hi, missing, exp, hs, seats=None, w=None):
     return out
 
 
+# The replay (user's rule, 2026-10-27): each add's two nearest living players at the laser cast, each laser from its add
+# through them and on, hitting everyone within WF_LINE of its line, reproduces 90% of waves exactly (1,595 of 1,778;
+# scratch/whiteflame/audit_model.py). In those, a player hit more than they should be (a baiter once, anyone else never) is
+# blamed on whoever's move to their spot alone would have spared them, else the fewest players who together would have.
+WF_LINE = 2.0              # y either side of a White Flame's line it hits (the replay's best fit)
+WF_STACK = (-0.2, -10.2)   # the other light party's stack: y toward the adds' wall and along from Athena (medians of 5,136
+WF_STACK_R = 3.6           # non-baiters in clean waves, 95% of them within this; scratch/whiteflame/audit.py)
+WF_FIX_MAX = 4             # the most players a correction is searched over
+WF_RUN = 6.0               # y/s a player runs: a position read s seconds from the cast is that much less certain
+
+
+def wf_lasers(adds, pos):
+    """The replay: [(add, target, players hit)] for positions {player: (x, y)}."""
+    out = []
+    for a in adds:
+        for tg in sorted(pos, key=lambda x: math.dist(pos[x], a))[:2]:
+            d = (pos[tg][0] - a[0], pos[tg][1] - a[1]); n = math.hypot(*d) or 1e-9
+            out.append((a, tg, {x for x, q in pos.items() if ((q[0] - a[0]) * d[0] + (q[1] - a[1]) * d[1]) / n > 0
+                                and abs((q[0] - a[0]) * d[1] - (q[1] - a[1]) * d[0]) / n <= WF_LINE}))
+    return out
+
+
+def wf_replay(p, lo, hi, w, t, lp):
+    """Wave w's faults by the replay, or None where it does not hold: positions missing, a baiter without a learned spot
+    or already dead (para1's chain), the replay not reproducing the logged lines, or a victim no correction of up to
+    WF_FIX_MAX players spares. Spots: a baiter's line-up seat, everyone else the stack; players within WF_SURE[0] of
+    theirs are not moved (they stood there). Of the corrections, the one with fewest players within their spot's
+    tolerance (SEAT_OFF, WF_STACK_R), then the victim's own, then the farthest off, is blamed; when every one has
+    someone within it, all of them (low). Sure when every culprit stood over WF_SURE[0]
+    past that tolerance and an interloper over WF_SURE[0] nearer the add than the baiters it out-stood, each margin
+    also past how far the players in it could have run (WF_RUN) between the cast and their nearest position reading:
+    then high for baiters out of the line-up (nearer the stack than their seat, or unhit over 2 * SEAT_OFF from it),
+    medium for the rest; low
+    otherwise."""
+    seats, wf = getattr(lp, "seats", {}), p.white_flame(lo, hi)
+    if not wf or len(wf[1]) != 2: return None
+    t1, adds, where, _ = wf
+    alive = [x for x in p.job if x not in p.dead_by(t1)]
+    bait = {x for x in lp[w - 1] if x in p.job}
+    q = {x: where(x) for x in alive}
+    if bait - set(alive) or not all(q.values()) or any((w, x) not in seats for x in bait): return None
+    pos = {x: v[0] for x, v in q.items()}
+    real = wf_lasers(adds, pos)
+    aimed = wf_aimed(p, lo, hi, p.hits("White Flame", lo, hi))
+    if collections.Counter(frozenset(h) for *_, h in real) != collections.Counter(frozenset(s) for s in aimed.values()): return None
+    a0 = next(iter(adds)); sx, sy = math.copysign(1, a0[0]), math.copysign(1, a0[1])
+    spot = {x: (0.0, SEAT_ALONG[seats[(w, x)]] * sy) if x in bait else (WF_STACK[0] * sx, WF_STACK[1] * sy) for x in alive}
+    off = {x: math.dist(pos[x], spot[x]) for x in alive}
+    tol = {x: SEAT_OFF if x in bait else WF_STACK_R for x in alive}
+    out_of_place = {x: off[x] > tol[x] for x in alive}
+    stack = (WF_STACK[0] * sx, WF_STACK[1] * sy)
+    counts = lambda movers: collections.Counter(y for *_, h in wf_lasers(adds, {**pos, **{x: spot[x] for x in movers}}) for y in h)
+    n = counts(())
+    victims = [x for x in alive if n[x] > (x in bait)]
+    movable, tried, blame, alone = [x for x in alive if off[x] > WF_SURE[0]], {}, {}, {}
+    for v in victims:
+        score = lambda c: (sum(not out_of_place[x] for x in c), v not in c, -sum(off[x] for x in c))
+        for k in range(1, WF_FIX_MAX + 1):
+            ok = [c for c in itertools.combinations(movable, k) if (tried[c] if c in tried else tried.setdefault(c, counts(c)))[v] <= (v in bait)]
+            if ok: break
+        else: return None
+        best = min(map(score, ok))   # options all within tolerance: no telling them apart, so all of them
+        blame[v] = tuple(sorted({x for c in ok if (score(c)[0] == best[0] if best[0] else score(c) == best) for x in c}))
+        alone[blame[v]] = k == 1
+    targets = {tg for _, tg, _ in real}
+
+    def role(x):
+        if x in bait:   # not in the line-up (at the stack, or unhit and over two spots' tolerance away) / off their spot
+            return 0 if math.dist(pos[x], stack) < off[x] or not n[x] and off[x] > 2 * SEAT_OFF else 2
+        return 1 if x in targets else 3             # nearer an add than its baiters / in a laser line
+    words = ("not in the line-up", "nearer an add than its baiters", "off their spot", "in a laser line")
+    out = []
+    for cul, vs in itertools.groupby(sorted(victims, key=lambda v: (blame[v], v)), key=lambda v: blame[v]):
+        vs = list(vs)
+        mine = {a for a, tg, _ in real if tg in cul}
+        outstood = sorted(b for b in bait if seat_add(wf, seats, w, b) in mine and b not in targets)
+        sure = all(off[x] - tol[x] > WF_SURE[0] + WF_RUN * q[x][1] for x in cul) and all(
+            math.dist(pos[b], a) - math.dist(pos[x], a) > WF_SURE[0] + WF_RUN * (q[x][1] + q[b][1])
+            for a, x, _ in real if x in cul and role(x) == 1 for b in outstood)
+        top = min(map(role, cul))
+        conf = ("high" if all(role(x) == 0 for x in cul) else "medium") if sure else "low"
+        how = "; ".join(f"{x} {off[x]:.1f} y from their spot" + (f", {words[role(x)]}" if role(x) != top else "") for x in cul)
+        if top == 0: rule = f"not in the White Flame line-up as wave {w} fired ({how})"
+        elif top == 1:
+            rule = (f"closer to the White Flame add than its baiter{'s' if len(outstood) != 1 else ''} {', '.join(outstood)} as wave {w} fired ("
+                    + ", ".join(f"{x} {math.dist(pos[x], a):.1f} y" for x in [x for x in cul if role(x) == 1] + outstood for a in [min(mine, key=lambda a: math.dist(pos[x], a))]) + f"; {how})")
+        elif top == 2: rule = f"off their spot in the White Flame line as wave {w} fired ({how})"
+        else: rule = f"stood in a White Flame line meant for wave {w} baiters ({how})"
+        if set(vs) != set(cul) or len(cul) > 1:
+            rule += f"; {'at their spot' if len(cul) == 1 else 'with any one of them at their spot' if alone[cul] else 'at their spots'}, {', '.join(vs)} would not have been hit"
+        out.append(fault(t, "Paradeigma I", list(cul), vs, rule, conf))
+    return out
+
+
 def infer_light_parties(pulls):
     """LP1 baits the first White Flame wave, LP2 the second; learn who is who from clean single hits, then their seats."""
     c1, c2 = collections.Counter(), collections.Counter()
@@ -318,6 +412,8 @@ def para1(p, lp):
         hs = p.hits("White Flame", lo, hi)
         if not hs: continue
         t = min(e["t"] for e in hs); dead = p.dead_by(t - 0.5)
+        if (r := wf_replay(p, lo, hi, w, t, lp)) is not None:
+            out += r; continue
         cnt = collections.Counter(e["who"] for e in hs)
         exp = {x for x in lp[w - 1] if x in p.job and x not in dead}
         gone = sorted(x for x in lp[w - 1] if x in p.job and x in dead)
