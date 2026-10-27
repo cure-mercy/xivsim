@@ -283,9 +283,10 @@ def wf_closer(p, lo, hi, missing, exp, hs, seats=None, w=None):
         if not (px := where(x)): continue
         add = seat_add(wf, seats, w, x) or min(adds, key=lambda a: math.dist(px[0], a))
         dx = math.dist(px[0], add)
-        if dx > WF_BAIT_MAX or (seat_off(wf, seats, w, x) or 0) > SEAT_OFF: continue   # not in the line-up: theirs
+        off = seat_off(wf, seats, w, x)
+        if dx > WF_BAIT_MAX or (off or 0) > SEAT_OFF: continue   # not in the line-up: theirs
         hit = {y for i, ys in aimed.items() if i in adds[add] for y in ys}
-        if not hit & exp: continue
+        if off is None and not hit & exp: continue   # no spot to check them against: the line-up must have drawn a laser
         stray = lambda y: y not in exp or (seat_add(wf, seats, w, y) not in (add, None) and (seat_off(wf, seats, w, y) or 0) > SEAT_OFF)
         near = sorted((dy, y, py[1]) for y in hit if y != x and stray(y) and (py := where(y)) and (dy := math.dist(py[0], add)) < dx)
         if not near: continue
@@ -330,16 +331,20 @@ def para1(p, lp):
         if missing:
             took = [x for x in extra if x not in lined]
             # a baiter in the line-up whose add found someone out of place closer: theirs, not the baiter's
-            for x, (ys, dx, hit, unsure) in wf_closer(p, lo, hi, missing, exp, hs, seats, w).items():
+            by_cul = collections.defaultdict(list)   # both of an add's baiters out-stood by the same players: one fault
+            for x, v in wf_closer(p, lo, hi, missing, exp, hs, seats, w).items():
                 missing.remove(x)
-                cul = [y for y, *_ in ys]
+                by_cul[tuple(y for y, *_ in v[0])].append((x, *v))
+            for cul, xs in by_cul.items():
+                ys, hit, unsure = xs[0][1], {v for x in xs for v in x[3]}, any(x[4] for x in xs)
                 # the add's lasers' victims are theirs; with a laser that could be the other add's, only the non-baiters
                 # in a laser with them (a baiter in two goes to wf_lined below, by the seats)
                 lost = [v for v in took if v in hit and (not unsure or v not in exp and any(v in s and set(cul) & s for s in aimed.values()))]
                 took = [v for v in took if v not in lost]
-                out.append(fault(t, "Paradeigma I", cul, lost, f"{', '.join(cul)}: closer to the White Flame add than its baiter {x} as wave {w} fired "
-                                 f"({', '.join(f'{y} {dy:.1f} y' for y, dy, _ in ys)}, {x} {dx:.1f} y)" + (f"; the laser went to {', '.join(lost)}" if lost else ""),
-                                 "medium" if all(s for *_, s in ys) else "low"))
+                out.append(fault(t, "Paradeigma I", list(cul), lost, f"{', '.join(cul)}: closer to the White Flame add than its baiter{'s' if len(xs) > 1 else ''} "
+                                 f"{', '.join(x for x, *_ in xs)} as wave {w} fired ({', '.join(f'{y} {dy:.1f} y' for y, dy, _ in ys)}, "
+                                 f"{', '.join(f'{x} {dx:.1f} y' for x, _, dx, *_ in xs)})" + (f"; the laser went to {', '.join(lost)}" if lost else ""),
+                                 "medium" if all(s for x in xs for *_, s in x[1]) else "low"))
             if missing:
                 out.append(fault(t, "Paradeigma I", missing, took, f"not in the White Flame line-up (wave {w}); the laser went to {', '.join(took) or 'someone else'}", "high" if took else "medium"))
             else:   # every missing baiter's laser explained: anyone else it hit (a baiter twice) stood in a laser line
