@@ -772,14 +772,16 @@ window.Twelfth = (function(){
     return g;
   }
 
+  // Each beam may give `half`, its half-width in arena units (12 a yalm), to draw it as wide as it hits.
   function playBeams(host, beams, bounds){
     const mk = el;
-    const W = 44, PULSE = 26, TRAIL = 70, h = W / 2;
+    const PULSE = 26, TRAIL = 70;
     const b = Object.assign({ x0:60, y0:60, x1:540, y1:540 }, bounds || {});
     host.innerHTML = '';
     clearTimeout(beamTimers.get(host));
     if(replaying) return;
-    beams.forEach(({ from, through }) => {
+    beams.forEach(({ from, through, half }) => {
+      const h = half || 22, W = 2 * h;
       const dx = through[0] - from[0], dy = through[1] - from[1], len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
       const exits = [];
       if(ux > 0) exits.push((b.x1 - through[0]) / ux); if(ux < 0) exits.push((b.x0 - through[0]) / ux);

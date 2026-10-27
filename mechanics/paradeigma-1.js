@@ -493,6 +493,8 @@
     }
     const nearest = (at, pos) => SLOTS.slice().sort((p, q) => Math.hypot(pos[p][0] - at[0], pos[p][1] - at[1]) - Math.hypot(pos[q][0] - at[0], pos[q][1] - at[1])).slice(0, 2);
     const firing = wave => addSpots().filter(a => a.wall === (wave === 0 ? st.firstWall : OTHER[st.firstWall]));
+    // a White Flame line is 4 yalms wide (the game's data, Action 33520; the logs agree), drawn at 12 a yalm
+    const FLAME_HALF = 24;
     // who each wave of White Flame goes to: the two players nearest each firing add
     function targets(wave, pos){
       const hit = [];
@@ -504,7 +506,7 @@
         nearest(a.at, pos).forEach(s => {
           const dx = pos[s][0] - a.at[0], dy = pos[s][1] - a.at[1], len = Math.hypot(dx, dy) || 1;
           const end = [a.at[0] + dx / len * 700, a.at[1] + dy / len * 700];
-          host.appendChild(el('line', { x1:a.at[0], y1:a.at[1], x2:end[0], y2:end[1], stroke:'var(--aether)', 'stroke-width':14, opacity:0.22, 'stroke-linecap':'round' }));
+          host.appendChild(el('line', { x1:a.at[0], y1:a.at[1], x2:end[0], y2:end[1], stroke:'var(--aether)', 'stroke-width':2 * FLAME_HALF, opacity:0.22 }));
           host.appendChild(el('line', { x1:a.at[0], y1:a.at[1], x2:end[0], y2:end[1], stroke:'var(--aether-soft)', 'stroke-width':2, opacity:0.85 }));
         });
       });
@@ -772,7 +774,7 @@
       if(LASER_AT[i] === null) return;
       const beams = [];
       firing(LASER_AT[i]).forEach(a => nearest(a.at, verdict.pos).forEach(s => beams.push({ from:a.at, through:verdict.pos[s], who:s })));
-      T.playBeams(document.getElementById('p1-beams'), beams.map(b => ({ from:b.from, through:b.through })));
+      T.playBeams(document.getElementById('p1-beams'), beams.map(b => ({ from:b.from, through:b.through, half:FLAME_HALF })));
       // the hits land as the pulse reaches them
       st.fxTimers.push(setTimeout(() => beams.forEach(b =>
         fxAdd(el('circle', { cx:b.through[0], cy:b.through[1], r:16, fill:'none', stroke:'var(--aether-soft)', 'stroke-width':4, class:'p1-fx-burst', filter:'url(#glow)' }), 800)), 700));

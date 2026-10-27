@@ -1,7 +1,7 @@
 // Real-time solver for Paradeigma III. It reads the pull through window.__p3, a hook run.py adds to a copy of
 // mechanics/paradeigma-3.js, and clicks the plan's spot for each beat. Wrong plays, each of which must fail:
 // stays put, another platform's tower, soaks from the centre-line side, the DPS's near platform, the partner's
-// spot, the other job, the other drop, stays in its own + or X, never steps out of its tower, into the tower
+// spot, short of the seat (each of those three also draws the lasers, and the first and last the lethal line), the other job, the other drop, stays in its own + or X, never steps out of its tower, into the tower
 // before the bright Souls' AoEs, the other tower, walks off the platform. Dropping the + or X off its spot where it
 // hits nobody must pause the pull with a warning instead, then either resume to an off-plan clear or retry from the
 // floor falling and clear cleanly. (The + and X supports always bait:
@@ -15,7 +15,7 @@ Probe.run('panel-para3', 'p3-clock', async ({ P, log, sleep, clockT, head, until
     wrongtower: s => true, centreline: s => s.mySoul === 'bright', stayin: s => s.mySoul === 'quartered' || s.mySoul === 'xmarked',
     wrongdrop: s => s.mySoul === 'bright', nostep: s => s.mySoul === 'bright',
     wrongjob: s => true, wrongsoak: s => s.job === 'soak', early: s => s.job === 'soak',
-    near: s => true, swap: s => true, walkoff: s => true, stay: s => true, right: s => true,
+    near: s => true, swap: s => true, short: s => true, walkoff: s => true, stay: s => true, right: s => true,
     offmark: s => s.mySoul === 'quartered' || s.mySoul === 'xmarked', offretry: s => s.mySoul === 'quartered' || s.mySoul === 'xmarked'
   };
   // A spot on your own platform to drop the + or X that is off the plan's but whose arms catch nobody where the
@@ -88,6 +88,8 @@ Probe.run('panel-para3', 'p3-clock', async ({ P, log, sleep, clockT, head, until
         await until(L.tethers + 0.3);
         if(mode === 'near'){ const t = st.home === st.midW ? st.midE : st.midW; click([t.cx, t.cy]); }
         else if(mode === 'swap') click(D.plan(D.dpsKey(st.home, !st.straight), 'first'));
+        // 4 yalms short of the seat, towards the add: inside the 34.5 where the laser kills its holder
+        else if(mode === 'short'){ const q = plan('first'), a = st.actors[me].add, d = Math.hypot(q[0] - a[0], q[1] - a[1]); click([q[0] + (a[0] - q[0]) * 48 / d, q[1] + (a[1] - q[1]) * 48 / d]); }
         else click(plan('first'));
         await until(L.laserHit + 0.3);
         if(mode === 'walkoff'){ const t = st.home; click([t.cx, t.row === 2 ? t.y - 40 : t.y + t.h + 40]); }
@@ -103,7 +105,11 @@ Probe.run('panel-para3', 'p3-clock', async ({ P, log, sleep, clockT, head, until
       }
     }
     await until(40);
-    return tag + ' -> ' + head().slice(0, 36) + ' @' + clockT().toFixed(1);
+    // a tether laser failure draws the four lasers, and the lethal 34.5 yalms when your own killed you
+    const T = document.getElementById('p3-target'), bands = T.querySelectorAll('rect[stroke="var(--aether)"]').length, arc = T.querySelectorAll('circle[stroke="var(--bad)"]').length;
+    const want = { short: [4, 1], near: [4, 1], swap: [4, 0] }[mode];
+    const drawn = want ? ` [${bands} lasers, ${arc} lethal line${bands === want[0] && arc === want[1] ? '' : ' FAIL'}]` : '';
+    return tag + ' -> ' + head().slice(0, 36) + ' @' + clockT().toFixed(1) + drawn;
   }
   // The Soul picker: supports only. Each pick must deal that Soul (and a bright one its aspect) every pull, and play.
   const picker = document.getElementById('p3-debuffPick');
@@ -121,6 +127,6 @@ Probe.run('panel-para3', 'p3-clock', async ({ P, log, sleep, clockT, head, until
     log.push(`pick ${id}: dealt ${[...seen].sort().join(',')}${ok && pressed ? '' : ' FAIL'}` + (want ? ' | ' + await play('right') : ''));
   }
   for(let i = 0; i < 12; i++) log.push('right: ' + await play('right'));
-  const wrong = support ? ['stay', 'wrongtower', 'centreline', 'walkoff', 'wrongdrop', 'nostep', 'stayin', 'offmark', 'offmark', 'offretry', 'offretry'] : ['stay', 'near', 'swap', 'walkoff', 'wrongjob', 'early', 'wrongsoak'];
+  const wrong = support ? ['stay', 'wrongtower', 'centreline', 'walkoff', 'wrongdrop', 'nostep', 'stayin', 'offmark', 'offmark', 'offretry', 'offretry'] : ['stay', 'near', 'swap', 'short', 'walkoff', 'wrongjob', 'early', 'wrongsoak'];
   for(const m of wrong) log.push(m + ': ' + await play(m));
 });

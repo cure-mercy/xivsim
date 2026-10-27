@@ -538,8 +538,9 @@
       return Math.hypot(p[0] - t[0], p[1] - t[1]) <= IN_RANGE.drop ? 'ok' : 'off';
     }
     // Each add's line AoE: from the add through its tethered player (where they stand at time t) and on to
-    // the edge. You are in it if your centre is within its half-width plus a little of your own hitbox.
-    const LASER_HALF = 28;
+    // the edge. You are in it if your centre is within its half-width: Searing Radiance and Shadowsear are 6 yalms
+    // wide in the game's data (Action 33521-33522), and the logs agree (hit up to about 3 yalms off the line).
+    const LASER_HALF = 36;
     function inLaser(d, p, t){
       const v = d === 'N' || d === 'S', off = st.offsets[d];
       const a = [ADD_POS[d][0] + (v ? off : 0), ADD_POS[d][1] + (v ? 0 : off)];
@@ -1301,7 +1302,7 @@
         const g = document.getElementById('tp-' + d).getAttribute('transform').match(/-?[\d.]+/g).map(Number);
         return {
           from: [ADD_POS[d][0] + (vertical ? off : 0), ADD_POS[d][1] + (vertical ? 0 : off)],
-          through: [TP_BASE[d][0] + g[0], TP_BASE[d][1] + g[1]]
+          through: [TP_BASE[d][0] + g[0], TP_BASE[d][1] + g[1]], half: LASER_HALF
         };
       }));
     }
