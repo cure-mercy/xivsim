@@ -19,7 +19,8 @@ pull by the rule book of that day instead of its raid day's: the pulls checked f
 (Superchain I, 2026-10-06; the last, Paradeigma III, 2026-10-25: RULES_DAY) still test them, while the scorecard does
 not blame those days by them. A case with `own_day` is judged by its raid day instead, to test the dates themselves.
 An incident's `cause_has` is text its cause must contain, and a case's `wipe_label` the label of what lost the pull:
-for rules whose wording or label matters, not only whom they blame.
+for rules whose wording or label matters, not only whom they blame. An incident with `saved` is a death that saved the
+pull (the site's green "saved the pull"); every other incident must not be marked so.
 
 A FAIL line means the classifier now blames someone else for a pull checked by hand. tools/scorecard/blame_diff.py
 shows everything else the change moved, across all cached pulls.
@@ -91,6 +92,8 @@ def run(known=False):
             else: lines.append(f"FAIL {where}: expected {meant}, got {said}: {got['cause']}")
             if want.get("cause_has") and want["cause_has"] not in got["cause"]:
                 lines.append(f"FAIL {where}: the cause no longer says \"{want['cause_has']}\": {got['cause']}")
+            if bool(want.get("saved")) != bool(got.get("saved")):
+                lines.append(f"FAIL {where}: " + ("no longer marked as saving the pull" if want.get("saved") else "marked as saving the pull, which the case does not say"))
         if "wipe" in case:
             ok, said, meant = sorted(case["wipe"]) == j["wipe"][0], ", ".join(j["wipe"][0]) or "no one", ", ".join(sorted(case["wipe"])) or "no one"
             if case.get("wipe_known"):
@@ -142,7 +145,7 @@ def show(code, fight, own_day=False):
     print("\nincidents:")
     for r in j["res"]:
         print(f"  {D.mmss(r['t'])} {r['kind']:5s} {r['victim']} ({r['ability']}): {', '.join(r['culprits']) or 'no one'} [{r['confidence']}"
-              f"{', fallout' if r.get('derived') else ''}] {r['cause']}")
+              f"{', fallout' if r.get('derived') else ''}{', saved the pull' if r.get('saved') else ''}] {r['cause']}")
     cul, trig = j["wipe"]
     print(f"wipe: {', '.join(cul) or 'no one'}" + (f" ({D.wipe_label(S, trig)} at {D.mmss(trig['t'])})" if trig else ""))
     print("counted: " + "; ".join(f"{c} {D.mmss(t)} {S.cause_label(cause, mech)}" for c, t, cause, mech, *_ in j["counted"]))
@@ -171,7 +174,8 @@ def add(code, fight, about, own_day=False):
     cases["pulls"].append(dict(code=code, fight=fight, pull=n, day=day, about=about, wipe=j["wipe"][0],
                                **({"own_day": True} if own_day else {"rules_day": rules} if rules != day else {}),
                                incidents=[dict(t=round(r["t"], 2), kind=r["kind"], victim=r["victim"], culprits=sorted(r["culprits"]),
-                                               **({"fallout": True} if r.get("derived") else {}), note=r["cause"]) for r in j["res"]]))
+                                               **({"fallout": True} if r.get("derived") else {}), **({"saved": True} if r.get("saved") else {}),
+                                               note=r["cause"]) for r in j["res"]]))
     CASES.write_text(json.dumps(cases, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"added {code} #{fight} pull {n} with {len(j['res'])} incidents: check each against `show` before keeping it")
 

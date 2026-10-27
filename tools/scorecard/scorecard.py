@@ -52,10 +52,11 @@ CAUSES = [("pulled Athena early", "Early pull"), ("broken gear", "Broken gear (l
           ("the two tanks share", "Tank share (Apo / Peridialogos)"), ("Dialogos stack", "Dialogos stack"),
           ("left the arena", "Left the arena"),
           ("Heavensflame not spread away", "Heavensflame in a bright Soul's AoE"),
+          ("could not be decided who walked into whose Heavensflame", "Heavensflame undecided (both blamed)"), ("walked into", "Walked into a Heavensflame"),
           ("dropped their towers together", "Bright Souls' towers dropped together"), ("bright Soul's AoE", "Bright Soul's AoE"),
           ("Trinity of Souls", "Trinity of Souls: on the cleaved side"), ("green orb", "Green orb (Superchain)"),
           ("Ray of Light", "Ray of Light column"), ("donut", "Donut (Superchain)"),
-          ("took both lasers", "Both Superchain lasers on one player"), ("could not be decided who drew the White Flame", "White Flame bait undecided (both blamed)"), ("White Flame line-up", "Missed White Flame bait"), ("closer to the White Flame add", "Too close to a White Flame add"), ("off their spot in the White Flame line", "Off their White Flame line-up spot"), ("did not bait their White Flame", "Missed White Flame bait"),
+          ("could not be decided who stood in whose orange cone", "Orange cone undecided (all blamed)"), ("could not be decided whose spot", "Superchain laser undecided (both blamed)"), ("took both lasers", "Both Superchain lasers on one player"), ("could not be decided who drew the White Flame", "White Flame bait undecided (both blamed)"), ("White Flame line-up", "Missed White Flame bait"), ("closer to the White Flame add", "Too close to a White Flame add"), ("off their spot in the White Flame line", "Off their White Flame line-up spot"), ("did not bait their White Flame", "Missed White Flame bait"),
           ("White Flame", "White Flame line"), ("tether laser", "Tether laser"), ("laser group", "Superchain laser group"),
           ("share", "Superchain laser group"), ("Heavensflame", "Heavensflame spread"), ("orange cone", "Orange cone overlap"),
           ("purple jack", "Purple pair"), ("purple-jack pair", "Purple pair"), ("Soul AoE", "Soul AoE"), ("the + ", "+ / X placement"), ("the X ", "+ / X placement"),
@@ -63,14 +64,18 @@ CAUSES = [("pulled Athena early", "Early pull"), ("broken gear", "Broken gear (l
           ("auto-attacks", "Tank death to auto-attacks")]
 # tower failures, labelled by mechanic and by what went wrong; the first match wins
 TOWERS = [(("platform tower", "same tower"), "support tower left empty (Electrify)"),
+          (("held it in their place",), "tower held by a substitute, who died to it"),
           (("with the wrong Tilt",), "tower soaked with the wrong Tilt"),
+          (("tower unsoaked, undecided",), "tower unsoaked, undecided (both blamed)"),
           (("DPS soaked a support tower",), "DPS in a support tower"),
           (("died before dropping", "died holding"), "Soul died before dropping their tower"),
           (("wrong quadrant", "sweep", "two towers dropped", "dropped their Soul"), "Soul tower in the wrong quadrant"),
           (("wrong side",), "tower dropped on the wrong side"),
+          (("dropped it out of",), "tower dropped out of its soaker's reach"),
+          (("dropped their tower on", "dropped it on"), "bright tower dropped on its soaker"),
           (("own tile instead", "at the centre instead"), "bright tower placed wrong"),
           (("before the bright Soul",), "stepped into the tower too early"),
-          (("did not soak", "unsoaked because", "soaker could not", "cause unclear", "instead of soaking", "belonged on"), "tower not soaked"),
+          (("did not soak", "both away from it", "unsoaked because", "soaker could not", "cause unclear", "instead of soaking", "belonged on"), "tower not soaked"),
           (("soaked", "stepped into"), "wrong player in a tower")]
 # tether laser failures (Paradeigma II and III), labelled the same way
 TETHERS = [(("not stretched",), "tether not stretched far enough"),
@@ -270,6 +275,45 @@ def fetch_p3(data):
     data["p3"] = out
 
 
+SC1_WINDOW = (127, 151)   # seconds into the pull: Superchain I from its first resolution to the bright Souls' towers resolving
+                          # (the lasers ~137 s, the towers drop ~145 s and resolve 3 s later)
+SC1_VERSION = 2           # bumped when sc1_compact changes: caches holding another are fetched again
+
+
+def sc1_compact(f, events, abilities):
+    """One pull's Superchain I, for the classifier (Pull.sc1): {towers: [[t, aspect, x, y]] (each bright tower's
+    Advance cast, where it dropped; the Glow's own source is often stale), cluster: [[t, "Burst" or "Coil", x, y]] (the
+    clusters' orb and donut casts), pos: [[t, player id, x, y]]}, times in seconds from the pull. The damage events hold
+    only the hit players' positions, so a soaker who never stepped into their tower has none there."""
+    players, seen, towers, cluster, pos = set(f["friendlyPlayers"]), set(), [], [], []
+    xy = lambda r: (round((r["x"] - 10000) / 100, 2), round((r["y"] - 10000) / 100, 2)) if r and "x" in r else None
+    for e in events:
+        k = json.dumps(e, sort_keys=True)
+        if k in seen: continue
+        seen.add(k)
+        t, nm = round((e["timestamp"] - f["startTime"]) / 1000, 3), abilities.get(str(e.get("abilityGameID")))
+        if e["type"] == "cast" and (p := xy(e.get("sourceResources"))):
+            if nm in ("Astral Advance", "Umbral Advance"): towers.append([t, nm.split()[0], *p])
+            if nm in ("Superchain Burst", "Superchain Coil"): cluster.append([t, nm.split()[1], *p])
+        for side in ("source", "target"):
+            if e.get(f"{side}ID") in players and (p := xy(e.get(f"{side}Resources"))): pos.append([t, e[f"{side}ID"], *p])
+    return dict(towers=sorted(towers), cluster=sorted(cluster), pos=sorted(pos))
+
+
+def fetch_sc1(data):
+    """Superchain I's towers, clusters and positions for every pull that lasts into them (sc1_compact)."""
+    fights, out = [f for f in data["fights"] if f["endTime"] - f["startTime"] > SC1_WINDOW[0] * 1000], {}
+    for i in range(0, len(fights), 8):
+        part, evs = fights[i:i + 8], collections.defaultdict(list)
+        for h in ("Enemies", "Friendlies"):
+            q = "query($c:String!){reportData{report(code:$c){" + " ".join(WF_EVENTS % (f["id"], f["id"], f["startTime"] + SC1_WINDOW[0] * 1000,
+                min(f["endTime"], f["startTime"] + SC1_WINDOW[1] * 1000), h) for f in part) + "}}}"
+            r = fflogs.gql(q, {"c": data["code"]})["reportData"]["report"]
+            for f in part: evs[f["id"]] += r[f"f{f['id']}"]["data"]
+        for f in part: out[str(f["id"])] = sc1_compact(f, evs[f["id"]], data["abilities"])
+    data["sc1"], data["sc1_v"] = out, SC1_VERSION
+
+
 def pot_gain(data, fid, y):
     """DPS over 0:00-2:00 a tincture added to this table row, as build_benchmark.py reckons the clears': the seconds under
     it at the player's 0:00-0:38 damage rate, times the tincture's share."""
@@ -286,8 +330,8 @@ def fetch(code, refresh, bench):
                                 ("tables_given", lambda: fetch_tables(data, [f for f in data["fights"] if str(f["id"]) in data["tables"]]),
                                  "the rDPS raid buffs gave others"),
                                 ("pots", lambda: fetch_pots(data), "tinctures"), ("wf", lambda: fetch_wf(data), "positions at White Flame"),
-                                ("p3", lambda: fetch_p3(data), "tethers at Paradeigma III")):
-            if key not in data:   # reports cached before this part existed
+                                ("p3", lambda: fetch_p3(data), "tethers at Paradeigma III"), ("sc1", lambda: fetch_sc1(data), "towers at Superchain I")):
+            if key not in data or key == "sc1" and data.get("sc1_v") != SC1_VERSION:   # reports cached before this part existed, or changed
                 if CACHED_ONLY: print(f"  {code}: no {what} in the cache, left out (--cached)", file=sys.stderr); continue
                 print(f"  {code}: fetching {what}", file=sys.stderr); fill(); cf.write_text(json.dumps(data))
         return data
@@ -314,6 +358,7 @@ def fetch(code, refresh, bench):
     fetch_pots(data)
     fetch_wf(data)
     fetch_p3(data)
+    fetch_sc1(data)
     fflogs.CACHE.mkdir(exist_ok=True); cf.write_text(json.dumps(data))
     return data
 
@@ -424,7 +469,7 @@ def analyse(group, data, bench):
                 hp={k: v for k, v in data.get("hp", {}).items() if k not in echo})
     names = {a["id"]: a["name"] for a in data["masterData"]["actors"] if a["subType"] in ROLE}
     rep = {"masterData": data["masterData"], "deaths": data["deaths"]}
-    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf"), "p3": data.get("p3")}
+    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf"), "p3": data.get("p3"), "sc1": data.get("sc1")}
     import acts                                 # the players' casts, for the rules that read them (the Glaukopis swap)
     A = acts.report(data["code"], data["fights"])
     pulls = [Pull(data["code"], f, rep, ev, acts=A.get(str(f["id"]))) for f in data["fights"]]
@@ -462,10 +507,12 @@ def analyse(group, data, bench):
             if trig: row["wipe"] = dict(culprits=cul, t=round(trig["t"], 1), mechanic=trig["mechanic"], label=wipe_label(trig), cause=trig["cause"],
                                         confidence=trig["confidence"])
         # every death with what killed them and whose fault it was; when: "lost" for the deaths that decided the wipe
-        # (the deciding death and the rest of its mass death), "after" for the collapse after it, None before
+        # (the deciding death and the rest of its mass death), "after" for the collapse after it, None before; saved: their death
+        # was the price of saving the pull (a Superchain I tower held in its Strong Soul's place)
         lost_at = trig["t"] - 1 if trig else dur
         row["death_list"] = [dict(who=r["victim"], t=round(r["t"], 1), ability=r["ability"], mechanic=r["mechanic"], cause=r["cause"],
                                   culprits=r["culprits"], confidence=r["confidence"], **({"trace": r["trace"]} if r.get("trace") else {}),
+                                  **({"saved": True} if r.get("saved") else {}),   # died holding what would have lost the pull
                                   when="lost" if trig and (r is trig or r["ability"] == trig["ability"] and abs(r["t"] - trig["t"]) <= 3)
                                   else "after" if r["t"] >= lost_at else None)
                              for r in res if r["kind"] == "death"]
