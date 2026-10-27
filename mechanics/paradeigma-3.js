@@ -1081,7 +1081,7 @@
             stroke: aspectSoft(a.color), 'stroke-width': mine ? 3 : 1.8, opacity: mine ? 0.95 : 0.5,
             'stroke-linecap':'round' }));
         }
-        unit(actors, xy[0], xy[1], 'dps', {
+        unit(actors, xy[0], xy[1], 'sword', {
           me: mine, color: opts.coloured === false ? 'var(--mist)' : aspectSoft(a.color),
           tag: opts.tags ? (a.straight ? 'straight' : 'crossed') : null,
           icon: opts.tilts ? tiltIcon(a.color) : null
@@ -1482,7 +1482,7 @@
           fill:'none', stroke:'var(--aether)', 'stroke-width':2.5, class:'pulse' }));
         tethers.appendChild(el('line', { x1:ax, y1:WALL_ADD_Y[st.myAddY], x2:300, y2:264,
           stroke: aspectSoft(st.myColor), 'stroke-width':3, opacity:0.95, 'stroke-linecap':'round' }));
-        unit(actors, 300, 264, 'dps', { me:true, color: aspectSoft(st.myColor) });
+        unit(actors, 300, 264, 'sword', { me:true, color: aspectSoft(st.myColor) });
         instr(`Your tether runs to the <span class="hl">${st.myAddY === 240 ? 'northern' : 'southern'}</span> of the two <span class="hl">${lightWord(st.myColor)}</span> adds on the <span class="hl">${st.mySide}</span> wall. Click the spot you take.<span class="hint"> Stretch it across: both DPS from one wall cross to the <b>opposite middle platform</b>: if your add lines up with it yours is the <b>straight</b> tether, level with your add right on the line of waymark B or D (only half a yalm past where its laser kills you, so no closer, and no further out than the waymark); otherwise yours is <b>crossed</b>, at the middle of the platform's outer edge (top on the northern platform, bottom on the southern).</span>`);
         spotHits(dpsCandidates(), answerSpot);
       }
