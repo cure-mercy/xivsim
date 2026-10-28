@@ -539,7 +539,9 @@ function whatHappened(x, who) {
   count(tr);
   // several causes of one hit (both towers exploding) are told in the fold, each with the earlier deaths behind it
   const head = own(tr.rule || `${tr.parts.length} failures at once`);
-  return el("div", {}, head, el("details", { class: "trace" }, el("summary", {}, `how it came about: ${deaths.size} earlier death${deaths.size === 1 ? "" : "s"}`), list(tr)));
+  // with no earlier deaths behind them (a tether laser, then Electrify), the fold holds only the failures themselves
+  const fold = deaths.size || !tr.parts ? `how it came about: ${deaths.size} earlier death${deaths.size === 1 ? "" : "s"}` : `the ${tr.parts.length} failures`;
+  return el("div", {}, head, el("details", { class: "trace" }, el("summary", {}, fold), list(tr)));
 }
 // a death in FFLogs: the Deaths view for the one who died, over the whole mechanic it happened in, on to the death when
 // that came later (the whole pull when in none); null for a report built before the site kept its start time and actor ids

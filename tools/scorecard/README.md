@@ -465,7 +465,10 @@ a replay does not reproduce what the log shows, or the positions are missing, an
 
 **From faults to deaths.** A death goes to the faults about the very hit that killed it (several about one hit, like
 two towers exploding together, are one cause with their culprits together), otherwise, unless the hit was avoidable, to
-the earliest fault that hit the victim in the 4.5 s before. A death within `STUNG_S` (1 s) of an avoidable hit on the same
+the earliest fault that hit the victim in the 4.5 s before. A death one step (`AT_ONCE_S`, 0.6 s) before a hit that kills
+everyone left alive (`WIPE_HITS`: Electrify, Unmitigated Explosion), such as a tether laser just before Electrify, is two
+failures at once, the faults about both hits as one cause (the user's rule, 2026-10-28). The site tells such a cause as
+"N failures at once", each failure in the fold, and each culprit's mistake is counted as their own failure (`by_culprit`). A death within `STUNG_S` (1 s) of an avoidable hit on the same
 player is their own, whatever else made it lethal. A later death from the same player's earlier mistake is fallout of it,
 counted once. When a mechanic fails because the player who should have done it was already dead (an unsoaked tower, a
 bait that found someone else, a share a sharer short), the blame passes to whoever caused that death; the site shows the

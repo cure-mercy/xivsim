@@ -1283,18 +1283,21 @@ def para3(p, lp, bright_by=None):
     seat = tether_seats(lasers)
     tilt = {o: "Umbral" if nm == "Searing Radiance" else "Astral" for nm, _, o, _ in lasers.values() if o}
     mine = set()
-    # a DPS's own tether is the laser that hit only them; a second laser through them is someone else's
+    # a DPS's own tether is the laser that hit only them; a second laser through them is someone else's. Each fault is
+    # about its laser's hit (ability): a death to it goes to it, not to an earlier fault that named them (the Electrify
+    # fault lists the supports in a doubled tower: Zj8T pull 5)
     for e in sorted(tl, key=lambda e: per_inst[e.get("sourceInstance")]):
+        about = dict(ability=e["name"])
         if e["who"] in supports:
-            out.append(tether_clip(p, e, lasers.get(e.get("sourceInstance")), seat))
+            out.append(dict(tether_clip(p, e, lasers.get(e.get("sourceInstance")), seat), **about))
         else:
             o = lasers.get(e.get("sourceInstance"), (None,) * 4)[2]
             if o and o != e["who"]:
-                out.append(tether_cross(p, e["t"], e["who"], o, lasers[e.get("sourceInstance")], seat)); continue
-            if e["who"] in mine: out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], "hit by two DPS tether lasers", "medium", tag="p3.tether.stood_in")); continue
+                out.append(dict(tether_cross(p, e["t"], e["who"], o, lasers[e.get("sourceInstance")], seat), **about)); continue
+            if e["who"] in mine: out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], "hit by two DPS tether lasers", "medium", **about, tag="p3.tether.stood_in")); continue
             mine.add(e["who"]); tilt.setdefault(e["who"], "Umbral" if e["name"] == "Searing Radiance" else "Astral")
             if (e.get("targetResources") or {}).get("hitPoints") == 0:
-                out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], "died to their own tether laser (not stretched far enough)", "high", tag="p3.tether.not_stretched"))
+                out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], "died to their own tether laser (not stretched far enough)", "high", **about, tag="p3.tether.not_stretched"))
     match = [w for w, a in tilt.items() if a == asp]; opp = [w for w, a in tilt.items() if a != asp]
     col = p3_column(seat, spos, sup["Quartered"])
     # + and X: both locked to true north; the owner steps out of their own arms. Each has its spot (+ the north platform's
@@ -2173,7 +2176,10 @@ def merged(fs):
                 # the direct causes first: a cause's label comes from before "; earlier"
                 rule="; earlier: ".join(r for r in ("; ".join(dict.fromkeys(f["rule"] for f in direct)), "; ".join(dict.fromkeys(f["rule"] for f in fs if f["chain"]))) if r),
                 victims=set().union(*(f["victims"] for f in fs)),
-                fallout=bool(direct) and all(f["fallout"] for f in direct), parts=fs, saved=sorted({w for f in fs for w in f.get("saved", ())}))
+                fallout=bool(direct) and all(f["fallout"] for f in direct), parts=fs, saved=sorted({w for f in fs for w in f.get("saved", ())}),
+                # each direct culprit's own failure (rule, tag), the earliest naming them (a tower missed before the laser that
+                # clipped them): their mistake is counted as that, not as the hit's label
+                by_culprit={c: (f["rule"], f["tag"]) for f in sorted(direct, key=lambda f: -f["t"]) for c in f["culprits"]})
 RULEBOOK = {
     "Paradeigma I": [(None, AVOIDABLE_ONLY),   # before the group's strategy: only avoidable hits (Trinity of Souls)
                      ("2026-09-29", lambda p, lp: para1(p, lp) + para1_auto(p, lp))],   # the strategy took effect
@@ -2218,6 +2224,9 @@ BROKEN_GEAR = 0.5     # max HP under this share of the other non-tanks' median: 
 RAIDWIDES = {"On the Soul", "Ultima Blade"}   # hit every living player (On the Soul 1,591 of 1,683 casts; Ultima Blade 14
                               # of 14) and are survived with healing and mitigation; Unmitigated Explosion (a tower failure),
                               # Superchain Radiation (a cone at each player) and Theos's Ultima (shared damage) are not
+WIPE_HITS = {"Electrify", "Unmitigated Explosion"}   # kill everyone left alive: 94 of 94 Electrify waves, 579 of 589 explosions
+AT_ONCE_S = 0.6   # a death this soon before one of them is one step with it: the tether lasers land 0.1-0.4 s before
+                  # Electrify (some 200 deaths); before an explosion, only the tower soaks, 2.2 s ahead (2026-10-28)
 FELL_GAP, FELL_HP, FELL_LEFT = 1.0, 0.25, 6   # a death with no hit, the last at least FELL_GAP s before with FELL_HP of
                                               # their HP left, and the pull going on FELL_LEFT s more: fell off the arena?
 
@@ -2298,7 +2307,7 @@ def classify(p, lp, day=None):
         if f.get("parts"):
             nodes = ([dict(rule=plain)] if plain else []) + list({json.dumps(t, sort_keys=True): t for t in (tree(g["rule"], why_of(g["chain"], g["t"])) for g in f["parts"] if g["chain"])}.values())
             node = dict(parts=nodes) if len(nodes) > 1 else nodes[0]   # several causes of one hit: told side by side
-        return dict(i, mechanic=f["mechanic"], cause=cause, trace=node, follows=follows, tag=f["tag"],
+        return dict(i, mechanic=f["mechanic"], cause=cause, trace=node, follows=follows, tag=f["tag"], **({"by_culprit": f["by_culprit"]} if f.get("by_culprit") else {}),
                     culprits=culprits, shares={c: shares.get(c, 1.0) for c in culprits}, derived=not direct, carried=[c for c in culprits if c not in direct] if direct else [],
                     confidence=least_sure(([f["direct_conf"]] if direct else []) + [r["confidence"] for _, r in why]
                                           + [g["cap"] for g in f.get("parts", [f]) if g.get("cap")]))   # cap: a chain the rule is unsure of
@@ -2343,6 +2352,10 @@ def classify(p, lp, day=None):
         # the earliest fault that hit them
         near =[f for f in faults if i["victim"] in f["victims"] and -1.5 <= i["t"] - f["t"] <= 4.5]
         about = [f for f in near if f.get("ability") == i["ability"]]
+        # killed by a failure one step before one that kills everyone left alive (a tether laser, then Electrify): two
+        # failures at once, either enough to kill them, told together as one cause (two towers exploding together)
+        wave = next((e for e in p.dmg if e["name"] in WIPE_HITS and 0 < e["t"] - i["t"] <= AT_ONCE_S), None) if about and i["kind"] == "death" and i["ability"] not in WIPE_HITS else None
+        if wave: about += [g for g in faults if g.get("ability") == wave["name"] and abs(wave["t"] - g["t"]) <= 4.5 and g not in about]
         f = merged(about) if about else None if i["ability"] in AVOIDABLE else near[0] if near else None
         if f is None and i["ability"] == "Unmitigated Explosion":   # an explosion that reached someone no tower fault names
             tw = [f for f in faults if f.get("ability") == i["ability"] and abs(i["t"] - f["t"]) <= 4.5] \
@@ -2365,7 +2378,10 @@ def classify(p, lp, day=None):
             r = from_chain(i, f)
             add(dict(r, derived=True, carried=[], **saved) if again and r["culprits"] else dict(r, **saved))
         elif f:
-            add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], shares=f["shares"], confidence=f["confidence"], tag=f["tag"], **saved, **({"derived": True} if f["fallout"] or again else {})))
+            sides = list(dict.fromkeys(g["rule"] for g in f.get("parts", [])))   # several direct causes of one hit: side by side on the site
+            add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], shares=f["shares"], confidence=f["confidence"], tag=f["tag"], **saved,
+                     **({"by_culprit": f["by_culprit"]} if f.get("by_culprit") else {}),
+                     **({"trace": dict(parts=[dict(rule=r) for r in sides])} if len(sides) > 1 else {}), **({"derived": True} if f["fallout"] or again else {})))
         elif prev and i["ability"] not in AVOIDABLE:
             add(dict(i, mechanic=mech, cause=f"after their earlier {prev['kind']}: {prev['cause']}", culprits=prev["culprits"], shares=prev["shares"], confidence="medium", derived=True, tag=prev["tag"]))
         elif own and own["chain"]:
