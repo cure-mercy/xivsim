@@ -2040,4 +2040,7 @@ def classify(p, lp, day=None):
             for v in sorted(f["victims"]):
                 i = dict(t=f["t"], kind="hit", victim=v, ability=f["ability"], pos=None)
                 add(from_chain(i, f) if f["chain"] else dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"]))
+    # the deaths that left no one alive: the party had wiped, and later deaths (players raised after it) are part of it
+    for r in res:
+        if r["kind"] == "death" and not r.get("jump") and not set(p.job) - p.dead_by(r["t"] + 0.1): r["party_dead"] = True
     return sorted(res, key=lambda r: r["t"]), faults

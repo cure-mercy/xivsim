@@ -140,7 +140,9 @@ without one ("Wipe called", no culprit). 419 of the 427 deaths without a hit com
 eight, single players mid-pull, stay ordinary deaths without a culprit. The collapse is the last run of deaths with
 less than 15 seconds between them (`CASCADE_GAP`); earlier deaths the group recovered from do not count. One player
 outliving the rest by more than that (an invulnerability, a late raise) does not make a collapse of their own unless
-the wipe was called. A mass death in the collapse (four or more players to one ability within 3 seconds, or two to a
+the wipe was called, and deaths after the whole party was dead (players raised after the wipe, dying again) belong to
+the collapse before (`party_dead`, the user's rule, 2026-10-28: in dMvrn pull 7 a Paradeigma III explosion left no one
+alive, and two raised players' deaths 17 s later had passed the wipe to a laser mistake 1:30 earlier). A mass death in the collapse (four or more players to one ability within 3 seconds, or two to a
 tower explosion or Electrify, which kill everyone left, within 5 seconds of the collapse's start: `RAIDWIDE`) decides
 the wipe; otherwise the collapse's first death does, or a death with a culprit within 1.5 seconds of it (the same
 hit). Deaths within 0.6 seconds of the deciding one (`SIMULTANEOUS_S`: one step of a mechanic; its next step comes
@@ -477,7 +479,7 @@ weaker; 0.75 sits between the two. Low is too rare to measure (19 counted mistak
 as blame split between two. These were measured on the classifier before the rules were fixed against the same pulls
 (2026-10-26), so the suite agreeing with them now is no measure of accuracy: re-measuring needs pulls not yet checked.
 
-**Testing a change.** `python tests/run.py blame` checks the classifier against 88 pulls checked by hand, every
+**Testing a change.** `python tests/run.py blame` checks the classifier against 89 pulls checked by hand, every
 incident's expected culprits and each pull's wipe (`tests/blame.py`; the cases, in `tests/blame_cases.json`, name
 players, so they are git-ignored like `site/data.json`, and the suite needs the caches). It fails when a hand-checked
 verdict changes. Verdicts the classifier is known to get wrong are recorded with the right answer and why (`python

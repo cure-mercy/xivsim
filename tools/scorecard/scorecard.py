@@ -460,7 +460,8 @@ def wipe_of(res):
     """Who lost the pull. A player jumping off the arena (a death without a hit) means the wipe was called, so only
     deaths before the first jump count, and a pull with none was called without one (the jump decides, no culprit).
     The collapse is the last run of deaths with less than CASCADE_GAP seconds between them; one player outliving the
-    rest by more (an invulnerability) does not make a run of their own unless the wipe was called. A mass death in it
+    rest by more (an invulnerability) does not make a run of their own unless the wipe was called, and deaths after the
+    whole party was dead (players raised after it, dying again) belong to the run before (party_dead). A mass death in it
     (four or more players to one ability within 3 s, or two to one that kills everyone left, RAIDWIDE) decides the
     wipe (with no culprit when its mechanic is not blamed); otherwise its first death does, or one with a culprit within
     1.5 s of it (the same hit, logged in any order).
@@ -477,6 +478,8 @@ def wipe_of(res):
     run_start = lambda i: next(j for j in range(i, -1, -1) if j == 0 or deaths[j]["t"] - deaths[j - 1]["t"] > CASCADE_GAP)
     i = run_start(len(deaths) - 1)
     while jump is None and i > 0 and len({r["victim"] for r in deaths[i:]}) == 1: i = run_start(i - 1)
+    # a run after the whole party was dead (players raised after the wipe, dying again) belongs to the run before
+    while i > 0 and any(r.get("party_dead") for r in deaths[run_start(i - 1):i]): i = run_start(i - 1)
     collapse = deaths[i:]
     while len({r["victim"] for r in collapse[1:]}) > 1 and lone_start(collapse, res): collapse = collapse[1:]
     same_hit = lambda r: [q for q in collapse if q["ability"] == r["ability"] and 0 <= q["t"] - r["t"] <= 3]
