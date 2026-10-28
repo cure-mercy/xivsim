@@ -7,3 +7,5 @@ scratch/
 tools/gear/.cache/
 .fflogs_v2
 tests/blame_cases.json
+.supabase
+.supabase.local

@@ -1,7 +1,8 @@
 # Concept: public rotations and gear, then accounts linked to players
 
-Status: draft, 2026-10-26. Step 1 built 2026-10-28 (see the scorecard README, "Publishing with a passphrase"); step 2
-not started.
+Status: draft, 2026-10-26. Step 1 built 2026-10-28. Step 2 built 2026-10-28 and tested against a local Supabase in
+WSL; the hosted project, the Discord application and the first admin are still to be set up (scorecard README,
+"Publishing" → "Setting up Supabase"). Where the build differs from this plan, see "Step 2 as built" below.
 
 ## Goal
 
@@ -192,6 +193,23 @@ test account and checks that `report_full` returns no rows to either.
 `report_players`, `progress` and `report_full`, then removes rows for reports that `--remove` took off the site.
 `stats/data.enc.json` and the passphrase go away once step 2 is live.
 
+### Step 2 as built
+
+- **Decision 6:** the progress fragment leaves out mistakes and wipes by mechanic (`causes`, `wipe_causes`,
+  `lost_causes`, `lost_unattributed`, each pull's mistake list and wipe label) for the latest raid day. The day page
+  says which groups' heatmaps are missing; a group's own players still see theirs in full.
+- The progress fragment adds name-free counts that the pages used to compute from player data: `player_pulls`, and
+  per pull `np` (players in it) and `m` (mistake shares added up).
+- **Linking** asks for the character's name (and world if the name isn't unique) instead of offering a list of
+  unlinked players, so the 71 names aren't shown to anyone who logs in. `request_link` answers whether a name is in
+  our reports, which a logged-in user could use to test names one at a time.
+- **Admin writes** go through row-level security for admins (approving links, roles, the report list), not the service
+  key. The service key stays with `build_site.py`, `supa.py` and `worker.py`.
+- **Reports from the admin page**: the page edits a list (`report_sources`) and `worker.py`, running in WSL, builds it,
+  since the analysis is Python. Live logs are polled (FFLogs has no webhooks) every 3 minutes, for 12 hours at most.
+- Not built: an admin command that removes a player completely. Unlinking and deleting an account exist; the player's
+  name stays in the full records of the reports they played in.
+
 ## Things to keep in mind
 
 - **The old encrypted file stays in git history.** Anyone who has the passphrase now, or guesses it later, can
@@ -212,13 +230,19 @@ test account and checks that `report_full` returns no rows to either.
    rules above assume it) or (b) every report of the group they were in, such as all of G1's days, including days
    they missed. (b) only works if groups are fixed teams. It is a one-line change to the policy that joins on
    `group_name`.
+-> The reports they were in.
 2. **Login provider:** Discord (recommended), FFLogs, or email.
+-> Discord
 3. **Backend:** A Supabase (recommended), B Cloudflare, or C own server.
+-> Supabase
 4. **Search indexing for the public pages:** keep `noindex` (recommended until step 2) or allow it.
+-> allow it
 5. ~~Rotation timelines use our raidplan positions.~~ Decided 2026-10-28: the raidplans are public, so these can
    be too.
 6. **Can other groups' mistakes by mechanic count as global progress?** These are heatmaps by mechanic with no
    names. Yes is recommended. No limits global progress to boss HP and pull lengths.
+   -> Yes, but neverr the lastest raid day
 7. **Should `ours` go public?** These are our players' anonymous rDPS spread and buff credit per job on the
    rotation pages. For a job only one or two of our players play, the figures are close to personal. They stay
    locked for now. Making them public means adding `"ours": None` to `PUBLIC_KEYS`.
+-> No

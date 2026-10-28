@@ -198,6 +198,14 @@ def fetch_echo(data):
     data["echo_pulls"] = [f["id"] for f in fs if any(s < f["endTime"] and e > f["startTime"] for s, e in bands)]
 
 
+def fetch_servers(data):
+    """Each player's home world and the report's region, to look up their FFLogs character id (build_site.py roster)."""
+    r = fflogs.gql('query($c:String!){reportData{report(code:$c){region{slug} masterData{actors(type:"Player"){name server}}}}}',
+                   {"c": data["code"]})["reportData"]["report"]
+    data["region"] = (r.get("region") or {}).get("slug")
+    data["servers"] = {a["name"]: a["server"] for a in r["masterData"]["actors"] if a.get("server")}
+
+
 def fetch_pots(data):
     """Tinctures (Medicated) running during 0:00-2:00 of the clean pulls, with the player's damage over 0:00-0:38 of that
     pull: {fight id: {name: [seconds under it, damage 0:00-0:38]}} (see pot_gain)."""
@@ -380,7 +388,8 @@ def fetch(code, refresh, bench):
                                  "the rDPS raid buffs gave others"),
                                 ("pots", lambda: fetch_pots(data), "tinctures"), ("wf", lambda: fetch_wf(data), "positions at White Flame"),
                                 ("p3", lambda: fetch_p3(data), "tethers at Paradeigma III"), ("sc1", lambda: fetch_sc1(data), "towers at Superchain I"),
-                                ("p2", lambda: fetch_p2(data), "tethers and positions at Paradeigma II")):
+                                ("p2", lambda: fetch_p2(data), "tethers and positions at Paradeigma II"),
+                                ("servers", lambda: fetch_servers(data), "home worlds")):
             if key not in data or key == "sc1" and data.get("sc1_v") != SC1_VERSION:   # reports cached before this part existed, or changed
                 if CACHED_ONLY: print(f"  {code}: no {what} in the cache, left out (--cached)", file=sys.stderr); continue
                 print(f"  {code}: fetching {what}", file=sys.stderr); fill(); cf.write_text(json.dumps(data))
@@ -410,6 +419,7 @@ def fetch(code, refresh, bench):
     fetch_p3(data)
     fetch_sc1(data)
     fetch_p2(data)
+    fetch_servers(data)
     fflogs.CACHE.mkdir(exist_ok=True); cf.write_text(json.dumps(data))
     return data
 

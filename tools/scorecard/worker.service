@@ -1,0 +1,21 @@
+# systemd unit for the scorecard's worker (worker.py) in WSL (Ubuntu). Install as root:
+#   cp /mnt/c/Gitroot/xivsim/tools/scorecard/worker.service /etc/systemd/system/scorecard-worker.service
+#   systemctl daemon-reload && systemctl enable --now scorecard-worker
+#   journalctl -u scorecard-worker -f                      (what it does)
+# SCORECARD_SUPABASE picks the keys file: .supabase (the real project) by default, .supabase.local for the local stack.
+[Unit]
+Description=P12S scorecard worker: builds the reports the admin page lists
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=lailani
+WorkingDirectory=/mnt/c/Gitroot/xivsim
+Environment=PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8
+# Environment=SCORECARD_SUPABASE=/mnt/c/Gitroot/xivsim/.supabase.local
+ExecStart=/usr/bin/python3 tools/scorecard/worker.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

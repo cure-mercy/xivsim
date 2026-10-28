@@ -198,6 +198,16 @@ td.wrap{ white-space: normal; min-width: 260px; }
 .unlock input[type=password]{ font: inherit; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .unlock button.primary{ font: inherit; font-weight: 600; color: #fff; background: var(--series); border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; justify-self: start; }
 .unlock button.primary:disabled{ opacity: 0.6; cursor: progress; }
+/* accounts and the admin page */
+.unlock.wide{ max-width: 560px; }
+.unlock input[type=text], .unlock input[type=email], .unlock input[type=number], table.admin input[type=text]{ font: inherit; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.unlock input[type=number]{ width: 4.5em; padding: 4px 6px; }
+table.admin input[type=text]{ padding: 3px 6px; }
+.actions{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.actions button, button.small{ font: inherit; font-size: 13px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.actions button:disabled, button.small:disabled{ opacity: 0.5; cursor: default; }
+button.danger{ color: var(--div-neg); }
+tr.muted td{ color: var(--muted); }
 
 /* "?" explanations */
 .help{ display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: 8px; padding: 0;
