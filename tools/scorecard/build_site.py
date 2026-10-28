@@ -4,6 +4,7 @@
     python tools/scorecard/build_site.py --remove <report code>
     python tools/scorecard/build_site.py --reanalyse              (after a classifier or label change)
     python tools/scorecard/build_site.py [links ...] --publish [DIR]
+    python tools/scorecard/build_site.py --upload                 (Supabase only, no page files)
     python -m http.server -d tools/scorecard/site 8000          then open http://localhost:8000
 
 Each link is one raid group's report. Reports are grouped into raid days by the date they were logged; a report
@@ -13,14 +14,18 @@ day get the next free G1, G2, ... in the order given. The analysis itself is in 
 site/data.json holds player names and who caused which mistake, so it is git-ignored.
 
 --publish writes a copy of the site for public hosting into DIR (default: stats/ at the repository root, which
-the GitHub Pages workflow deploys like the rest of the repo): the page files, public.json (what the rotation and
-gear pages need, PUBLIC_KEYS, open to everyone) and data.enc.json (the rest: progress, mistakes, our players'
-figures), encrypted with a passphrase (encrypt_data.js, needs Node). The plaintext data.json is never copied there,
-and nothing is published if a player's name turns up in public.json. The passphrase is read from
-SCORECARD_PASSPHRASE, or asked for twice. To stop publishing, delete DIR; to move host, upload DIR (or serve site/
-with its plaintext data behind the new host's own login).
+the GitHub Pages workflow deploys like the rest of the repo): the page files and public.json (what the rotation and
+gear pages need, PUBLIC_KEYS, open to everyone). The rest goes to Supabase when .supabase holds its keys (supa.py,
+ACCESS_CONCEPT.md step 2: accounts linked to players), with config.json telling the page where to log in; without it,
+to data.enc.json, encrypted with a passphrase (encrypt_data.js, needs Node; read from SCORECARD_PASSPHRASE or asked
+for twice). The plaintext data.json is never copied there, and nothing is published if a player's name turns up in
+public.json. To stop publishing, delete DIR; to move host, upload DIR (or serve site/ with its plaintext data behind
+the new host's own login).
+
+The worker (worker.py) builds the reports the admin page lists, with the same functions; site_lock() keeps it and a
+command-line build from writing data.json at the same time.
 """
-import argparse, datetime, getpass, hashlib, json, os, shutil, subprocess, sys
+import argparse, contextlib, datetime, getpass, hashlib, json, os, shutil, socket, subprocess, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -36,6 +41,12 @@ PAGE_FILES = ["index.html", "style.css", "app.js"]
 # here. The rotation and gear pages read only these (benchmark: only its clears, from public FFLogs reports); our
 # players' figures on those pages (`ours`) stay locked
 PUBLIC_KEYS = {"generated": None, "rotations": None, "gear": None, "benchmark": ["pools"]}
+# what every linked user sees of every report (Supabase's progress table): group-level figures and pulls, no names.
+# Also a whitelist. MECHANIC_KEYS (mistakes by mechanic) are left out on the latest raid day, whose groups only their
+# own players see in full (ACCESS_CONCEPT.md, decision 6)
+PROGRESS_KEYS = ["code", "group", "day", "start", "pulls_total", "kills", "best", "longest", "clean2", "party", "hp", "lost_total", "lost_dd", "echo"]
+PROGRESS_PULL_KEYS = ["n", "at", "dur", "boss", "kill", "first", "deaths", "hp", "echo"]
+MECHANIC_KEYS = ["causes", "wipe_causes", "lost_causes", "lost_unattributed"]
 
 
 def plain(v):
@@ -55,7 +66,11 @@ def report_entry(code, group, data, bench):
         row["echo"] = row["id"] in data.get("echo_pulls", [])
     # the report's start (ms) and each player's actor id, for links into the report on FFLogs
     actors = {a["name"]: a["id"] for a in data["masterData"]["actors"] if a["subType"] in S.ROLE}
-    return plain(dict(code=code, group=group, day=g["date"].date().isoformat(), start=g["date"], start_ms=data["startTime"], actors=actors, title=data.get("title"),
+    # who played, with their home world and FFLogs character id, for linking accounts to players (supa.py)
+    servers = data.get("servers", {})
+    roster = [dict(name=n, world=servers.get(n), id=fflogs.character_id(n, servers.get(n), data.get("region"), lookup=not S.CACHED_ONLY))
+              for n in sorted({p["name"] for p in g["players"]})]
+    return plain(dict(code=code, group=group, roster=roster, day=g["date"].date().isoformat(), start=g["date"], start_ms=data["startTime"], actors=actors, title=data.get("title"),
                       pulls_total=g["pulls"], kills=g["kills"], best=g["best"], longest=g["longest"], clean2=g["clean2"], party=g["party"],
                       hp=g["hp"], causes=dict(g["causes"]), wipe_causes=dict(g["wipe_causes"]), coverage=dict(g["coverage"]),
                       light_parties=[sorted(g["lp"][0]), sorted(g["lp"][1])], players=g["players"], pulls=g["pull_rows"],
@@ -141,18 +156,63 @@ def leaked_names(site, text):
     return sorted(n for n in names if n and whole(n))
 
 
-def publish(out):
-    """Copy the page files, the public data and the encrypted rest to out; never the private part in plaintext."""
-    site = json.loads(DATA.read_text(encoding="utf-8"))
-    public, private = split_public(site)
-    public_text = json.dumps(public, ensure_ascii=False, separators=(",", ":"))
-    if leaked := leaked_names(site, public_text):
+def progress_of(r, latest):
+    """A report's progress fragment: PROGRESS_KEYS, and per pull PROGRESS_PULL_KEYS plus counts that need no names (how
+    many players were in it, their mistakes' shares added up). Mistakes and wipes by mechanic only on earlier days."""
+    by_mech = r["day"] != latest
+    out = {k: r.get(k) for k in PROGRESS_KEYS}
+    out["player_pulls"] = sum(p["pulls"] for p in {p["name"]: p for p in reversed(r["players"])}.values())   # as app.js stats(): each name once, its first entry
+    if by_mech: out.update({k: r.get(k) for k in MECHANIC_KEYS})
+    out["pulls"] = []
+    for q in r["pulls"]:
+        x = {k: q.get(k) for k in PROGRESS_PULL_KEYS}
+        x["np"], x["m"] = len(q.get("players") or []), round(sum(m.get("share", 1) for m in q.get("mistakes") or []), 4)
+        if q.get("wipe"): x["wipe"] = {k: q["wipe"].get(k) for k in (("t", "mechanic", "label") if by_mech else ("t",))}
+        if by_mech: x["mistakes"] = [{k: m.get(k) for k in ("mechanic", "label", "share")} for m in q.get("mistakes") or []]
+        out["pulls"].append(x)
+    return out
+
+
+def fragments(site):
+    """The site data split by who may read it (ACCESS_CONCEPT.md): rows for Supabase's tables."""
+    reports = sorted(site["reports"].values(), key=lambda r: (r["day"], r["group"]))
+    latest = reports[-1]["day"] if reports else None
+    players = {}
+    for r in reports:   # newest last, so a renamed character keeps its latest name
+        for x in r.get("roster", []): players[x["id"]] = dict(id=x["id"], name=x["name"], world=x["world"])
+    _, private = split_public(site)
+    return dict(
+        reports=[dict(code=r["code"], day=r["day"], group_name=r["group"]) for r in reports],
+        players=list(players.values()),
+        report_players=[dict(report_code=r["code"], player_id=x["id"]) for r in reports for x in r.get("roster", [])],
+        progress={r["code"]: progress_of(r, latest) for r in reports},
+        full={r["code"]: r for r in reports},
+        meta={k: v for k, v in private.items() if k != "reports"},   # strategies, the whole benchmark, ours
+    )
+
+
+def check_public(site):
+    """public.json's text, after making sure it names no player."""
+    public, _ = split_public(site)
+    text = json.dumps(public, ensure_ascii=False, separators=(",", ":"))
+    if leaked := leaked_names(site, text):
         raise SystemExit(f"public.json would name {len(leaked)} player(s) ({', '.join(leaked[:5])}); nothing published")
-    pw = os.environ.get("SCORECARD_PASSPHRASE")
-    if not pw:
-        pw = getpass.getpass("Passphrase for the published data: ")
-        if pw != getpass.getpass("Again: "): raise SystemExit("the passphrases differ; nothing published")
-    if len(pw) < 12: raise SystemExit("use a passphrase of at least 12 characters (several words is best); nothing published")
+    return text
+
+
+def publish(out):
+    """Copy the page files and the public data to out, and the rest to Supabase (with config.json for the page) when
+    .supabase is set up, or else to data.enc.json, encrypted; never the private part in plaintext."""
+    import supa
+    site = json.loads(DATA.read_text(encoding="utf-8"))
+    public_text = check_public(site)
+    cfg = supa.config()
+    if not cfg:
+        pw = os.environ.get("SCORECARD_PASSPHRASE")
+        if not pw:
+            pw = getpass.getpass("Passphrase for the published data: ")
+            if pw != getpass.getpass("Again: "): raise SystemExit("the passphrases differ; nothing published")
+        if len(pw) < 12: raise SystemExit("use a passphrase of at least 12 characters (several words is best); nothing published")
     out = Path(out); out.mkdir(parents=True, exist_ok=True)
     for f in PAGE_FILES: shutil.copyfile(HERE / "site" / f, out / f)
     page = (out / "index.html").read_text(encoding="utf-8")   # version the files so browsers fetch the new ones
@@ -161,11 +221,81 @@ def publish(out):
         page = page.replace(f'"{f}"', f'"{f}?v={v}"')
     (out / "index.html").write_text(page, encoding="utf-8")
     (out / "data.json").unlink(missing_ok=True)
-    env = dict(os.environ, SCORECARD_PASSPHRASE=pw)   # the private part goes to the encryption on stdin, never to a file
-    subprocess.run(["node", str(HERE / "encrypt_data.js"), "-", str(out / "data.enc.json")], env=env, check=True,
-                   input=json.dumps(private, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    if cfg:
+        supa.upload(fragments(site))
+        (out / "config.json").write_text(json.dumps(supa.page_config(cfg)), encoding="utf-8")   # the public URL and anon key
+        (out / "data.enc.json").unlink(missing_ok=True)
+        rest = f"config.json (Supabase at {cfg['url']})"
+    else:
+        _, private = split_public(site)
+        env = dict(os.environ, SCORECARD_PASSPHRASE=pw)   # the private part goes to the encryption on stdin, never to a file
+        subprocess.run(["node", str(HERE / "encrypt_data.js"), "-", str(out / "data.enc.json")], env=env, check=True,
+                       input=json.dumps(private, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+        (out / "config.json").unlink(missing_ok=True)
+        rest = "data.enc.json"
     (out / "public.json").write_text(public_text, encoding="utf-8")
-    print(f"published to {out}: {', '.join(PAGE_FILES)}, public.json ({len(public_text.encode()) // 1024} KB), data.enc.json")
+    print(f"published to {out}: {', '.join(PAGE_FILES)}, public.json ({len(public_text.encode()) // 1024} KB), {rest}")
+
+
+# ---------- building, shared with worker.py ----------
+LOCK = HERE / "site" / ".build.lock"
+
+
+@contextlib.contextmanager
+def site_lock(wait=900):
+    """One build at a time: the worker and a command-line build both rewrite data.json. A lock older than two hours is
+    taken to be left over from a crashed build."""
+    LOCK.parent.mkdir(exist_ok=True)
+    t0 = time.time()
+    while True:
+        try:
+            fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY); break
+        except FileExistsError:
+            try:
+                if time.time() - LOCK.stat().st_mtime > 7200: LOCK.unlink(); continue
+            except FileNotFoundError: continue
+            if time.time() - t0 > wait: raise SystemExit(f"another build holds {LOCK}; try again later")
+            time.sleep(2)
+    os.write(fd, f"{socket.gethostname()} pid {os.getpid()}".encode()); os.close(fd)
+    try: yield
+    finally: LOCK.unlink(missing_ok=True)
+
+
+def load_site():
+    return json.loads(DATA.read_text(encoding="utf-8")) if DATA.exists() else {"reports": {}}
+
+
+def add_report(site, code, group, refresh, bench):
+    """Analyse one report into the site data, under group (None: its existing name, or the day's next free G1, G2, ...).
+    Returns its entry. A name another report of that day already has is refused (ValueError)."""
+    import checks
+    checks.OUR_CODES = sorted(set(site["reports"]) | {code})   # for references from our own groups
+    data = S.fetch(code, refresh, bench)
+    day = datetime.datetime.fromtimestamp(data["startTime"] / 1000).date().isoformat()
+    taken = {r["group"]: c for c, r in site["reports"].items() if r["day"] == day and c != code}
+    if not group: group = site["reports"][code]["group"] if code in site["reports"] else next(f"G{n}" for n in range(1, 99) if f"G{n}" not in taken)
+    if group in taken: raise ValueError(f"{group} is taken on {day} by {taken[group]}")
+    print(f"{day} {group}: {code}", file=sys.stderr)
+    site["reports"][code] = report_entry(code, group, data, bench)
+    return site["reports"][code]
+
+
+def finish(site, bench):
+    """Everything derived from the whole set of reports and the parts that come from the other tools; then write."""
+    site["benchmark"] = benchmark_summary(bench, list(site["reports"]))
+    site["rotations"] = S.rotations()   # the optimizer's rotations, per job and GCD (tools/rotation/dps.py --site)
+    for v in site["rotations"].values():   # how many of our players are at each GCD: not shown, and the rotations are public
+        for x in v["rotations"].values(): x.pop("players", None)
+    site["gear"] = S.gear()             # the best-in-slot sets (tools/gear/sheets.py)
+    site["strategies"] = C.strategy_dates()   # when each mechanic's strategy began to be blamed, for the charts
+    site["ours"] = ours_by_job(site["reports"], site["rotations"])   # our players' figures on the rotation pages, without names
+    site["generated"] = datetime.datetime.now().isoformat(timespec="minutes")
+    DATA.parent.mkdir(exist_ok=True)
+    tmp = DATA.with_suffix(".tmp")   # write and swap, so the page server never reads half a file
+    tmp.write_text(json.dumps(site, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    os.replace(tmp, DATA)
+    days = sorted({r["day"] for r in site["reports"].values()})
+    print(f"wrote {DATA} ({len(site['reports'])} reports over {len(days)} raid days, {DATA.stat().st_size // 1024} KB)")
 
 
 def main():
@@ -176,46 +306,31 @@ def main():
     ap.add_argument("--remove", nargs="+", metavar="CODE", help="remove these reports from the site data")
     ap.add_argument("--reanalyse", action="store_true", help="analyse every report already on the site again (after a classifier or label change)")
     ap.add_argument("--publish", nargs="?", const=str(PUBLISH_DIR), metavar="DIR",
-                    help=f"also write the passphrase-protected copy for public hosting (default {PUBLISH_DIR})")
+                    help=f"also write the copy for public hosting (default {PUBLISH_DIR}); the private part goes to Supabase, or encrypted")
+    ap.add_argument("--upload", action="store_true", help="also send the data to Supabase, without writing page files")
     ap.add_argument("--cached", action="store_true", help="use the cache only: skip parts a cached report is missing "
                     "(e.g. the rDPS raid buffs gave others) instead of fetching them, for when FFLogs is down")
     a = ap.parse_args()
     S.CACHED_ONLY = a.cached
     bench = json.loads((HERE / "benchmark.json").read_text())
-    site = json.loads(DATA.read_text(encoding="utf-8")) if DATA.exists() else {"reports": {}}
-    for code in a.remove or []:
-        print(f"removed {code}" if site["reports"].pop(code, None) else f"{code} was not in the data", file=sys.stderr)
-    names = a.names.split(",") if a.names else []
-    links = list(a.links)
-    if a.reanalyse:   # every report already on the site, from the cache, keeping its group name
-        given = {fflogs.report_code(l) for l in links}
-        links += [c for c in sorted(site["reports"], key=lambda c: (site["reports"][c]["day"], site["reports"][c]["group"])) if c not in given]
-    import checks
-    checks.OUR_CODES = sorted(set(site["reports"]) | {fflogs.report_code(l) for l in links})   # for references from our own groups
-    for i, link in enumerate(links):
-        code = fflogs.report_code(link)
-        data = S.fetch(code, a.refresh, bench)
-        day = datetime.datetime.fromtimestamp(data["startTime"] / 1000).date().isoformat()
-        if i < len(names): group = names[i].strip()
-        elif code in site["reports"]: group = site["reports"][code]["group"]
-        else:
-            taken = {r["group"] for r in site["reports"].values() if r["day"] == day}
-            group = next(f"G{n}" for n in range(1, 99) if f"G{n}" not in taken)
-        print(f"{day} {group}: {code}", file=sys.stderr)
-        site["reports"][code] = report_entry(code, group, data, bench)
-    site["benchmark"] = benchmark_summary(bench, list(site["reports"]))
-    site["rotations"] = S.rotations()   # the optimizer's rotations, per job and GCD (tools/rotation/dps.py --site)
-    for v in site["rotations"].values():   # how many of our players are at each GCD: not shown, and the rotations are public
-        for x in v["rotations"].values(): x.pop("players", None)
-    site["gear"] = S.gear()             # the best-in-slot sets (tools/gear/sheets.py)
-    site["strategies"] = C.strategy_dates()   # when each mechanic's strategy began to be blamed, for the charts
-    site["ours"] = ours_by_job(site["reports"], site["rotations"])   # our players' figures on the rotation pages, without names
-    site["generated"] = datetime.datetime.now().isoformat(timespec="minutes")
-    DATA.parent.mkdir(exist_ok=True)
-    DATA.write_text(json.dumps(site, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    days = sorted({r["day"] for r in site["reports"].values()})
-    print(f"wrote {DATA} ({len(site['reports'])} reports over {len(days)} raid days, {DATA.stat().st_size // 1024} KB)")
-    if a.publish: publish(a.publish)
+    with site_lock():
+        site = load_site()
+        for code in a.remove or []:
+            print(f"removed {code}" if site["reports"].pop(code, None) else f"{code} was not in the data", file=sys.stderr)
+        names = a.names.split(",") if a.names else []
+        links = list(a.links)
+        if a.reanalyse:   # every report already on the site, from the cache, keeping its group name
+            given = {fflogs.report_code(l) for l in links}
+            links += [c for c in sorted(site["reports"], key=lambda c: (site["reports"][c]["day"], site["reports"][c]["group"])) if c not in given]
+        for i, link in enumerate(links):
+            try: add_report(site, fflogs.report_code(link), names[i].strip() if i < len(names) else None, a.refresh, bench)
+            except ValueError as e: raise SystemExit(f"{fflogs.report_code(link)}: {e}; nothing written")
+        finish(site, bench)
+        if a.publish: publish(a.publish)
+        elif a.upload:
+            import supa
+            if not supa.config(): raise SystemExit("no Supabase keys (see supa.py); nothing uploaded")
+            supa.upload(fragments(site))
 
 
 if __name__ == "__main__":

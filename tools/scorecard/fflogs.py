@@ -180,6 +180,32 @@ def report_code(link):
     return [p for p in path.split("/") if p][-1].split("#")[0]
 
 
+def report_state(code):
+    """How far a report has been uploaded: {segments, end (ms), fights}. Cheap, for noticing new pulls in a log that
+    is still being written; FFLogs has no webhooks or subscriptions (its schema has no subscription type)."""
+    r = gql("query($c:String!){reportData{report(code:$c){segments endTime fights{id}}}}", {"c": code})["reportData"]["report"]
+    return dict(segments=r["segments"], end=r["endTime"], fights=len(r["fights"]))
+
+
+def character_id(name, server, region, lookup=True):
+    """FFLogs' id for a character, which stays the same when it is renamed or moves worlds; cached in
+    .cache/characters.json. A character FFLogs does not know (or hides) gets a stable negative id from its name and
+    world, as does one not cached yet when lookup is False (build_site --cached), without caching that."""
+    cf = CACHE / "characters.json"
+    known = json.loads(cf.read_text()) if cf.exists() else {}
+    key = f"{name}@{server}"
+    if key not in known and not lookup: return -int(hashlib.sha256(key.encode()).hexdigest()[:12], 16)
+    if key not in known:
+        c = None
+        if server and region:
+            slug = "".join(ch for ch in server.lower() if ch.isalnum())
+            c = gql("query($n:String!,$s:String!,$r:String!){characterData{character(name:$n,serverSlug:$s,serverRegion:$r){id}}}",
+                    {"n": name, "s": slug, "r": region})["characterData"]["character"]
+        known[key] = c["id"] if c else -int(hashlib.sha256(key.encode()).hexdigest()[:12], 16)
+        CACHE.mkdir(exist_ok=True); cf.write_text(json.dumps(known, ensure_ascii=False, indent=0))
+    return known[key]
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="FFLogs login for archived reports")
     ap.add_argument("--login", action="store_true", help="sign in as the subscribing account (opens a browser)")

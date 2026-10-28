@@ -77,16 +77,17 @@ function days() {
 }
 function stats(rs) {   // summary over one or more group reports
   const pulls = sum(rs.map(r => r.pulls_total));
-  const playerPulls = sum(rs.map(r => sum(r.players.filter((p, i, a) => a.findIndex(q => q.name === p.name) === i).map(p => p.pulls))));
-  const mistakes = sum(rs.map(r => sum(r.pulls.map(p => sum(p.mistakes.map(m => m.share ?? 1))))));   // each culprit's share, as the players' rates
+  // a report seen as progress only has no players: build_site.progress_of counts them without names (player_pulls, m, np)
+  const playerPulls = sum(rs.map(r => r.players ? sum(r.players.filter((p, i, a) => a.findIndex(q => q.name === p.name) === i).map(p => p.pulls)) : r.player_pulls || 0));
+  const mistakes = sum(rs.map(r => sum(r.pulls.map(p => p.mistakes ? sum(p.mistakes.map(m => m.share ?? 1)) : p.m || 0))));   // each culprit's share, as the players' rates
   const wipeCauses = {};
-  for (const r of rs) for (const [k, n] of Object.entries(r.wipe_causes)) wipeCauses[k] = (wipeCauses[k] || 0) + n;
+  for (const r of rs) for (const [k, n] of Object.entries(r.wipe_causes || {})) wipeCauses[k] = (wipeCauses[k] || 0) + n;
   const withParty = rs.filter(r => r.party);
   return {
     pulls, kills: sum(rs.map(r => r.kills)), best: Math.min(...rs.map(r => r.best)), longest: Math.max(...rs.map(r => r.longest)),
     clean2: sum(rs.map(r => r.clean2)), mistakesPerPull: playerPulls ? mistakes / playerPulls : null,
     // per player and minute of pull, up to where each pull was lost (as the mistakes are counted)
-    mistakesPerMin: (() => { const m = sum(rs.map(r => sum(r.pulls.map(p => p.players.length * Math.min(p.dur, p.wipe ? p.wipe.t + 2 : p.dur) / 60))));
+    mistakesPerMin: (() => { const m = sum(rs.map(r => sum(r.pulls.map(p => (p.players ? p.players.length : p.np || 0) * Math.min(p.dur, p.wipe ? p.wipe.t + 2 : p.dur) / 60))));
       return m ? mistakes / m : null; })(),
     party: withParty.length ? sum(withParty.map(r => r.party * r.clean2)) / sum(withParty.map(r => r.clean2)) : null,
     topWipe: Object.entries(wipeCauses).sort((a, b) => b[1] - a[1])[0], wipeCauses,
@@ -199,7 +200,7 @@ function burndownChart(pulls) {
     const band = w / Math.max(1, n);
     pulls.forEach((p, i) => { const hit = sv("rect", { class: "hit", x: X(i) - band / 2, y: T, width: Math.max(band, 3), height: h });
       hover(hit, `${dayName(p.day)} · ${p.group} · pull ${i + 1} (${p.n} in the group that night)`, [[`${hp(p).toFixed(2)}%`, p.kill ? "kill" : "boss HP left", true],
-        [mmss(p.dur), p.kill ? "" : p.wipe ? p.wipe.label : "wipe"], ...(p.echo ? [["Echo", "not counted for the best line"]] : [])]);
+        [mmss(p.dur), p.kill ? "" : p.wipe && p.wipe.label || "wipe"], ...(p.echo ? [["Echo", "not counted for the best line"]] : [])]);
       svg.append(hit); });
     return svg;
   };
@@ -808,15 +809,15 @@ function causeName(mech, label) {
   return `${shortMech(mech)}: ${rest.replace(new RegExp(`^${mech.split(" ")[0]} `), "")}`;   // "Superchain laser group" in SC I: "laser group"
 }
 const causeInfo = r => { const m = {};
-  for (const q of r.pulls) { for (const x of q.mistakes) m[causeName(x.mechanic, x.label)] = { mech: x.mechanic, label: x.label };
+  for (const q of r.pulls) { for (const x of q.mistakes || []) m[causeName(x.mechanic, x.label)] = { mech: x.mechanic, label: x.label };
     if (q.wipe) m[causeName(q.wipe.mechanic, q.wipe.label)] = m[causeName(q.wipe.mechanic, q.wipe.label)] || { mech: q.wipe.mechanic, label: q.wipe.label }; }
   return m; };
 const countBy = keys => keys.reduce((a, k) => ((a[k] = (a[k] || 0) + 1), a), {});
 // every mistake until each pull was lost (of one player, if given), and the mistake that lost each pull
-const mistakeCounts = (r, who) => countBy(r.pulls.flatMap(q => q.mistakes.filter(m => !who || m.who === who).map(m => causeName(m.mechanic, m.label))));
+const mistakeCounts = (r, who) => countBy(r.pulls.flatMap(q => (q.mistakes || []).filter(m => !who || m.who === who).map(m => causeName(m.mechanic, m.label))));
 const wipeCounts = (r, who) => {
-  const c = countBy(r.pulls.filter(q => q.wipe && (!who || q.wipe.culprits.includes(who))).map(q => causeName(q.wipe.mechanic, q.wipe.label)));
-  if (!who && r.wipe_causes.Unclear) c.Unclear = r.wipe_causes.Unclear;   // wipes nobody could be blamed for have no wipe entry on the pull
+  const c = countBy(r.pulls.filter(q => q.wipe && q.wipe.label && (!who || q.wipe.culprits.includes(who))).map(q => causeName(q.wipe.mechanic, q.wipe.label)));
+  if (!who && r.wipe_causes && r.wipe_causes.Unclear) c.Unclear = r.wipe_causes.Unclear;   // wipes nobody could be blamed for have no wipe entry on the pull
   return c;
 };
 
@@ -851,7 +852,7 @@ function home() {
   // burndown over every pull, as on tomestone.gg
   const P = allPulls(), ok = P.filter(p => !p.echo && p.boss != null), best = ok.length ? Math.min(...ok.map(p => p.boss)) : null;
   const bd = card("Burndown", info("Every pull's boss HP at its end, all groups together in the order they were played (thin line), and the best so far (steps); dotted lines mark the first pull that reached each mechanic. Hover a pull for its day, group and how it ended. Pulls with The Echo are drawn but not counted for the best line."),
-    burndownChart(P), () => tableOf(["Pull", "Day", "Group", "Boss HP", "Ended"], P.map((p, i) => [String(i + 1), dayName(p.day), p.group, p.boss != null ? `${p.boss.toFixed(1)}%` : "–", p.kill ? "Kill" : p.wipe ? p.wipe.label : "–"])));
+    burndownChart(P), () => tableOf(["Pull", "Day", "Group", "Boss HP", "Ended"], P.map((p, i) => [String(i + 1), dayName(p.day), p.group, p.boss != null ? `${p.boss.toFixed(1)}%` : "–", p.kill ? "Kill" : p.wipe ? p.wipe.label || "wipe" : "–"])));
   bd.querySelector(".card-head").after(el("p", { class: "summary" }, `${P.length} pulls over ${new Set(P.map(p => p.day)).size} raid days · ${(P.reduce((s, p) => s + p.dur, 0) / 3600).toFixed(1)} hours in combat · best pull `,
     el("b", {}, best != null ? `${best.toFixed(1)}%` : "–"), P.some(p => p.echo) ? " (Echo pulls not counted)" : ""));
   app.append(el("h2", {}, "Burndown"), bd);
@@ -906,8 +907,10 @@ function dayPage(day) {
       kfmt(r.party), g.mistakesPerPull.toFixed(2), hpfmt(g.lostPerPull), g.topWipe ? `${g.topWipe[0]} (${g.topWipe[1]})` : "–"], `#/day/${day}/${r.group}`); tr.lastChild.className = ""; return tr; })))));
   app.append(heading("h2", "Boss HP checkpoints", "Boss HP when each mechanic begins, as points ahead of or behind the pace for a kill at enrage (Clear). Hover a row for the exact HP."),
     el("div", { class: "grid wide" }, d.groups.map(r => card(r.group, `${r.pulls_total} pulls`, checkpointChart(r.hp), () => checkpointTable(r.hp), checkpointLegend()))));
-  const cols = d.groups.map(r => ({ label: r.group, r }));
-  app.append(el("h2", {}, "What went wrong"), el("div", { class: "grid wide" },
+  const cols = d.groups.filter(r => r.wipe_causes).map(r => ({ label: r.group, r }));   // progress only, on the latest day: no mistakes by mechanic
+  const hidden = d.groups.filter(r => !r.wipe_causes).map(r => r.group);
+  app.append(el("h2", {}, "What went wrong"), hidden.length ? el("p", { class: "note" }, `${hidden.join(", ")}: mistakes by mechanic of the latest raid day are shown only to the group's own players.`) : "",
+    !cols.length ? "" : el("div", { class: "grid wide" },
     causeMatrix("All mistakes", "Every mistake until each pull was lost, by cause and group.", cols, c => mistakeCounts(c.r)),
     causeMatrix("What wiped us", "The mistake that lost each pull, by cause and group.", cols, c => wipeCounts(c.r))));
 }
@@ -1195,7 +1198,7 @@ function playerPage(day, group, name) {
         wipeCell(d)))))
       : el("div", { class: "empty", style: "padding:14px" }, "No deaths recorded.")));
   // across raid days
-  const hist = reports().flatMap(x => x.players.filter(q => q.name === name).map(q => ({ ...q, day: x.day, group: x.group }))).sort((a, c) => a.day.localeCompare(c.day));
+  const hist = reports().filter(x => x.players).flatMap(x => x.players.filter(q => q.name === name).map(q => ({ ...q, day: x.day, group: x.group }))).sort((a, c) => a.day.localeCompare(c.day));
   const byDay = Object.values(hist.reduce((a, q) => ((a[q.day + q.group] = a[q.day + q.group] || []).push(q), a), {}));
   app.append(heading("h2", "Across raid days", "Their top issues: the three mistakes they made most over all raid days, each per pull that reached the mechanic it happens in (the pull not yet lost when the mechanic began), so getting further in later raid days does not read as more mistakes. Each row is one mistake in one mechanic, named as in the mistake tables (Trinity of Souls in Para I and in Dialogos are separate rows). Rotation issues: the latest raid day's costliest, per minute alive, on the same job only. Trend: the later half of their raid days against the earlier half, 20% or more apart."));
   // their top issues, raid day by raid day
@@ -2010,6 +2013,243 @@ function notFound() {
   document.getElementById("app").append(el("h1", {}, "Not found"), el("p", { class: "lede" }, "That day, group, player or rotation is not in the data."), el("a", { href: "#/" }, "Back to the raid days"));
 }
 
+// ---------- accounts (Supabase, ACCESS_CONCEPT.md step 2) ----------
+// config.json names the project. A linked user gets every report's progress (the progress table: no names, and no
+// mistakes by mechanic on the latest raid day) and a report's full record (report_full) when a page needs it and their
+// player was in it; admins get everything. Row-level security in the database decides; the page only asks.
+const SUPABASE_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js";
+const SUPABASE_SRI = "sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R";
+let SB = null, CFG = null;
+let ME = null;            // the logged-in user: { id, name, admin, links: [{ player_id, status, name, world }] }; null when logged out
+let MINE = new Set();     // codes of the reports whose full record the user may read
+const FULL = {};          // code -> the promise of its full record
+const linkedMe = () => !!ME && (ME.admin || ME.links.some(l => l.status === "approved"));
+const sbCheck = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
+function loadScript(src, integrity) {
+  return new Promise((ok, fail) => { const s = el("script", { src, integrity, crossorigin: "anonymous" });
+    s.onload = ok; s.onerror = () => fail(new Error("The login library could not be loaded.")); document.head.append(s); });
+}
+async function startAccounts(cfg) {
+  CFG = cfg;
+  await loadScript(SUPABASE_JS, SUPABASE_SRI);
+  SB = supabase.createClient(cfg.supabase_url, cfg.anon_key, { auth: { flowType: "pkce", detectSessionInUrl: true, persistSession: true } });
+  await SB.auth.getSession();   // finishes a login that came back with ?code=…
+  SB.auth.onAuthStateChange(ev => { if (ev === "SIGNED_OUT") { location.hash = "#/"; location.reload(); } });
+  if (new URLSearchParams(location.search).has("code") || new URLSearchParams(location.search).has("error")) {
+    let back = ""; try { back = sessionStorage.getItem("p12s-return") || ""; sessionStorage.removeItem("p12s-return"); } catch (e) {}
+    history.replaceState(null, "", location.pathname + (back || location.hash));
+  }
+  await loadMe();
+  await loadProgress();
+}
+async function loadMe() {
+  const { data: { session } } = await SB.auth.getSession();
+  if (!session) { ME = null; return; }
+  const u = session.user;
+  const [prof, links] = await Promise.all([
+    SB.from("profiles").select("display_name, role").eq("user_id", u.id).maybeSingle().then(sbCheck),
+    SB.from("user_players").select("player_id, status, players(name, world)").eq("user_id", u.id).then(sbCheck)]);
+  ME = { id: u.id, name: (prof && prof.display_name) || u.email || "you", admin: !!prof && prof.role === "admin",
+         links: links.map(l => ({ player_id: l.player_id, status: l.status, name: l.players ? l.players.name : "?", world: l.players ? l.players.world : "" })) };
+}
+async function loadProgress() {   // every report's progress and the private site data, for linked users
+  if (!linkedMe()) return;
+  const [prog, meta, rp] = await Promise.all([SB.from("progress").select("doc").then(sbCheck), SB.from("site_meta").select("key, doc").then(sbCheck),
+    ME.admin ? Promise.resolve([]) : SB.from("report_players").select("report_code").then(sbCheck)]);
+  DATA.reports = Object.fromEntries(prog.map(x => [x.doc.code, x.doc]));
+  for (const k of Object.keys(FULL)) delete FULL[k];
+  for (const k of Object.keys(PLAYER_CODES)) delete PLAYER_CODES[k];
+  for (const x of meta) DATA[x.key] = x.doc;   // the whole benchmark replaces the public part of it
+  MINE = new Set(ME.admin ? Object.keys(DATA.reports) : rp.map(x => x.report_code));
+  LOCKED = false;
+}
+function needFull(codes) {   // the full records of these reports, merged into DATA.reports (they hold every progress field too)
+  return Promise.all(codes.filter(c => DATA.reports[c] && !DATA.reports[c].players && MINE.has(c)).map(c => FULL[c] = FULL[c] ||
+    SB.from("report_full").select("doc").eq("code", c).maybeSingle().then(sbCheck).then(x => { if (x) DATA.reports[c] = x.doc; })
+      .catch(e => { delete FULL[c]; throw e; })));
+}
+const PLAYER_CODES = {};   // player name -> the codes playerCodes found
+async function playerCodes(name) {   // the reports a player page reads (the player across raid days)
+  if (!ME.admin) return [...MINE];
+  const ps = await SB.from("players").select("id").eq("name", name).then(sbCheck);
+  if (!ps.length) return [];
+  return (await SB.from("report_players").select("report_code").in("player_id", ps.map(p => p.id)).then(sbCheck)).map(x => x.report_code);
+}
+function loginDiscord() {
+  try { sessionStorage.setItem("p12s-return", location.hash); } catch (e) {}
+  SB.auth.signInWithOAuth({ provider: "discord", options: { redirectTo: location.origin + location.pathname, scopes: "identify email" } });
+}
+function loginBox(msg) {
+  const box = el("div", { class: "unlock" }, el("button", { type: "button", class: "primary", on: { click: loginDiscord } }, "Log in with Discord"));
+  if (CFG && CFG.email_login) {   // local testing only (SCORECARD_EMAIL_LOGIN in the keys file)
+    const email = el("input", { type: "email", id: "email", autocomplete: "username", placeholder: "email" });
+    const pw = el("input", { type: "password", id: "pw", autocomplete: "current-password", placeholder: "password" });
+    const note = el("p", { class: "note", role: "status" });
+    const go = signUp => async e => { e.preventDefault(); note.textContent = "…";
+      const { error } = signUp ? await SB.auth.signUp({ email: email.value, password: pw.value }) : await SB.auth.signInWithPassword({ email: email.value, password: pw.value });
+      if (error) { note.textContent = error.message; return; }
+      await loadMe(); await loadProgress(); header(); route(); };
+    box.append(el("p", { class: "note" }, "Or, on this test setup, with an email address:"), email, pw,
+      el("div", { class: "actions" }, el("button", { type: "button", on: { click: go(false) } }, "Log in"), el("button", { type: "button", on: { click: go(true) } }, "Create account")), note);
+  }
+  if (msg) box.append(el("p", { class: "note" }, msg));
+  return box;
+}
+const openPages = () => DATA && DATA.rotations ? [" The ", el("a", { href: "#/rotations" }, "rotations"), " and ", el("a", { href: "#/gear" }, "best-in-slot gear"), " are open to everyone."] : [];
+function gatePage() {   // a progress page while the user cannot see progress
+  crumbs([["Raid progress", null]]);
+  const app = document.getElementById("app");
+  if (!ME) {
+    app.append(el("h1", {}, "Raid progress"), el("p", { class: "lede" }, "Log in to see the raid's progress. Once an admin has linked your account to your character, you see every raid day's progress and the full details of the reports you played in.", ...openPages()), loginBox());
+    return;
+  }
+  app.append(el("h1", {}, "Raid progress"), el("p", { class: "lede" }, ME.links.length ? "Your request is waiting for an admin's approval." : "Tell us which character is yours; an admin then links it to your account.", ...openPages()));
+  accountBody(app);
+}
+function notYourGroup(r) {   // a group the user did not play in: its progress figures only
+  crumbs([["Raid days", "#/"], [dayName(r.day), `#/day/${r.day}`], [r.group, null]]);
+  const app = document.getElementById("app"), b = DATA.benchmark;
+  app.append(el("h1", {}, `${r.group} · ${dayName(r.day)}`),
+    el("p", { class: "lede" }, "Not your group: its players, pulls and mistakes are shown only to the players who were in it. Its progress:"));
+  app.append(tiles([["Pulls", String(r.pulls_total), `${r.kills} kills`], ["Best pull", `${r.best.toFixed(1)}% HP`, `longest ${mmss(r.longest)}`],
+    ["Clean ≤2:00", pct(r.clean2 / r.pulls_total), `${r.clean2} pulls`],
+    ["Party DPS 0:00–2:00", kfmt(r.party), `clears ~${kfmt(b.pools.clears.party_dps_median)} · min ~${kfmt(b.pools.clears.party_dps_min)}`]]));
+  app.append(el("div", { class: "grid wide" }, card("Boss HP checkpoints", `${r.pulls_total} pulls`, checkpointChart(r.hp), () => checkpointTable(r.hp), checkpointLegend())));
+}
+function waitPage(text) { document.getElementById("app").append(el("p", { class: "muted" }, text)); }
+function failPage(e) { document.getElementById("app").replaceChildren(el("h1", {}, "Cannot load this page"), el("p", { class: "lede" }, e.message || String(e))); }
+
+const LINK_ANSWERS = { requested: "Requested. An admin will approve it.", already: "That character is already yours.", taken: "That character is linked to another account. Ask an admin if it is yours.",
+  not_found: "No character of that name has played in our reports. Check the spelling (as in game).", ambiguous: "Several characters have that name: add the world.",
+  too_many: "You have three requests waiting already." };
+function accountBody(app) {
+  const reload = async () => { await loadMe(); await loadProgress(); header(); route(true); };
+  if (ME.links.length) app.append(el("h2", {}, "Your characters"), el("div", { class: "table-wrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, ["Character", "World", "Status", ""].map(h => el("th", {}, h)))),
+    el("tbody", {}, ME.links.map(l => el("tr", {}, el("td", {}, l.name), el("td", {}, l.world || "–"),
+      el("td", { class: l.status === "approved" ? "good" : null }, l.status === "approved" ? "linked" : "waiting for approval"),
+      el("td", {}, el("button", { type: "button", class: "small", on: { click: async () => {
+        if (!confirm(`Unlink ${l.name} from your account?`)) return;
+        try { sbCheck(await SB.from("user_players").delete().eq("player_id", l.player_id)); } catch (e) { alert(e.message); }
+        reload(); } } }, l.status === "approved" ? "Unlink" : "Withdraw"))))))));
+  const name = el("input", { type: "text", id: "char", required: true, autocomplete: "off", placeholder: "First Last" });
+  const world = el("input", { type: "text", id: "world", autocomplete: "off", placeholder: "only if the name is not unique" });
+  const msg = el("p", { class: "note", role: "status" });
+  const form = el("form", { class: "unlock" }, el("label", { for: "char" }, "Character name"), name, el("label", { for: "world" }, "World"), world,
+    el("button", { type: "submit", class: "primary" }, "Request link"), msg);
+  form.addEventListener("submit", async e => { e.preventDefault(); msg.textContent = "…";
+    try { const a = sbCheck(await SB.rpc("request_link", { p_name: name.value, p_world: world.value || null })); msg.textContent = LINK_ANSWERS[a] || a;
+      if (a === "requested") setTimeout(reload, 1200); } catch (err) { msg.textContent = err.message; } });
+  app.append(el("h2", {}, "Link a character"), el("p", { class: "lede" }, "Linking shows you the full details, mistakes included, of every report your character played in, and every raid day's progress without names."), form);
+  app.append(el("h2", {}, "Your data"), el("p", { class: "lede" }, "This site stores your Discord user id, name and email address, as Discord sends them at login, and which characters are yours. "
+    + "Linking connects your account to that character's mistakes as the reports show them. Unlinking takes effect at once; deleting your account removes all of it."),
+    el("div", { class: "actions" }, el("button", { type: "button", on: { click: () => SB.auth.signOut() } }, "Log out"),
+      el("button", { type: "button", class: "danger", on: { click: async () => {
+        if (!confirm("Delete your account and all your links? This cannot be undone.")) return;
+        try { sbCheck(await SB.rpc("delete_my_account")); } catch (e) { alert(e.message); return; }
+        await SB.auth.signOut(); } } }, "Delete my account")));
+}
+function accountPage() {
+  crumbs([["Account", null]]);
+  const app = document.getElementById("app");
+  if (!ME) { app.append(el("h1", {}, "Log in"), el("p", { class: "lede" }, "Log in with your Discord account.", ...openPages()), loginBox()); return; }
+  app.append(el("h1", {}, ME.name), el("p", { class: "lede" }, ME.admin ? "Admin. " : "", linkedMe() ? "You see every raid day's progress and the reports your characters played in." : "Not linked to a character yet."));
+  accountBody(app);
+}
+
+// the admin page: link requests, users, and the reports the worker builds (tools/scorecard/worker.py)
+let adminTimer = null;
+const fflogsLink = code => el("a", { href: `https://www.fflogs.com/reports/${encodeURIComponent(code)}`, target: "_blank", rel: "noopener" }, code);
+const localTime = s => s ? new Date(s).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "–";
+const REPORT_CODE = /^[A-Za-z0-9]{16}$/;
+async function adminPage() {
+  crumbs([["Admin", null]]);
+  const app = document.getElementById("app");
+  if (!ME || !ME.admin) { app.append(el("h1", {}, "Admin"), el("p", { class: "lede" }, "Only admins can open this page."), ME ? "" : loginBox()); return; }
+  app.append(el("h1", {}, "Admin"));
+  const people = el("div"), reportsBox = el("div", {}, el("p", { class: "muted" }, "Loading…"));
+  // the redraw every 15 s waits while a field is being typed in (or was changed and not saved)
+  const busy = box => box.contains(document.activeElement) && document.activeElement.tagName === "INPUT"
+    || [...box.querySelectorAll("input[type=text], input[type=number]")].some(i => i.value !== i.defaultValue) || box.querySelector("input[type=checkbox]:checked");
+  app.append(el("h2", {}, "Reports"), el("p", { class: "lede" }, "The reports on the site. The worker builds what this list asks for within a minute; a live report is checked for new pulls every 3 minutes until its watch ends (12 hours at most)."), reportsBox,
+    el("h2", {}, "People"), people);
+  const act = fn => async () => { try { await fn(); } catch (e) { alert(e.message); return; } reportsBox.replaceChildren(); draw(); };
+  let lastBuilt = null;
+  async function draw() {
+    if (location.hash !== "#/admin") return;
+    let src, profs, links;
+    try {
+      [src, profs, links] = await Promise.all([SB.from("report_sources").select("*").order("day", { ascending: false, nullsFirst: true }).order("group_name").then(sbCheck),
+        SB.from("profiles").select("*").order("created_at").then(sbCheck), SB.from("user_players").select("*, players(name, world)").then(sbCheck)]);
+    } catch (e) { reportsBox.replaceChildren(el("p", { class: "warn" }, e.message)); return; }
+    const built = src.map(r => `${r.code}:${r.built_at}`).join();   // a build finished: take the new data
+    if (lastBuilt != null && built !== lastBuilt) { await loadProgress(); }
+    lastBuilt = built;
+    if (!busy(reportsBox)) reportsBox.replaceChildren(addReportForm(act), reportTable(src, act));
+    people.replaceChildren(...peopleTables(profs, links, act));
+    clearTimeout(adminTimer); adminTimer = setTimeout(draw, 15000);
+  }
+  draw();
+}
+function addReportForm(act) {
+  const link = el("input", { type: "text", id: "rep", required: true, autocomplete: "off", placeholder: "https://www.fflogs.com/reports/… or the code" });
+  const group = el("input", { type: "text", id: "grp", autocomplete: "off", placeholder: "G1, G2, … (empty: the day's next free one)", maxlength: 24 });
+  const live = el("input", { type: "checkbox", id: "live" }), hours = el("input", { type: "number", id: "hours", min: 1, max: 12, value: 6 });
+  const msg = el("p", { class: "note", role: "status" });
+  const form = el("form", { class: "unlock wide" }, el("label", { for: "rep" }, "FFLogs report"), link, el("label", { for: "grp" }, "Group name"), group,
+    el("label", { class: "check" }, live, " Live: keep checking for new pulls for ", hours, " hours"), el("button", { type: "submit", class: "primary" }, "Add report"), msg);
+  form.addEventListener("submit", e => { e.preventDefault();
+    const code = (link.value.trim().match(/reports\/([A-Za-z0-9]+)/) || [null, link.value.trim()])[1].split("#")[0];
+    if (!REPORT_CODE.test(code)) { msg.textContent = "That is not an FFLogs report link or code (16 letters and digits)."; return; }
+    act(async () => { const { error } = await SB.from("report_sources").insert({ code, group_name: group.value.trim() || null,
+      live_until: live.checked ? new Date(Date.now() + Math.min(12, Math.max(1, +hours.value || 6)) * 3600e3).toISOString() : null });
+      if (error) throw new Error(error.code === "23505" ? `${code} is on the list already: rename, rebuild or watch it there.` : error.message); })(); });
+  return form;
+}
+function reportTable(src, act) {
+  const upd = (code, cols) => act(async () => sbCheck(await SB.from("report_sources").update(cols).eq("code", code)))();
+  const now = Date.now();
+  return el("div", { class: "table-wrap" }, el("table", { class: "admin" },
+    el("thead", {}, el("tr", {}, ["Day", "Group", "Report", "Pulls", "State", "Live", ""].map((h, i) => el("th", { class: i === 3 ? "num" : null }, h)))),
+    el("tbody", {}, src.map(r => {
+      const live = r.live_until && new Date(r.live_until) > now, gone = r.want === "absent";
+      const g = el("input", { type: "text", value: r.group_name || "", maxlength: 24, size: 6, "aria-label": `Group name of ${r.code}`, disabled: gone });
+      const save = el("button", { type: "button", class: "small", disabled: gone, on: { click: () => upd(r.code, { group_name: g.value.trim() || null }) } }, "Rename");
+      return el("tr", { class: gone ? "muted" : null },
+        el("td", {}, r.day ? dayName(r.day) : "–"), el("td", {}, g, " ", save), el("td", {}, fflogsLink(r.code)), el("td", { class: "num" }, r.pulls != null ? String(r.pulls) : "–"),
+        el("td", { class: r.state === "error" ? "bad" : r.state === "ok" ? null : "muted", title: r.message || "" }, gone ? "removing" : r.state, r.message ? el("div", { class: "note" }, r.message) : ""),
+        el("td", {}, live ? `until ${localTime(r.live_until)}${r.checked_at ? `, checked ${localTime(r.checked_at)}` : ""}` : "–"),
+        el("td", { class: "actions" },
+          el("button", { type: "button", class: "small", disabled: gone, on: { click: () => upd(r.code, { live_until: live ? new Date().toISOString() : new Date(now + 6 * 3600e3).toISOString() }) } }, live ? "Stop watching" : "Watch 6 h"),
+          el("button", { type: "button", class: "small", disabled: gone, on: { click: () => upd(r.code, { rebuild_at: new Date().toISOString() }) } }, "Rebuild"),
+          el("button", { type: "button", class: "small danger", disabled: gone, on: { click: () => { if (confirm(`Remove ${r.group_name || r.code}${r.day ? ` of ${dayName(r.day)}` : ""} from the site?`)) upd(r.code, { want: "absent" }); } } }, "Remove")));
+    }))));
+}
+function peopleTables(profs, links, act) {
+  const who = Object.fromEntries(profs.map(p => [p.user_id, p.display_name || p.user_id.slice(0, 8)]));
+  const req = links.filter(l => l.status === "requested"), ok = links.filter(l => l.status === "approved");
+  const pl = l => l.players ? `${l.players.name}${l.players.world ? ` (${l.players.world})` : ""}` : String(l.player_id);
+  const out = [el("h3", {}, `Link requests (${req.length})`)];
+  out.push(req.length ? el("div", { class: "table-wrap" }, el("table", { class: "admin" }, el("tbody", {}, req.map(l => el("tr", {},
+    el("td", {}, who[l.user_id] || "?"), el("td", {}, "asks to be ", el("b", {}, pl(l))), el("td", {}, localTime(l.requested_at)),
+    el("td", { class: "actions" }, el("button", { type: "button", class: "small", on: { click: act(async () => sbCheck(await SB.from("user_players").update({ status: "approved", approved_by: ME.id, approved_at: new Date().toISOString() }).eq("player_id", l.player_id))) } }, "Approve"),
+      el("button", { type: "button", class: "small danger", on: { click: act(async () => sbCheck(await SB.from("user_players").delete().eq("player_id", l.player_id))) } }, "Reject"))))))) : el("p", { class: "muted" }, "None waiting."));
+  out.push(el("h3", {}, `Linked characters (${ok.length})`), ok.length ? el("div", { class: "table-wrap" }, el("table", { class: "admin" }, el("tbody", {}, ok.map(l => el("tr", {},
+    el("td", {}, pl(l)), el("td", {}, who[l.user_id] || "?"), el("td", { class: "actions" }, el("button", { type: "button", class: "small danger", on: { click: () => {
+      if (confirm(`Unlink ${pl(l)} from ${who[l.user_id] || "that account"}?`)) act(async () => sbCheck(await SB.from("user_players").delete().eq("player_id", l.player_id)))(); } } }, "Unlink"))))))) : el("p", { class: "muted" }, "None yet."));
+  out.push(el("h3", {}, `Accounts (${profs.length})`), el("div", { class: "table-wrap" }, el("table", { class: "admin" }, el("tbody", {}, profs.map(p => el("tr", {},
+    el("td", {}, who[p.user_id]), el("td", {}, p.role), el("td", {}, `since ${localTime(p.created_at)}`),
+    el("td", { class: "actions" }, p.user_id === ME.id ? "" : el("button", { type: "button", class: "small", on: { click: () => {
+      if (confirm(p.role === "admin" ? `Take admin rights from ${who[p.user_id]}?` : `Make ${who[p.user_id]} an admin? Admins see every report.`))
+        act(async () => sbCheck(await SB.from("profiles").update({ role: p.role === "admin" ? "member" : "admin" }).eq("user_id", p.user_id)))(); } } }, p.role === "admin" ? "Remove admin" : "Make admin"))))))));
+  return out;
+}
+function header() {   // the header's account button and admin link
+  const btn = document.getElementById("lock"), adm = document.getElementById("nav-admin");
+  if (SB) { btn.hidden = false; btn.textContent = ME ? "Account" : "Log in"; }
+  if (adm) adm.hidden = !(ME && ME.admin);
+}
+
 // ---------- routing, theme, boot ----------
 function route(keepScroll = false) {   // keepScroll: redraw the same page in place (resize, theme), not a navigation
   hideTip();
@@ -2017,7 +2257,31 @@ function route(keepScroll = false) {   // keepScroll: redraw the same page in pl
   const app = document.getElementById("app"); app.replaceChildren();
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   const open = (parts[0] === "rotations" || parts[0] === "gear") && DATA && DATA.rotations;   // public.json is enough for these
-  if (LOCKED && !open) { lockedPage(); return; }
+  if (SB && parts[0] === "account") { accountPage(); return; }
+  if (SB && parts[0] === "admin") { adminPage(); return; }
+  if (LOCKED && !open) { SB ? gatePage() : lockedPage(); return; }
+  if (SB && parts[0] === "day" && parts.length >= 3) {   // group, pull and player pages need the report's full record
+    const r = findGroup(parts[1], parts[2]), h = location.hash;
+    if (r && !r.players && !MINE.has(r.code)) { notYourGroup(r); return; }
+    const player = parts.length === 4 && parts[3] !== "pulls";
+    if (r && (!r.players || player)) {
+      const missing = cs => cs.filter(c => DATA.reports[c] && !DATA.reports[c].players && MINE.has(c));
+      const known = player ? PLAYER_CODES[parts[3]] : [r.code];
+      if (!known || missing(known).length) {
+        waitPage("Loading the report…");
+        (known ? Promise.resolve(known) : playerCodes(parts[3]).then(cs => (PLAYER_CODES[parts[3]] = [r.code, ...cs])))
+          .then(cs => needFull(missing(cs))).then(() => { if (location.hash === h) route(true); }).catch(failPage);
+        return;
+      }
+    }
+  }
+  draw();
+  if (!keepScroll) scrollTo(0, 0);
+  else requestAnimationFrame(() => requestAnimationFrame(() => scrollTo(0, y)));   // after the charts have drawn and set the height
+}
+function draw() {   // the page the hash names, from what DATA holds
+  const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  const open = (parts[0] === "rotations" || parts[0] === "gear") && DATA && DATA.rotations, app = document.getElementById("app");
   if (!DATA || (!reports().length && !open)) { app.append(el("h1", {}, "No data yet"), el("p", { class: "lede" }, "Run build_site.py with some report links, then reload.")); return; }
   if (parts[0] === "rotations" && parts.length === 1) rotationsPage();
   else if (parts[0] === "rotations" && parts.length === 2) rotationJobPage(parts[1]);
@@ -2030,8 +2294,6 @@ function route(keepScroll = false) {   // keepScroll: redraw the same page in pl
   else if (parts[0] === "day" && parts.length === 5 && parts[3] === "pulls") pullPage(parts[1], parts[2], +parts[4]);
   else if (parts[0] === "day" && parts.length === 4) playerPage(parts[1], parts[2], parts[3]);
   else home();
-  if (!keepScroll) scrollTo(0, 0);
-  else requestAnimationFrame(() => requestAnimationFrame(() => scrollTo(0, y)));   // after the charts have drawn and set the height
 }
 function setupTheme() {
   const btn = document.getElementById("theme"), root = document.documentElement;
@@ -2129,16 +2391,20 @@ function lockAgain() {
 }
 async function boot() {
   setupTheme();
-  document.getElementById("lock").addEventListener("click", lockAgain);
+  document.getElementById("lock").addEventListener("click", () => SB ? (location.hash = "#/account") : lockAgain());
   try {
     let r = await fetch("data.json", { cache: "no-store" });
     if (r.ok) DATA = await r.json();
     else {
       r = await fetch("public.json", { cache: "no-store" });
       DATA = r.ok ? await r.json() : {};
-      if (!r.ok) await envelope().catch(() => { throw new Error("data.json is missing. Run tools/scorecard/build_site.py with report links, then serve this folder with python -m http.server."); });
       LOCKED = true;
-      await openRemembered();
+      const cfg = await fetch("config.json", { cache: "no-store" }).then(x => x.ok ? x.json() : null).catch(() => null);
+      if (cfg && cfg.supabase_url) { await startAccounts(cfg); header(); }   // accounts (ACCESS_CONCEPT.md step 2)
+      else {   // the passphrase
+        if (!r.ok) await envelope().catch(() => { throw new Error("data.json is missing. Run tools/scorecard/build_site.py with report links, then serve this folder with python -m http.server."); });
+        await openRemembered();
+      }
     }
     route();
   } catch (e) {
