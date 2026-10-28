@@ -269,8 +269,11 @@ def add_report(site, code, group, refresh, bench):
     """Analyse one report into the site data, under group (None: its existing name, or the day's next free G1, G2, ...).
     Returns its entry. A name another report of that day already has is refused (ValueError)."""
     import checks
-    checks.OUR_CODES = sorted(set(site["reports"]) | {code})   # for references from our own groups
     data = S.fetch(code, refresh, bench)
+    codes = sorted(set(site["reports"]) | {code})   # for references from our own groups
+    if codes != checks.OUR_CODES or refresh:   # their openers are cached per job, from these reports' downloads: not in a
+        checks.OUR_CODES = codes               # long run (the worker) after a report came, went or was downloaded again
+        checks.group_openers.cache_clear(); checks.opener_ref.cache_clear()
     day = datetime.datetime.fromtimestamp(data["startTime"] / 1000).date().isoformat()
     taken = {r["group"]: c for c, r in site["reports"].items() if r["day"] == day and c != code}
     if not group: group = site["reports"][code]["group"] if code in site["reports"] else next(f"G{n}" for n in range(1, 99) if f"G{n}" not in taken)
