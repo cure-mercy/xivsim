@@ -1,10 +1,11 @@
 // Encrypts the website's data for public hosting: gzip, then AES-256-GCM with a key derived from a passphrase
 // (PBKDF2-SHA256). Uses the same Web Crypto calls the browser uses to decrypt it in site/app.js.
 //
-//     SCORECARD_PASSPHRASE=... node tools/scorecard/encrypt_data.js <data.json> <data.enc.json>
+//     SCORECARD_PASSPHRASE=... node tools/scorecard/encrypt_data.js <data.json | -> <data.enc.json>
 //
-// Called by build_site.py --publish; the passphrase comes through the environment so it never appears in a
-// command line. The result is decrypted again before it is written, so a broken file is never published.
+// Called by build_site.py --publish, which sends the private part of the data on stdin ("-"); the passphrase comes
+// through the environment so it never appears in a command line. The result is decrypted again before it is
+// written, so a broken file is never published.
 "use strict";
 const { webcrypto } = require("crypto");
 const fs = require("fs");
@@ -22,8 +23,10 @@ async function key(pass, salt, usage) {
 (async () => {
   const [src, dst] = process.argv.slice(2);
   const pass = process.env.SCORECARD_PASSPHRASE;
-  if (!src || !dst || !pass) { console.error("usage: SCORECARD_PASSPHRASE=... node encrypt_data.js <data.json> <data.enc.json>"); process.exit(2); }
-  const plain = fs.readFileSync(src);
+  if (!src || !dst || !pass) { console.error("usage: SCORECARD_PASSPHRASE=... node encrypt_data.js <data.json | -> <data.enc.json>"); process.exit(2); }
+  const chunks = [];   // stdin as a stream: readFileSync(0) can fail on a pipe on Windows
+  if (src === "-") for await (const c of process.stdin) chunks.push(c);
+  const plain = src === "-" ? Buffer.concat(chunks) : fs.readFileSync(src);
   JSON.parse(plain.toString("utf8"));                       // refuse to encrypt something that is not the site data
   const packed = zlib.gzipSync(plain, { level: 9 });
   const salt = webcrypto.getRandomValues(new Uint8Array(16)), iv = webcrypto.getRandomValues(new Uint8Array(12));

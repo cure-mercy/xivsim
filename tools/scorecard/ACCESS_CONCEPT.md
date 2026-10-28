@@ -1,6 +1,7 @@
 # Concept: public rotations and gear, then accounts linked to players
 
-Status: draft, 2026-10-26. Nothing here is built yet.
+Status: draft, 2026-10-26. Step 1 built 2026-10-28 (see the scorecard README, "Publishing with a passphrase"); step 2
+not started.
 
 ## Goal
 
@@ -73,9 +74,17 @@ No server and no accounts.
 - `index.html` stays `noindex` unless decision 4 says otherwise. Every route uses the same `index.html`, so
   indexing can't be allowed for the public pages alone.
 
-Effort: a small change to the build (two outputs and a field whitelist) and to `boot()`/`route()` (load lazily).
-It also needs a probe in `tests/run.py` that checks that no name from `reports[*].players` appears in
-`public.json`.
+As built:
+
+- The rotation pages turned out to read `reports` too. The job chart's boxes are our players' clean-pull rDPS, and
+  the rDPS columns add our players' median buff credit. The build now writes those figures as an anonymous per-job
+  aggregate (`ours`), which stays locked. While the site is locked, the overview hides that chart, and rDPS falls
+  back to the clears' buff credit, which the notes under the tables say.
+- The locked site doesn't mention mistakes. The lock screen reads "The raid's progress is encrypted."
+- The per-GCD counts of our players ("N of our players play at this GCD", and the "Our players" columns) were
+  removed from the rotation pages, at your request.
+- The name check runs inside `--publish` itself, not as a probe in `tests/run.py`, so a leaking `public.json` is
+  never written. It matches whole names, because the actor "Chi Ji" appears inside "Ten Chi Jin".
 
 ### Optional bridge: one key per group, still static
 
@@ -206,7 +215,10 @@ test account and checks that `report_full` returns no rows to either.
 2. **Login provider:** Discord (recommended), FFLogs, or email.
 3. **Backend:** A Supabase (recommended), B Cloudflare, or C own server.
 4. **Search indexing for the public pages:** keep `noindex` (recommended until step 2) or allow it.
-5. **Rotation timelines use our raidplan positions** (`fight.runs`, e.g. "out to the wall end of the bait line,
-   R1"). Making them public is fine if the Syncademy raidplan is public anyway. Is it?
+5. ~~Rotation timelines use our raidplan positions.~~ Decided 2026-10-28: the raidplans are public, so these can
+   be too.
 6. **Can other groups' mistakes by mechanic count as global progress?** These are heatmaps by mechanic with no
    names. Yes is recommended. No limits global progress to boss HP and pull lengths.
+7. **Should `ours` go public?** These are our players' anonymous rDPS spread and buff credit per job on the
+   rotation pages. For a job only one or two of our players play, the figures are close to personal. They stay
+   locked for now. Making them public means adding `"ours": None` to `PUBLIC_KEYS`.

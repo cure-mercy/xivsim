@@ -22,7 +22,7 @@ in the order given. A report already on the site is analysed again and keeps its
 | `--refresh` | Downloads the reports again instead of using the cache. Use it for a log that was still being uploaded. |
 | `--reanalyse` | Analyses every report already on the site again from the cache. Needed after the classifier or the cause labels change, since the site stores what it was built with. |
 | `--remove CODE` | Removes a report from the site. |
-| `--publish [DIR]` | Also writes the passphrase-protected copy for public hosting (see below). |
+| `--publish [DIR]` | Also writes the copy for public hosting: rotations and gear open, the rest behind a passphrase (see below). |
 | `--cached` | Uses the cache only: parts a cached report is missing (such as the rDPS raid buffs gave others) are left out instead of fetched. For when FFLogs is down; a normal run later fills them in. |
 
 A report takes a few seconds the first time and is cached in `.cache/` afterwards. The page needs a web server
@@ -62,15 +62,31 @@ user API; everything else keeps using the app token.
 
 ## Publishing with a passphrase
 
-GitHub Pages sites are public, so the published copy carries its data encrypted and asks for a passphrase:
+GitHub Pages sites are public, so the published copy splits its data: the rotation and gear pages are open to
+everyone, and everything else (progress, mistakes, player names, our players' figures) is encrypted behind a
+passphrase:
 
 ```
 python tools/scorecard/build_site.py [<report link> ...] --publish
 ```
 
-This writes `stats/` at the repository root: the three page files and `data.enc.json`, the data compressed and
-encrypted with AES-256-GCM under a key derived from the passphrase (PBKDF2-SHA256, 600,000 rounds). The
-plaintext `data.json` is never copied there. The passphrase is asked for twice (or read from
+This writes `stats/` at the repository root: the three page files, `public.json` and `data.enc.json`.
+
+- `public.json` holds what the rotation and gear pages need, unencrypted: `rotations`, `gear` and the benchmark's
+  clears (`benchmark.pools`, from public FFLogs reports). It is a whitelist, `PUBLIC_KEYS` in `build_site.py`: a new
+  key in the data stays encrypted until it is added there. Before writing anything, `--publish` looks for every
+  player's name (each report's players and actors, as whole names) in `public.json` and publishes nothing if one is
+  there.
+- `data.enc.json` holds the rest (the reports, the whole benchmark, the strategy dates and `ours`), compressed and
+  encrypted with AES-256-GCM under a key derived from the passphrase (PBKDF2-SHA256, 600,000 rounds). It goes to
+  `encrypt_data.js` on stdin, so no plaintext copy of it is written. The plaintext `data.json` is never copied
+  there.
+
+`ours` is our players' share of the rotation pages, without names: per job, every clean 0:00–2:00 pull's rDPS and
+the buffs it gave others, how many players those come from, and each player's rotation ceiling (`ours_by_job` in
+`build_site.py`). It stays locked. Until the passphrase is entered, the rotations overview hides its chart of our players against
+the ceiling and the clears, and rDPS adds the clears' mean buff credit instead of our players' median (the notes under the tables say which one
+they use). The passphrase is asked for twice (or read from
 `SCORECARD_PASSPHRASE`) and must be at least 12 characters; several unrelated words are best, since anyone can
 download the encrypted file and try passphrases offline. Encrypting needs Node (`encrypt_data.js`); the browser
 decrypts with its built-in Web Crypto, which works on https and on localhost. After a check that the result
@@ -79,15 +95,17 @@ decrypts, commit and push `stats/`; the existing Pages workflow deploys it with 
 `index.html` loads `style.css` and `app.js` with a version stamp (`?v=` and a hash of the file), so browsers fetch new
 page files after a deploy rather than mixing a cached stylesheet with a new script.
 
-Readers enter the passphrase once per browser session (unless they untick "Remember"); the Lock button forgets
-it. The page is marked `noindex` and is not linked from the trainer. What this does not give you: individual
+The page loads `public.json` first and draws the rotation and gear pages straight away. Any other page shows the
+passphrase form, with links to the open pages (the locked site doesn't mention mistakes anywhere), and `data.enc.json` is downloaded only then. Readers enter the
+passphrase once per browser session (unless they untick "Remember"); the Lock button forgets it. The page is marked `noindex` and is not linked from the trainer. What this does not give you: individual
 accounts. Everyone shares one passphrase, so changing it (and publishing again) is the only way to revoke
 access.
 
 **Undoing or moving it.** Nothing outside `stats/` depends on the published copy: delete `stats/` and push to take
 it down. The page itself does not care where it is hosted: on any static host, upload `stats/` as it is; on a
 host with its own login, upload `site/` with the plaintext `data.json` instead, and the passphrase prompt never
-appears (the page only asks when `data.json` is missing and `data.enc.json` is there).
+appears (the page only asks when `data.json` is missing). A published copy without `public.json`, from before
+the split, still opens: everything is then behind the passphrase.
 
 ## What the site shows
 
@@ -602,7 +620,7 @@ resumed. Run `build_site.py --reanalyse` afterwards so the site picks up the new
 
 | File | Purpose |
 |---|---|
-| `build_site.py` | The command: adds reports to the website's data (`site/data.json`); `--publish` writes the passphrase-protected copy to `stats/` |
+| `build_site.py` | The command: adds reports to the website's data (`site/data.json`); `--publish` writes the public copy to `stats/` (`public.json` open, `data.enc.json` behind the passphrase) |
 | `scorecard.py` | The analysis: fetching, mistakes and wipes, damage against clearers, damage lost to deaths, damage per phase |
 | `classifier.py` | Mistake attribution, and the rule book of which rules apply from which raid day |
 | `blame_diff.py` | Every attribution that changes between two versions of the classifier, over every cached report |
