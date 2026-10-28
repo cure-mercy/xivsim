@@ -18,7 +18,8 @@ needed thought. After `add`, check every verdict against `show` before keeping t
 pull by the rule book of that day instead of its raid day's: the pulls checked from before a strategy was introduced
 (Superchain I, 2026-10-06; the last, Paradeigma III, 2026-10-25: RULES_DAY) still test them, while the scorecard does
 not blame those days by them. A case with `own_day` is judged by its raid day instead, to test the dates themselves.
-An incident's `cause_has` is text its cause must contain (`cause_lacks`, text it must not), and a case's `wipe_label` the label
+An incident's `shares` are the culprits with less than all of a mistake (one of n undecided, a party's shortfall), every
+other culprit's share must be whole (`wipe_shares` the same for the wipe). An incident's `cause_has` is text its cause must contain (`cause_lacks`, text it must not), and a case's `wipe_label` the label
 of what lost the pull:
 for rules whose wording or label matters, not only whom they blame. An incident with `saved` is a death that saved the
 pull (the site's green "saved the pull"); every other incident must not be marked so.
@@ -106,6 +107,9 @@ def run(known=False):
                 lines.append(f"FAIL {where}: the cause no longer says \"{want['cause_has']}\": {got['cause']}")
             if want.get("cause_lacks") and want["cause_lacks"] in got["cause"]:
                 lines.append(f"FAIL {where}: the cause says \"{want['cause_lacks']}\", which it should not: {got['cause']}")
+            part = {c: round(x, 3) for c, x in got.get("shares", {}).items() if x < 0.999}   # culprits with less than all of it
+            if (want.get("shares") or {}) != part:
+                lines.append(f"FAIL {where}: shares {part or 'all whole'}, expected {want.get('shares') or 'all whole'}")
             if bool(want.get("saved")) != bool(got.get("saved")):
                 lines.append(f"FAIL {where}: " + ("no longer marked as saving the pull" if want.get("saved") else "marked as saving the pull, which the case does not say"))
         if "wipe" in case:
@@ -116,6 +120,9 @@ def run(known=False):
                              else f"FIXED wipe: now {said}, as it should be; drop the case's `wipe_known`")
             elif ok: tally["wipes ok"] += 1
             else: lines.append(f"FAIL wipe: expected {meant}, got {said}")
+            wpart = {c: round(x, 3) for c, x in S.wipe_shares(j["res"], j["wipe"][0], j["wipe"][1]).items() if x < 0.999} if j["wipe"][1] else {}
+            if (case.get("wipe_shares") or {}) != wpart:
+                lines.append(f"FAIL wipe shares: {wpart or 'all whole'}, expected {case.get('wipe_shares') or 'all whole'}")
         if case.get("wipe_label") and (lab := D.wipe_label(S, j["wipe"][1]) if j["wipe"][1] else None) != case["wipe_label"]:
             lines.append(f"FAIL wipe label: expected \"{case['wipe_label']}\", got \"{lab}\"")
         bad |= any(l.startswith("FAIL") for l in lines)

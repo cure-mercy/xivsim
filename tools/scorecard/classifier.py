@@ -160,7 +160,7 @@ class Pull:
         return sorted(inc, key=lambda i: i["t"])
 
 
-def fault(t, mech, culprits, victims, rule, conf, chain=None, ability=None, fallout=False, hit=False, after=None, *, tag):
+def fault(t, mech, culprits, victims, rule, conf, chain=None, ability=None, fallout=False, hit=False, after=None, *, tag, share="own"):
     """tag: which rule this is, a stable id (scorecard.LABELS names it on the site): the code decides by it, never by the
     rule's text, which is free to change.
     chain: players whose earlier death caused this; their death's culprits are blamed instead when there is one.
@@ -169,12 +169,21 @@ def fault(t, mech, culprits, victims, rule, conf, chain=None, ability=None, fall
     hit: a mistake even when no death or Damage Down follows (a "hit" entry then stands for it). after: the fault whose
     mistake this one is the consequence of; it is counted once, at whichever of their incidents comes first. A rule that blames
     someone besides its own victims without naming them is told with their names first ("X: did not soak ..."), as it is
-    read on the victims' deaths too."""
+    read on the victims' deaths too.
+    share: how much of the mistake each culprit's is, apart from how sure the rule is (confidence). "own": each made a
+    mistake of their own, all of it theirs (also "both off their spots"). "one_of": one mistake, the model cannot tell whose,
+    so each of n candidates 1/n (an undecided rule, whose tag ends ".undecided", is that unless said otherwise).
+    "together": one shortfall spread over the party, each of the culprits and of the dead players in `chain` (passed to
+    whoever caused their deaths) 1/n. A number: each culprit, and each dead player's slot, that share."""
     culprits, victims = list(dict.fromkeys(culprits)), set(victims)
     if culprits and not chain and victims != set(culprits) and any(w not in rule for w in culprits):
         rule = f"{', '.join(culprits)}: {rule}"
+    if share == "own" and tag.endswith(".undecided") and len(culprits) > 1: share = "one_of"
+    n = len(culprits) + (len(chain or ()) if share == "together" else 0)
+    each = share if isinstance(share, (int, float)) else 1 / n if share in ("one_of", "together") and n else 1.0
     return dict(t=t, mechanic=mech, culprits=culprits, victims=victims, rule=rule, confidence=conf, tag=tag,
-                chain=chain or [], ability=ability, fallout=fallout, hit=hit, after=after)
+                chain=chain or [], ability=ability, fallout=fallout, hit=hit, after=after,
+                shares={c: each for c in culprits}, chain_share=each if share != "one_of" else 1.0)
 
 
 # ---------- Paradeigma I: White Flame light-party baits ----------
@@ -538,7 +547,8 @@ def para1(p, lp):
                     continue
                 out.append(fault(t, "Paradeigma I", list(cul), lost, f"{', '.join(cul)}: closer to the White Flame add than its baiter{'s' if len(xs) > 1 else ''} "
                                  f"{', '.join(x for x, *_ in xs)} as wave {w} fired ({dists})" + (f"; the laser went to {', '.join(lost)}" if lost else ""),
-                                 "medium" if all(s for x in xs for *_, s in x[1]) or all(x_[6] == "out" for x_ in xs) else "low", tag="p1.wf.too_close"))
+                                 "medium" if all(s for x in xs for *_, s in x[1]) or all(x_[6] == "out" for x_ in xs) else "low", tag="p1.wf.too_close",
+                                 share="one_of" if len(cul) > 1 else "own"))   # several as near: one of them drew it
             if missing:
                 out.append(fault(t, "Paradeigma I", missing, took, f"not in the White Flame line-up (wave {w}); the laser went to {', '.join(took) or 'someone else'}", "high" if took else "medium", tag="p1.wf.not_in_line_up"))
             else:   # every missing baiter's laser explained: anyone else it hit (a baiter twice) stood in a laser line
@@ -582,7 +592,7 @@ def para1_auto(p, lp):
     elif shirk:
         out.append(fault(t, "Paradeigma I", shirk, [v], f"{why}: {', '.join(shirk)} shirked aggro to them", "high", tag="p1.auto"))
     else:
-        out.append(fault(t, "Paradeigma I", [v] + others, [v], f"{why}: {v} held her aggro ({', '.join(others)} did not keep it)", "medium", tag="p1.auto"))
+        out.append(fault(t, "Paradeigma I", [v] + others, [v], f"{why}: {v} held her aggro ({', '.join(others)} did not keep it)", "medium", tag="p1.auto", share="one_of"))
     return out
 
 
@@ -670,7 +680,8 @@ def tether_cross(p, t, v, o, laser, seat):
     if vfix and ofix and abs(vgap - ogap) > 0.5: vfix, ofix = vgap > ogap, ogap > vgap
     if vfix and not ofix: return fault(t, "Paradeigma III", [v], [v], f"stood in {o}'s tether laser, off their seat {how}", sure(vgap), tag="p3.tether.stood_in")
     if ofix and not vfix: return fault(t, "Paradeigma III", [o], [v], f"{o}: off their seat, their tether laser hit {v} {how}", sure(ogap), tag="p3.tether.holder_off")
-    return fault(t, "Paradeigma III", [v, o], [v], f"{v} and {o}: both off their seats, {o}'s tether laser hit {v} {how}", "low", tag="p3.tether.holder_off")
+    return fault(t, "Paradeigma III", [v, o], [v], f"{v} and {o}: both off their seats, {o}'s tether laser hit {v} {how}", "low", tag="p3.tether.holder_off",
+                 share="one_of" if vfix and ofix else "own")   # either alone would have cleared it: one mistake, whose cannot be told
 
 
 def tether_clip(p, e, laser, seat):
@@ -1020,7 +1031,7 @@ def glaukopis(p, lo, hi):
         if b in p.dead_by(t - 0.3):
             out.append(fault(t, mech, [b], [a], f"{a} took both Glaukopis hits because {b} was already dead", "consequence", chain=[b], tag="glauk.swap"))
         elif p.casts is None:
-            out.append(fault(t, mech, [a, b], [a], "no tank swap between the Glaukopis hits: the second hit the vulnerable tank", "medium", tag="glauk.swap"))
+            out.append(fault(t, mech, [a, b], [a], "no tank swap between the Glaukopis hits: the second hit the vulnerable tank", "medium", tag="glauk.swap", share="one_of"))
         elif back := p.cast_at(a, "Provoke", h1["t"] - 1, snap):
             out.append(fault(t, mech, [a], [a], f"provoked back {back[-1] - h1['t']:+.1f} s from the first Glaukopis, before the second "
                              f"(from +{SNAPSHOT} s): it hit them again with the vulnerability", "high", tag="glauk.swap"))
@@ -1028,7 +1039,7 @@ def glaukopis(p, lo, hi):
             out.append(fault(t, mech, [b], [a], f"did not provoke for the Glaukopis swap; {a} took the second hit with the vulnerability", "high", tag="glauk.swap"))
         else:
             out.append(fault(t, mech, [a, b], [a], f"{b} provoked {pb[-1] - h1['t']:+.1f} s from the first Glaukopis, but {a} held aggro "
-                             "for the second (the provoke too early, or a Shirk missing)", "medium", tag="glauk.swap"))
+                             "for the second (the provoke too early, or a Shirk missing)", "medium", tag="glauk.swap", share="one_of"))
         return out
     # the swap worked: the heavy auto-attack after the second hit has to go back to the first tank
     auto = next((e for e in p.dmg if e["name"] == "attack" and h2["t"] + 2 < e["t"] < h2["t"] + 4.5), None)
@@ -1143,10 +1154,10 @@ def p3_white_flame(p, t, sup, match, seat, col, spos):
         how = " (which add fired which laser cannot be decided: undecided)" if low else ""
         if missing:
             out.append(fault(t, "Paradeigma III", missing, extra, f"did not bait their White Flame (the {k} add); it hit {', '.join(extra) or 'no one else'}{how}",
-                             "low" if low else "high" if extra else "medium", ability="White Flame", tag="p3.wf.missed"))
+                             "low" if low else "high" if extra else "medium", ability="White Flame", tag="p3.wf.missed", share=0.5 if low else "own"))
         if gone and extra:   # a dead baiter's laser found someone else
             f = fault(t, "Paradeigma III", gone, extra, f"White Flame (the {k} add) went to {', '.join(extra)} because {', '.join(gone)} (a baiter) was already dead{how}",
-                      "consequence", chain=gone, ability="White Flame", tag="p3.wf.baiter_dead")
+                      "consequence", chain=gone, ability="White Flame", tag="p3.wf.baiter_dead", share=0.5 if low else "own")
             if low: f["cap"] = "low"
             out.append(f)
         if extra and not missing and not gone:
@@ -1197,7 +1208,8 @@ def para3(p, lp, priority=False):
                 west = es[0]["pos"][0] < 0
                 bad = [first if west else second]
                 rule += f"; {bad[0]} belongs on the {'eastern' if west else 'western'} one (priority H1 > T1 > T2 > H2, east to west)"
-            out.append(fault(t, "Paradeigma III", bad, wipe | set(who), rule, "high" if len(bad) < len(who) else "medium", **zap, tag="p3.support_tower.empty"))
+            out.append(fault(t, "Paradeigma III", bad, wipe | set(who), rule, "high" if len(bad) < len(who) else "medium", **zap, tag="p3.support_tower.empty",
+                             share="own" if len(bad) < len(who) else "one_of"))   # which of them belonged elsewhere untold
     # platforms: Quartered takes the north-most, X-Marked the south-most
     wrong_plat = {}
     for w in sup["Quartered"]:
@@ -1336,7 +1348,7 @@ def para3(p, lp, priority=False):
         elif why == "idle":
             out.append(fault(ts, "Paradeigma III", idle, blown | set(idle), f"did not soak {towers}", "high", **boom, tag="p3.tower.unsoaked"))
         elif why == "other tower":
-            out.append(fault(ts, "Paradeigma III", alive, blown, f"{' and '.join(alive)} both soaked the other bright tower; one of them belonged on {towers}", "medium", **boom, tag="p3.tower.unsoaked"))
+            out.append(fault(ts, "Paradeigma III", alive, blown, f"{' and '.join(alive)} both soaked the other bright tower; one of them belonged on {towers}", "medium", **boom, tag="p3.tower.unsoaked", share="one_of"))
         elif why == "unknown":
             out.append(fault(ts, "Paradeigma III", [], blown, f"did not soak {towers}", "low", **boom, tag="p3.tower.unsoaked"))
         else:
@@ -1708,7 +1720,8 @@ def superchain1(p, lp):
                     out.append(fault(t, "Superchain I", missing, [v], f"not in their pair for the purple jack; {v} took it alone", "high", tag="sc1.purple"))
             for ws in crowd:   # three or more: whoever's seat partner is not in it, or who stood away from it, joined
                 cul, conf, why = pair_blame(p, lp, hs, ws)
-                out.append(fault(t, "Superchain I", cul or ws, ws, "three or more in one purple-jack pair" + why, conf, tag="sc1.purple"))
+                out.append(fault(t, "Superchain I", cul or ws, ws, "three or more in one purple-jack pair" + why, conf, tag="sc1.purple",
+                                 share="own" if cul else (len(ws) - 2) / len(ws)))   # who joined untold: all but two of them did
         else:   # every cone from the cluster hits whoever stands in line with it
             groups = {frozenset(ws) for ws in by.values() if len(ws) > 1}
             doubled = [w for w, n in hit.items() if n >= 2 and not any(w in g for g in groups)]
@@ -1829,7 +1842,8 @@ def superchain1(p, lp):
             r = flame(owner, v) if owner and tc is not None else None
             if v in hf:
                 cul, conf, why, ftag = r or ([owner, v], "medium", "pair did not split", "sc1.flame.spread")
-                out.append(fault(hh[0]["t"], "Superchain I", cul, [owner, v], f"two Heavensflame players overlapped: {why}", conf, ability="Theos's Holy", tag=ftag))
+                out.append(fault(hh[0]["t"], "Superchain I", cul, [owner, v], f"two Heavensflame players overlapped: {why}", conf, ability="Theos's Holy", tag=ftag,
+                                 share="own" if r else "one_of"))   # without positions: one of them did not spread
             else:
                 cul, conf, why, ftag = r or ([owner], "medium", f"Heavensflame did not spread far enough; hit {v}", "sc1.flame.spread")
                 out.append(fault(hh[0]["t"], "Superchain I", cul, [v], why, conf, ability="Theos's Holy", tag=ftag))
@@ -2038,6 +2052,7 @@ def merged(fs):
     direct = [f for f in fs if not f["chain"]]
     culprits = list(dict.fromkeys(c for f in direct for c in f["culprits"]))
     return dict(fs[0], culprits=culprits, chain=list(dict.fromkeys(n for f in fs for n in f["chain"])), direct=culprits, tag=main_tag(direct or fs),
+                shares={c: max(f["shares"].get(c, 0) for f in direct if c in f["culprits"]) for c in culprits},
                 direct_conf=least_sure([f["confidence"] for f in direct]) if direct else None,
                 confidence=least_sure([f["confidence"] for f in direct]) if direct else "consequence",
                 # the direct causes first: a cause's label comes from before "; earlier"
@@ -2144,7 +2159,15 @@ def classify(p, lp, day=None):
         why = why_of(f["chain"], f["t"])
         culprits = list(dict.fromkeys(direct + [c for _, r in why for c in r["culprits"]]))
         follows = list(dict.fromkeys(f["chain"] + [n for g in f.get("parts", []) for n in g["chain"]]))   # whose deaths it follows from
-        if not culprits: return dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=[], confidence="consequence", derived=True, follows=follows, tag=f["tag"])
+        if not culprits: return dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=[], shares={}, confidence="consequence", derived=True, follows=follows, tag=f["tag"])
+        # each one's share: a direct culprit's from the fault, a carried one's that of the dead player's slot (chain_share)
+        # times theirs in that death; one culprit named twice keeps the larger
+        shares = {}
+        give = lambda c, x: shares.__setitem__(c, min(1.0, max(shares.get(c, 0.0), x)))
+        for c in direct: give(c, f.get("shares", {}).get(c, 1.0))
+        for g in f.get("parts", [f]):
+            for n, r in why_of(g["chain"], g["t"]):
+                for c in r["culprits"]: give(c, g.get("chain_share", 1.0) * r.get("shares", {}).get(c, 1.0))
         by = lambda n, r: "their own mistake" if r["culprits"] == [n] else "caused by " + ", ".join(r["culprits"])
         trace = lambda rule, ws: rule + ("; earlier: " + "; ".join(f"{n}'s death, {by(n, r)}: {r['cause']}" for n, r in ws) if ws else "")
         cause = trace(f["rule"], why)
@@ -2160,7 +2183,7 @@ def classify(p, lp, day=None):
             nodes = ([dict(rule=plain)] if plain else []) + list({json.dumps(t, sort_keys=True): t for t in (tree(g["rule"], why_of(g["chain"], g["t"])) for g in f["parts"] if g["chain"])}.values())
             node = dict(parts=nodes) if len(nodes) > 1 else nodes[0]   # several causes of one hit: told side by side
         return dict(i, mechanic=f["mechanic"], cause=cause, trace=node, follows=follows, tag=f["tag"],
-                    culprits=culprits, derived=not direct, carried=[c for c in culprits if c not in direct] if direct else [],
+                    culprits=culprits, shares={c: shares.get(c, 1.0) for c in culprits}, derived=not direct, carried=[c for c in culprits if c not in direct] if direct else [],
                     confidence=least_sure(([f["direct_conf"]] if direct else []) + [r["confidence"] for _, r in why]
                                           + [g["cap"] for g in f.get("parts", [f]) if g.get("cap")]))   # cap: a chain the rule is unsure of
 
@@ -2175,6 +2198,7 @@ def classify(p, lp, day=None):
                 or gate == AVOIDABLE_ONLY and not r.get("own_hit") and not r.get("jump")):
             why = f"no rules for {r['mechanic']} yet" if gate == NOT_YET else f"no strategy for {r['mechanic']} yet on this day"
             r = dict(r, culprits=[], confidence="not blamed", cause=f"{r['cause']} (not blamed: {why})")
+        r["shares"] = {c: r.get("shares", {}).get(c, 1.0) for c in r["culprits"]}   # each culprit's share of the mistake
         res.append(r)
     incs, gear, (puller, untanked) = p.incidents(), broken_gear(p), early_puller(p)
     called = min((i["t"] for i in incs if i.get("jump")), default=float("inf"))   # the first jump: the wipe was called
@@ -2225,17 +2249,17 @@ def classify(p, lp, day=None):
             r = from_chain(i, f)
             add(dict(r, derived=True, carried=[], **saved) if again and r["culprits"] else dict(r, **saved))
         elif f:
-            add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"], tag=f["tag"], **saved, **({"derived": True} if f["fallout"] or again else {})))
+            add(dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], shares=f["shares"], confidence=f["confidence"], tag=f["tag"], **saved, **({"derived": True} if f["fallout"] or again else {})))
         elif prev and i["ability"] not in AVOIDABLE:
-            add(dict(i, mechanic=mech, cause=f"after their earlier {prev['kind']}: {prev['cause']}", culprits=prev["culprits"], confidence="medium", derived=True, tag=prev["tag"]))
+            add(dict(i, mechanic=mech, cause=f"after their earlier {prev['kind']}: {prev['cause']}", culprits=prev["culprits"], shares=prev["shares"], confidence="medium", derived=True, tag=prev["tag"]))
         elif own and own["chain"]:
             used.add(id(own))
             add(from_chain(i, own))
         elif own and id(own) in used:   # the mistake was already counted at an earlier incident
-            add(dict(i, mechanic=mech, cause=f"after their earlier mistake: {own['rule']}", culprits=own["culprits"], confidence="medium", derived=True, tag=own["tag"]))
+            add(dict(i, mechanic=mech, cause=f"after their earlier mistake: {own['rule']}", culprits=own["culprits"], shares=own["shares"], confidence="medium", derived=True, tag=own["tag"]))
         elif own:   # the mistake's first incident: it counts here
             used.add(id(own))
-            add(dict(i, mechanic=own["mechanic"], cause=own["rule"], culprits=own["culprits"], confidence=own["confidence"], tag=own["tag"]))
+            add(dict(i, mechanic=own["mechanic"], cause=own["rule"], culprits=own["culprits"], shares=own["shares"], confidence=own["confidence"], tag=own["tag"]))
         elif i["ability"] in AVOIDABLE:
             add(dict(i, mechanic=mech, cause=AVOIDABLE[i["ability"]], culprits=[i["victim"]], confidence="high", own_hit=True, tag=f"avoid.{i['ability']}"))
         elif (i["kind"] == "death" and puller and i["t"] < untanked and p.job.get(i["victim"]) not in TANK_JOBS   # killed by an auto
@@ -2258,7 +2282,7 @@ def classify(p, lp, day=None):
             dead = sorted(p.dead_by(i["t"] - 0.3) - {i["victim"]})
             alive = sorted(w for w in p.job if w not in dead)
             f = dict(fault(i["t"], mech, alive, [i["victim"]], f"{i['ability']}: healing and mitigation fell short, everyone shares it (no one's part can be told)" +
-                           (f"; {', '.join(dead)} already dead" if dead else ""), "low", chain=dead, tag="raidwide"), direct=alive, direct_conf="low")
+                           (f"; {', '.join(dead)} already dead" if dead else ""), "low", chain=dead, tag="raidwide", share="together"), direct=alive, direct_conf="low")
             add(from_chain(i, f))
         elif i["ability"] == "attack" and p.job.get(i["victim"]) in TANK_JOBS:
             add(dict(i, mechanic=mech, cause="tank died to auto-attacks (mitigation / tank swap)", culprits=[], confidence="unattributed", tag="tank_autos"))
@@ -2271,7 +2295,7 @@ def classify(p, lp, day=None):
         if f["hit"] and id(f) not in used:
             for v in sorted(f["victims"]):
                 i = dict(t=f["t"], kind="hit", victim=v, ability=f["ability"], pos=None)
-                add(from_chain(i, f) if f["chain"] else dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], confidence=f["confidence"], tag=f["tag"]))
+                add(from_chain(i, f) if f["chain"] else dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=f["culprits"], shares=f["shares"], confidence=f["confidence"], tag=f["tag"]))
     # the deaths that left no one alive: the party had wiped, and later deaths (players raised after it) are part of it
     for r in res:
         if r["kind"] == "death" and not r.get("jump") and not set(p.job) - p.dead_by(r["t"] + 0.1): r["party_dead"] = True

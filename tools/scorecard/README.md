@@ -98,7 +98,7 @@ appears (the page only asks when `data.json` is missing and `data.enc.json` is t
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
 | Rotations | The optimizer's rotations (`#/rotations`, linked in the header): a chart and a table of every job it covers, then each job's GCDs and each GCD's rotation on the fight timeline (see Rotation ceiling) |
 | Gear | The best-in-slot sets (`#/gear`, linked in the header): a table of each job's set and, per job, the set drawn like the game's character window with its DPS per GCD tier (see Best-in-slot gear) |
-| Player | Mistakes per pull and wipes (weighted by confidence, with their counts by confidence), damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull, with the rotation ceiling for jobs the optimizer covers and how far their pulls are from it, linking to its rotation (see below); every mistake with its pull, time and confidence; every death with its pull and time, the hit that killed them, the classifier's cause and the culprit (self, another player, or none found) with its confidence, marked when it decided the wipe or came after it, or saved the pull: in green, a death before the pull was lost holding what would otherwise have lost it, so far a Superchain I tower held in its Strong Soul's place (`death_list` on each pull, `saved`), and a ↗ link to FFLogs' Deaths view for them over the whole mechanic it happened in, or on to the death when that came later (from the report's `start_ms` and `actors` and the benchmark's `mech_end`); the player across raid days (mistakes per pull and per minute in pulls) |
+| Player | Mistakes per pull and wipes (each counting the player's share of the mistake, with their counts by confidence), damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull, with the rotation ceiling for jobs the optimizer covers and how far their pulls are from it, linking to its rotation (see below); every mistake with its pull, time and confidence; every death with its pull and time, the hit that killed them, the classifier's cause and the culprit (self, another player, or none found) with its confidence, marked when it decided the wipe or came after it, or saved the pull: in green, a death before the pull was lost holding what would otherwise have lost it, so far a Superchain I tower held in its Strong Soul's place (`death_list` on each pull, `saved`), and a ↗ link to FFLogs' Deaths view for them over the whole mechanic it happened in, or on to the death when that came later (from the report's `start_ms` and `actors` and the benchmark's `mech_end`); the player across raid days (mistakes per pull and per minute in pulls) |
 
 The player page's "What their mistakes cost" card (boss HP lost to deaths they caused, by cause) is hidden for now: set `SHOW_MISTAKE_COST` in `site/app.js` to `true` to bring it back.
 
@@ -112,8 +112,8 @@ link).
 
 | Column | Meaning |
 |---|---|
-| Mistakes/pull | The player's mistakes per pull: every death or Damage Down they caused, not just a pull's first, and the few mistakes that count without either (both Superchain I lasers on one player). A mistake that kills several players counts once, and deaths that are only fallout of the player's own earlier mistake are not counted again. Being killed by someone else's error does not count. Mistakes are counted until the pull is lost; the collapse after that is not. Each counts by the classifier's confidence in its culprit (see Confidence below): high in full, medium 0.75, low 0.5. Deaths/pull and DD/pull split it the same way; a mistake with neither counts only in the total. |
-| Wipes | Share of the player's pulls where their mistake is what lost the pull (see below), each wipe counted by the confidence of the entry that decided it, as mistakes are. |
+| Mistakes/pull | The player's mistakes per pull: every death or Damage Down they caused, not just a pull's first, and the few mistakes that count without either (both Superchain I lasers on one player). A mistake that kills several players counts once, and deaths that are only fallout of the player's own earlier mistake are not counted again. Being killed by someone else's error does not count. Mistakes are counted until the pull is lost; the collapse after that is not. Each counts the player's share of it (see Shares below): in full, ½ when the classifier could not tell them from one other player, ⅛ of a healing shortfall spread over the party. Deaths/pull and DD/pull split it the same way; a mistake with neither counts only in the total. |
+| Wipes | Share of the player's pulls where their mistake is what lost the pull (see below), each wipe counted by the player's share of the entry that decided it, as mistakes are. |
 | vs Clears | rDPS over 0:00–2:00, averaged over the player's best quarter of clean pulls, against the average player on the same job in the benchmark's clears without The Echo; * when only 1–2 clearers played the job. |
 | Uptime | Active GCD time over 0:00–2:00, against clearers of the same role. |
 
@@ -127,8 +127,8 @@ or two clearers, which is rough.
 | red | more | more | more | more |
 
 With eight players and one wipe a pull, a fair share of the wipes is 12.5%. The thresholds are constants at the
-top of `scorecard.py` (`G_MIST`, `G_WIPE`, `G_DMG`, `G_UP`), and so are the confidence weights (`CONF_WEIGHT`). The
-group and day pages' mistakes per pull are weighted the same way. Damage over 0:00–2:00 is only measured on pulls
+top of `scorecard.py` (`G_MIST`, `G_WIPE`, `G_DMG`, `G_UP`). The group and day pages' mistakes per pull count shares
+the same way. Damage over 0:00–2:00 is only measured on pulls
 with no death or Damage Down before 2:00, so every player is compared on the same opener and mechanics.
 
 ### Who lost the pull
@@ -464,8 +464,17 @@ tether failure named with its mechanic), and an entry about several faults at on
 **Confidence.** Every blame carries how sure its rule is: *high* (the rule says who: an avoidable hit, a Soul in the wrong
 quadrant, a soaker far from a tower on its spot), *medium* (inferred from positions with a margin, or two players both off
 their spots) or *low* (the model cannot tell the players apart, or the margins are within how far a player runs between
-position readings). Blame passed on through an earlier death is as sure as the least sure death behind it. Mistakes per
-pull and Wipes count each by `CONF_WEIGHT` in `scorecard.py`: high 1, medium 0.75, low 0.5.
+position readings). Blame passed on through an earlier death is as sure as the least sure death behind it. Confidence
+is shown, not discounted (the user's call, 2026-10-28, after the measurement below found the levels about equally right).
+
+**Shares.** Apart from confidence, every culprit carries their share of the mistake (`shares` on the classifier's entries,
+set by `fault(share=...)`): 1 when it is their own mistake, also when two players each stood off their spot; 1/n when it is
+one mistake among n players the model cannot tell apart (every rule tagged `.undecided`, a Glaukopis swap or Athena's
+auto-attack that neither tank's casts explain, a crowd in a purple pair whose joiner is unknown: all but two of them); and
+1/8 each for a healing and mitigation shortfall spread over the party (raidwide deaths), a dead player's eighth passed to
+whoever caused their death. Blame carried over from an earlier death takes that death's share times the slot's; a culprit
+named twice in one hit keeps the larger. Mistakes per pull and Wipes add up shares (`mistakes_of`, `wipe_shares`); the site
+shows a share under 1 beside the name ("½").
 
 How often the verdicts are right was measured on 2026-10-28 on a held-out sample: 25 verdicts per level, drawn at random
 from pulls not in the hand-checked suite, judged by their own raid day's rules and checked against the log and the cached
@@ -479,7 +488,8 @@ out). The check was by hand, not blind, and the undecided verdicts were judged b
 
 With 25 verdicts a level the 90% intervals span 10-25 points (rule-based high 69-93%, medium 73-95%). Confidence no longer tracks accuracy: medium
 verdicts are as reliable as rule-based high ones, and low ones score well because the players they name do include the
-culprit, so low's weight works as a share of blame between candidates rather than a discount for doubt. The errors found
+culprit, so low's weight worked as a share of blame between candidates rather than a discount for doubt: hence the shares
+above, and no discount. The errors found
 were concentrated in the fallbacks; the first five were fixed the same day (approved by the user; the figures are from
 before the fixes):
 
