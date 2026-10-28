@@ -31,6 +31,36 @@ OPP = {"Astral": "Umbral", "Umbral": "Astral"}
 JUMP_S = 20   # a death without a hit this close to the pull's end is a jump off the arena (a wipe call)
 
 
+# ---------- how sure a reading of the log is ----------
+# Confidence is the log's uncertainty, not the rule's (the user's call, 2026-10-28). Positions are logged with events, not
+# continuously: one read between samples is interpolated, and even one at a hit is the player's spot as it was logged,
+# not as the game snapshotted it (an AoE's edge looks soft by that much). POS_ERR: 90% of positions read g s from the
+# nearest sample are within this many y of where the player was (leave one out of 450,000 samples, interpolated from
+# their neighbours: scratch/review/pos_error.py); past its end it grows as a run would.
+POS_ERR = ((0.0, 0.38), (0.05, 0.38), (0.1, 0.47), (0.2, 0.63), (0.3, 0.90), (0.5, 1.36), (0.75, 2.01), (1.0, 2.78), (1.5, 3.85), (2.5, 5.90))
+TIME_ERR = 0.1    # s: a cast's logged time against the boss's snapshot (provokes back by +1.1 s took the hit, from +1.2 s not)
+
+
+def pos_err(g):
+    """How far (y) a position read g s from its nearest sample may be off, 9 times in 10."""
+    g = max(g or 0, 0)
+    for (g0, e0), (g1, e1) in zip(POS_ERR, POS_ERR[1:]):
+        if g <= g1: return e0 + (e1 - e0) * (g - g0) / (g1 - g0)
+    return POS_ERR[-1][1] + (g - POS_ERR[-1][0]) * (POS_ERR[-1][1] - POS_ERR[-2][1]) / (POS_ERR[-1][0] - POS_ERR[-2][0])
+
+
+def unc(*gaps):
+    """The uncertainty (y) of a distance read from positions g s from their samples: their errors combined."""
+    return math.sqrt(sum(pos_err(g) ** 2 for g in gaps)) if gaps else pos_err(0)
+
+
+def certainty(margin, u):
+    """How sure a verdict is that holds by `margin` against an uncertainty `u` (both in the same unit): high from twice
+    it, medium from once, low under it (the log cannot tell which way it went: where another player could equally be
+    the culprit, the rule says undecided)."""
+    return "high" if margin >= 2 * u else "medium" if margin >= u else "low"
+
+
 def quad(p):
     x, y = p
     return ("N" if y < 0 else "S") + ("E" if x > 0 else "W")
@@ -191,7 +221,6 @@ def fault(t, mech, culprits, victims, rule, conf, chain=None, ability=None, fall
 # scratch/whiteflame); a baiter in the line-up can lose their laser to a non-baiter who stands, or runs past, closer.
 WF_WALL = 20          # an add's logged x when out at the wall (25); nearer the centre its position is stale
 WF_BAIT_MAX = 27.3    # y from their add at the laser cast: as far as a fitting add's second target stood (99th percentile)
-WF_SURE = 0.5, 0.1    # medium needs the non-baiter this much closer (y) and both positions sampled this close to the cast (s)
 WF_WAVES = ((1, (37, 41.5)), (2, (42, 46.5)))
 WF_FLAME = 3.0        # y a White Flame line reaches from its centre, as the tether lasers' (scratch/para3tether/width.py)
 # the line-up's spots, y from Athena toward the adds' half at the laser cast: tank, melee, healer, ranged by the wall
@@ -303,14 +332,14 @@ def wf_lined(p, lo, hi, w, t, xs, exp, hs, seats):
 def wf_closer(p, lo, hi, missing, exp, hs, seats=None, w=None):
     """{missing baiter: ([(interloper, their distance, sure)], the baiter's distance, the players their add's lasers hit,
     whether one of those lasers could be the other add's, (their distance from their spot, seconds from the cast it was
-    read) when it is past SEAT_OFF by less than WF_SURE[0] and how far they could have run (WF_RUN) in that time, else
+    read) when it is past SEAT_OFF by less than the log can tell (unc), else
     None: who drew the laser cannot be decided)} for the missing baiters within WF_BAIT_MAX of their add at
     the laser cast (the one their seat draws, else the nearest), whose add's lasers also went through a baiter (the
     line-up was there; a whole light party missing is theirs) and an interloper closer to it than they were: a
     non-baiter, or a baiter of the other add over SEAT_OFF from their spot. The nearest such took the laser (the others
-    it hit stood behind them in its line), with whoever stood within WF_SURE[0] of them (low: either could have). An
-    interloper no nearer than the positions can tell (WF_SURE[0] plus how far both could have run since their positions
-    were read, WF_RUN) is a tie, the last field: "out" when every such interloper stood off their spot by more than that
+    it hit stood behind them in its line), with whoever stood as near as the log can tell (unc: either could have), its
+    confidence the margin by which it was nearer (certainty). An interloper no nearer than the positions can tell is a
+    tie, the last field: "out" when every such interloper stood off their spot by more than that
     too (a non-baiter past WF_STACK_R from the stack, the other add's baiter past SEAT_OFF), else "at"; None when one stood
     clearly nearer."""
     wf, seats = p.white_flame(lo, hi), seats or {}
@@ -323,21 +352,21 @@ def wf_closer(p, lo, hi, missing, exp, hs, seats=None, w=None):
         add = seat_add(wf, seats, w, x) or min(adds, key=lambda a: math.dist(px[0], a))
         dx = math.dist(px[0], add)
         off = seat_off(wf, seats, w, x)
-        thin = (off, px[1]) if off is not None and SEAT_OFF < off <= SEAT_OFF + WF_SURE[0] + WF_RUN * px[1] else None
+        thin = (off, px[1]) if off is not None and SEAT_OFF < off <= SEAT_OFF + unc(px[1]) else None   # past it by less than the log can tell
         if dx > WF_BAIT_MAX or (off or 0) > SEAT_OFF and not thin: continue   # not in the line-up: theirs
         hit = {y for i, ys in aimed.items() if i in adds[add] for y in ys}
         if off is None and not hit & exp: continue   # no spot to check them against: the line-up must have drawn a laser
         stray = lambda y: y not in exp or (seat_add(wf, seats, w, y) not in (add, None) and (seat_off(wf, seats, w, y) or 0) > SEAT_OFF)
-        margin = lambda g: WF_SURE[0] + WF_RUN * (px[1] + g)   # what the positions, read g and px[1] s off, can tell apart
+        margin = lambda g: unc(px[1], g)   # what the two positions, read g and px[1] s from their samples, can tell apart
         near = sorted((dy, y, py[1]) for y in hit if y != x and stray(y) and (py := where(y)) and (dy := math.dist(py[0], add)) < dx + margin(py[1]))
         if not near: continue
-        near = [v for v in near if v[0] - near[0][0] <= WF_SURE[0]]
-        sure = len(near) == 1 and dx - near[0][0] > WF_SURE[0] and max(near[0][2], px[1]) <= WF_SURE[1]
+        near = [v for v in near if v[0] - near[0][0] <= unc(near[0][2], v[2])]   # as near as the log can tell: either drew it
+        sure = certainty(dx - near[0][0], margin(near[0][2])) if len(near) == 1 else "low"
         tie = None
         if all(dx - dy <= margin(g) for dy, _, g in near):   # no interloper clearly nearer: who stood off their spot decides
             a0 = next(iter(adds)); stack = (WF_STACK[0] * math.copysign(1, a0[0]), WF_STACK[1] * math.copysign(1, a0[1]))
             # off their spot by more than the positions can tell (as for a baiter barely off theirs: rVkK pull 22)
-            away = lambda y: ((math.dist(where(y)[0], stack) - WF_STACK_R) if y not in exp else ((seat_off(wf, seats, w, y) or 0) - SEAT_OFF)) > WF_SURE[0] + WF_RUN * where(y)[1]
+            away = lambda y: ((math.dist(where(y)[0], stack) - WF_STACK_R) if y not in exp else ((seat_off(wf, seats, w, y) or 0) - SEAT_OFF)) > unc(where(y)[1])
             tie = "out" if all(away(y) for _, y, _ in near) else "at"
         out[x] = [(y, dy, sure) for dy, y, _ in near], dx, sorted(hit), bool(adds[add] & unsure), thin, tie
     return out
@@ -352,7 +381,6 @@ WF_STACK = (-0.2, -10.2)   # the other light party's stack: y toward the adds' w
 WF_STACK_R = 3.6           # non-baiters in clean waves, 95% of them within this; scratch/whiteflame/audit.py)
 SIDE_FIT = 1.2             # how much better the single hits must fit the adds' sides than the waves (infer_light_parties)
 WF_FIX_MAX = 4             # the most players a correction is searched over
-WF_RUN = 6.0               # y/s a player runs: a position read s seconds from the cast is that much less certain
 
 
 def wf_lasers(adds, pos):
@@ -371,16 +399,14 @@ def wf_replay(p, lo, hi, w, t, lp):
     it does not hold: positions missing, a baiter without a learned spot or already dead (para1's chain), or the
     replay not picking the adds' targets (each replayed laser paired with a logged line holding its target). Each picked
     laser hits whom the log says it did (a player at its edge either way) until a correction moves its target; a victim
-    no correction of up to WF_FIX_MAX players spares is left to the other rules. Spots: a baiter's line-up seat, everyone else the stack; players within WF_SURE[0] of
-    theirs are not moved (they stood there). Of the corrections, those with fewest players within their spot's
+    no correction of up to WF_FIX_MAX players spares is left to the other rules. Spots: a baiter's line-up seat, everyone else the stack; players within the log's error of
+    theirs at the moment itself (unc(0); a stale reading is no proof they were there) are not moved (they stood there). Of the corrections, those with fewest players within their spot's
     tolerance (SEAT_OFF, WF_STACK_R) are blamed, all of them: with everyone in them out of place, each correction's
     players made a mistake either way (the user's rule, 2026-10-27, as for Superchain I's lasers and towers; it was the
     victim's own, else the farthest off); when every one has someone within it and there are several, all of them as
-    undecided (low: the user's ruling, said as such). Sure when every culprit stood over WF_SURE[0] past that tolerance and an
-    interloper over WF_SURE[0] nearer the add than the baiters it out-stood, each margin also past how far the players
-    in it could have run (WF_RUN) between the cast and their nearest position reading: then high for baiters out of the
-    line-up (nearer the stack than their seat, or unhit over 2 * SEAT_OFF from it), medium for the rest (at most medium
-    where the replay gets a line of the wave wrong); low otherwise."""
+    undecided (low: the user's ruling, said as such). Confidence: the least sure of its margins against the log's error
+    (certainty): each culprit past their spot's tolerance, an interloper nearer the add than the baiters it out-stood; at
+    most medium where the replay gets a line of the wave wrong or the correction moved players inside their tolerance."""
     seats, wf = getattr(lp, "seats", {}), p.white_flame(lo, hi)
     if not wf or len(wf[1]) != 2: return None
     t1, adds, where, _ = wf
@@ -417,7 +443,7 @@ def wf_replay(p, lo, hi, w, t, lp):
         return out
     n = counts(())
     victims = [x for x in alive if n[x] > (x in bait)]
-    movable, tried, blame, alone, undecided, trimmed = [x for x in alive if off[x] > WF_SURE[0]], {}, {}, {}, set(), set()
+    movable, tried, blame, alone, undecided, trimmed = [x for x in alive if off[x] > unc(0)], {}, {}, {}, set(), set()   # a stale reading keeps them a candidate
     for v in victims:
         score = lambda c: sum(not out_of_place[x] for x in c)   # players inside their spot's tolerance
         for k in range(1, WF_FIX_MAX + 1):
@@ -444,11 +470,14 @@ def wf_replay(p, lo, hi, w, t, lp):
         vs = list(vs)
         mine = {a for a, tg, _ in real if tg in cul}
         outstood = sorted(b for b in bait if seat_add(wf, seats, w, b) in mine and b not in targets)
-        sure = all(off[x] - tol[x] > WF_SURE[0] + WF_RUN * q[x][1] for x in cul) and all(
-            math.dist(pos[b], a) - math.dist(pos[x], a) > WF_SURE[0] + WF_RUN * (q[x][1] + q[b][1])
-            for a, x, _ in real if x in cul and role(x) == 1 for b in outstood)
+        # how sure: the margins it rests on against the log's error, each culprit past their spot's tolerance and an
+        # interloper nearer the add than the baiters it out-stood; at most medium where the replay misses a logged line or
+        # the correction also moved players inside their tolerance
+        conf = least_sure([certainty(off[x] - tol[x], unc(q[x][1])) for x in cul] + [
+            certainty(math.dist(pos[b], a) - math.dist(pos[x], a), unc(q[x][1], q[b][1]))
+            for a, x, _ in real if x in cul and role(x) == 1 for b in outstood])
+        if conf == "high" and (pred != act or cul in trimmed): conf = "medium"
         top = min(map(role, cul))
-        conf = ("high" if all(role(x) == 0 for x in cul) and pred == act and cul not in trimmed else "medium") if sure else "low"
         how = "; ".join(f"{x} {off[x]:.1f} y from their spot" + (f", {words[role(x)]}" if role(x) != top else "") for x in cul)
         if top == 0: rule = f"not in the White Flame line-up as wave {w} fired ({how})"
         elif top == 1:
@@ -547,7 +576,7 @@ def para1(p, lp):
                     continue
                 out.append(fault(t, "Paradeigma I", list(cul), lost, f"{', '.join(cul)}: closer to the White Flame add than its baiter{'s' if len(xs) > 1 else ''} "
                                  f"{', '.join(x for x, *_ in xs)} as wave {w} fired ({dists})" + (f"; the laser went to {', '.join(lost)}" if lost else ""),
-                                 "medium" if all(s for x in xs for *_, s in x[1]) or all(x_[6] == "out" for x_ in xs) else "low", tag="p1.wf.too_close",
+                                 "medium" if all(x_[6] == "out" for x_ in xs) else least_sure([s for x in xs for *_, s in x[1]]), tag="p1.wf.too_close",
                                  share="one_of" if len(cul) > 1 else "own"))   # several as near: one of them drew it
             if missing:
                 out.append(fault(t, "Paradeigma I", missing, took, f"not in the White Flame line-up (wave {w}); the laser went to {', '.join(took) or 'someone else'}", "high" if took else "medium", tag="p1.wf.not_in_line_up"))
@@ -603,8 +632,9 @@ def para1_auto(p, lp):
 # 2026-10-25 half the DPS stand within 0.9 (crossed) / 1.2 y (straight) of theirs, 90% within 1.9 / 3.1 (the 10 y seats).
 TETHER_SEAT = 10, 3, 8.5, 10   # straight x, straight y, crossed y, crossed x
 TETHER_HALF = 3.0     # a tether laser hits up to ~3 y from its line, past its holder too (scratch/para3tether/width.py)
-TETHER_SURE = 0.5     # medium only when the deciding seat clears the laser by this much more (its reach is ~3.0 +- 0.3)
-sure = lambda gap: "medium" if gap > TETHER_HALF + TETHER_SURE else "low"
+# how sure a seat-based verdict is: the deciding seat's clearance past the laser's reach against the log's error for the
+# one logged position it rests on (the laser's, at its calculated hit; the seats are the plan's)
+sure = lambda gap: certainty(gap - TETHER_HALF, unc(0))
 
 
 def line_off(a, b, q):
@@ -677,7 +707,7 @@ def tether_cross(p, t, v, o, laser, seat):
     how = f"({v} {dv:.1f} y off their seat, {o} {do:.1f})"
     vgap, ogap = line_off(a, po, seat[v][0]), line_off(a, seat[o][0], pv)   # the victim's distance from the line, either seated
     vfix, ofix = vgap > TETHER_HALF, ogap > TETHER_HALF
-    if vfix and ofix and abs(vgap - ogap) > 0.5: vfix, ofix = vgap > ogap, ogap > vgap
+    if vfix and ofix and abs(vgap - ogap) > unc(0, 0): vfix, ofix = vgap > ogap, ogap > vgap   # clearer by more than the log can tell
     if vfix and not ofix: return fault(t, "Paradeigma III", [v], [v], f"stood in {o}'s tether laser, off their seat {how}", sure(vgap), tag="p3.tether.stood_in")
     if ofix and not vfix: return fault(t, "Paradeigma III", [o], [v], f"{o}: off their seat, their tether laser hit {v} {how}", sure(ogap), tag="p3.tether.holder_off")
     return fault(t, "Paradeigma III", [v, o], [v], f"{v} and {o}: both off their seats, {o}'s tether laser hit {v} {how}", "low", tag="p3.tether.holder_off",
@@ -686,14 +716,20 @@ def tether_cross(p, t, v, o, laser, seat):
 
 def tether_clip(p, e, laser, seat):
     """A support clipped by a DPS tether laser: theirs (the outer gap the seated lasers leave on the tower), unless the
-    laser, its holder at their seat, would have missed them where they stood: the holder's then."""
+    laser, its holder at their seat, would have missed them where they stood: the holder's then; within the log's error
+    of its reach either way, undecided (both, low)."""
     t, v = e["t"], e["who"]
     nm, a, o, ws = laser or (None,) * 4
     if o and a and o in seat and ws.get(o) and (pv := ws.get(v) or e["pos"]):
         if gone_before(p, t, o, laser):
             return fault(t, "Paradeigma III", [o], [v], f"{o} died before their tether laser landed; aimed where they died, it clipped {v}", "consequence", chain=[o], tag="p3.tether.dead_holder")
-        if (gap := line_off(a, seat[o][0], pv)) > TETHER_HALF:
+        if abs((gap := line_off(a, seat[o][0], pv)) - TETHER_HALF) < unc(0):   # the seat clears them by less than the log can tell, or misses by less
+            return fault(t, "Paradeigma III", [v, o], [v], f"could not be decided whose: {o}'s tether laser from their seat would have passed {gap:.1f} y from {v}, "
+                         f"at its reach ({TETHER_HALF:g} y) within what the log can tell ({o} {math.dist(ws[o], seat[o][0]):.1f} y off their seat)", "low", tag="p3.tether.undecided")
+        if gap > TETHER_HALF:
             return fault(t, "Paradeigma III", [o], [v], f"{o}: off their seat, their tether laser hit {v} at the tower ({o} {math.dist(ws[o], seat[o][0]):.1f} y off their seat)", sure(gap), tag="p3.tether.holder_off")
+        # the holder's seat would not have cleared them: theirs, as sure as that laser would still have reached them
+        return fault(t, "Paradeigma III", [v], [v], "a DPS tether laser clipped them (soak from the tower's outer side)", certainty(TETHER_HALF - gap, unc(0)), tag="p3.tether.clipped")
     return fault(t, "Paradeigma III", [v], [v], "a DPS tether laser clipped them (soak from the tower's outer side)", "high", tag="p3.tether.clipped")
 
 
@@ -711,12 +747,12 @@ def dead_soul(p, souls, glow, t):
 # holders stretch straight across: off that line past P2_LINE_TOL (90% of clean pulls within), and their own laser is
 # lethal nearer than P2_STRETCH y to the add's wall (no holder lived nearer, 2,689 lasers; the five who died further
 # out were low on HP). A laser hits within TETHER_HALF of the line from its add through its holder (2,650 of 2,711
-# reproduced from the positions at the calculated hits), past the holder too; its edge is soft over P2_EDGE (half of
-# those 2.5-3 y from it were hit). A Soul stands P2_SOUL_R out on their sweep quadrant's diagonal (the median), off
+# reproduced from the positions at the calculated hits), past the holder too; its edge looks soft by the logged positions' error (half of
+# those 2.5-3 y from it were hit: unc). A Soul stands P2_SOUL_R out on their sweep quadrant's diagonal (the median), off
 # it past P2_SOUL_TOL as the lasers land (90%). Their tower drops there: off its spot past P2_OFF (90% of soaked towers
 # within), and soakers came from within P2_REACH of it as the lasers landed (99%). With the party short, the game gives
 # a Soul holder a tether too (never with all 8 alive, 764 pulls).
-P2_LINE_TOL, P2_STRETCH, P2_EDGE, P2_SOUL_R, P2_SOUL_TOL, P2_OFF, P2_REACH = 1.75, 34.5, 0.5, 13.24, 2.5, 2.6, 10.7
+P2_LINE_TOL, P2_STRETCH, P2_SOUL_R, P2_SOUL_TOL, P2_OFF, P2_REACH = 1.75, 34.5, 13.24, 2.5, 2.6, 10.7
 P2_DIAG = {"NE": (1, -1), "SE": (1, 1), "SW": (-1, 1), "NW": (-1, -1)}
 
 
@@ -756,30 +792,34 @@ def p2_lasers(p):
     return out
 
 
-def p2_tether_fix(add, h, hq, v, vq, spot, tol):
+def p2_tether_fix(add, h, hq, v, vq, spot, tol, gh=0, gv=0):
     """Whose move alone to their spot would have taken `v` (at vq) out of `h`'s tether laser: h's to their add's
-    straight line (as far across as they stood), or v's to `spot` (off it past `tol`). (culprits, confidence, why) as
-    for Superchain I's lasers: both would, the one off their spot; both when both are (medium); when neither is, or the
-    deciding move leaves them within P2_EDGE of the laser's edge, it cannot be decided (both, low). Neither alone: both.
-    The tag last."""
+    straight line (as far across as they stood), or v's to `spot` (off it past `tol`). (culprits, confidence, why, tag)
+    as for Superchain I's lasers: both would, the one off their spot; both when both are; when neither is, or the
+    deciding move leaves them nearer the laser's edge than the log can tell (unc of the two positions, read gh and gv s
+    from their samples), it cannot be decided (both, low). Neither alone: both. Confidence: the deciding margin against
+    the log's error (certainty)."""
+    u = unc(gh, gv)
     across, side = p2_frame(add, hq)
     d = {h: p2_ray(add, p2_straight(add, across), vq), v: p2_ray(add, hq, spot) if spot else 0}
     off = {h: abs(side), v: math.dist(vq, spot) if spot else 0}
-    far = lambda x: off[x] > (P2_LINE_TOL if x == h else tol)
+    lim = lambda x: P2_LINE_TOL if x == h else tol
+    far = lambda x: off[x] > lim(x)
     at = lambda x: f"{x} {off[x]:.1f} y off {'their line' if x == h else 'their spot'}"
     facts = f"{at(v)}, {at(h)}"
     opts = [x for x in (v, h) if d[x] > TETHER_HALF]
     if len(opts) == 2:
         out = [x for x in opts if far(x)]
         if not out: return [v, h], "low", f"could not be decided who stood in whose tether laser: either at their spot would have cleared it ({facts})", "p2.tether.undecided"
-        if len(out) == 2: return [v, h], "medium", f"stood in {h}'s tether laser, both away from their spots: either back would have cleared it ({facts})", "p2.tether.stood_in"
+        if len(out) == 2:
+            return [v, h], least_sure([certainty(off[x] - lim(x), unc(gh if x == h else gv)) for x in out]),                 f"stood in {h}'s tether laser, both away from their spots: either back would have cleared it ({facts})", "p2.tether.stood_in"
         opts = out
     if len(opts) == 1:
         x = opts[0]
-        if d[x] - TETHER_HALF <= P2_EDGE: return [v, h], "low", f"could not be decided who stood in whose tether laser: at its edge ({facts})", "p2.tether.undecided"
-        conf = "high" if far(x) else "medium"
+        if d[x] - TETHER_HALF < u: return [v, h], "low", f"could not be decided who stood in whose tether laser: at its edge ({facts})", "p2.tether.undecided"
+        conf = certainty(d[x] - TETHER_HALF, u)
         return ([v], conf, f"stood in {h}'s tether laser ({facts})", "p2.tether.stood_in") if x == v else ([h], conf, f"{h}: off their line, their tether laser hit {v} ({facts})", "p2.tether.holder_off")
-    return [v, h], "medium", f"stood in {h}'s tether laser, and neither alone at their spot would have cleared it ({facts})", "p2.tether.stood_in"
+    return [v, h], least_sure([certainty(TETHER_HALF - d[x], u) for x in (v, h)]),         f"stood in {h}'s tether laser, and neither alone at their spot would have cleared it ({facts})", "p2.tether.stood_in"
 
 
 def para2_tethers(p, souls, by, P2, teth):
@@ -792,7 +832,8 @@ def para2_tethers(p, souls, by, P2, teth):
     out = []
     t_l = min(t for _, _, t in P2.values())
     dead = p.dead_by(t_l)
-    at = {h: q[0] for add, h, t in P2.values() if (q := track_at(p, p.p2["pos"], h, t))}
+    hq = {h: q for add, h, t in P2.values() if (q := track_at(p, p.p2["pos"], h, t))}   # (position, s from its sample)
+    at = {h: q[0] for h, q in hq.items()}
     own = {h: add for add, h, _ in P2.values()}
     for (nm, inst), (add, h, t) in P2.items():
         if h not in dead and h in at: teth[h] = ("Umbral" if nm == "Searing Radiance" else "Astral", at[h])
@@ -828,7 +869,7 @@ def para2_tethers(p, souls, by, P2, teth):
                 continue
             vq = track_at(p, p.p2["pos"], v, t)
             spot, tol = spot_of(v, vq[0]) if vq else (None, 0)
-            r = p2_tether_fix(add, h, at[h], v, vq[0], spot, tol) if h in at and vq and spot else None
+            r = p2_tether_fix(add, h, at[h], v, vq[0], spot, tol, hq[h][1], vq[1]) if h in at and vq and spot else None
             out.append(fault(e["t"], "Paradeigma II", r[0], [v], r[2], r[1], tag=r[3]) if r else fault(e["t"], "Paradeigma II", [v], [v], f"stood in {h}'s tether laser", "medium", tag="p2.tether.stood_in"))
     return out
 
@@ -837,7 +878,8 @@ def p2_unsoaked(p, w, asp, sk, q, drop):
     """Whose an unsoaked tower in its sweep quadrant was, by where it dropped (its Advance cast, Pull.p2) and where its
     soaker stood as the lasers landed, as for Superchain I's: on its spot (within P2_OFF) the soaker's; off it but
     within the soaker's reach (P2_REACH), it cannot be pinned on either alone (both, low); out of their reach with its
-    spot in it, the dropper's; neither in reach, both (medium). (culprits, confidence, why, tag), or None without positions."""
+    spot in it, the dropper's; neither in reach, both. Confidence: the margins past P2_OFF and P2_REACH against the log's
+    error for the soaker's position (certainty). (culprits, confidence, why, tag), or None without positions."""
     tws = [(x, y) for t, nm, inst, tgt, x, y in (p.p2 or {}).get("casts", ()) if nm == f"{asp} Advance" and t >= 78]
     L = p2_lasers(p)
     sq = track_at(p, p.p2["pos"], sk, min(t for *_, t in L.values())) if tws and L else None
@@ -846,10 +888,11 @@ def p2_unsoaked(p, w, asp, sk, q, drop):
     want = p2_spot(q)
     off, d, dp = math.dist(tw, want), math.dist(sq[0], tw), math.dist(sq[0], want)
     facts = f"it dropped {off:.1f} y from its spot, {sk} {d:.1f} y from it and {dp:.1f} from the spot as the lasers landed"
-    if off <= P2_OFF: return [sk], "high", f"did not soak {w}'s tower in {q} ({facts})", "p2.tower.unsoaked"
+    us = unc(sq[1])   # the soaker's position; the tower's and its spot's are the game's own
+    if off <= P2_OFF: return [sk], certainty(P2_OFF - off, unc(0)), f"did not soak {w}'s tower in {q} ({facts})", "p2.tower.unsoaked"
     if d <= P2_REACH: return [sk, w], "low", f"{w}'s tower unsoaked, undecided: {w} dropped it off its spot, but {sk} could still reach it ({facts})", "p2.tower.undecided"
-    if dp <= P2_REACH: return [w], "high", f"{w}'s tower unsoaked: {w} dropped it out of {sk}'s reach ({facts})", "p2.tower.out_of_reach"
-    return [sk, w], "medium", f"{w}'s tower unsoaked, both away from it ({facts})", "p2.tower.unsoaked"
+    if dp <= P2_REACH: return [w], least_sure([certainty(d - P2_REACH, us), certainty(P2_REACH - dp, us)]), f"{w}'s tower unsoaked: {w} dropped it out of {sk}'s reach ({facts})", "p2.tower.out_of_reach"
+    return [sk, w], least_sure([certainty(d - P2_REACH, us), certainty(dp - P2_REACH, us)]), f"{w}'s tower unsoaked, both away from it ({facts})", "p2.tower.unsoaked"
 
 
 def para2(p):
@@ -1034,7 +1077,7 @@ def glaukopis(p, lo, hi):
             out.append(fault(t, mech, [a, b], [a], "no tank swap between the Glaukopis hits: the second hit the vulnerable tank", "medium", tag="glauk.swap", share="one_of"))
         elif back := p.cast_at(a, "Provoke", h1["t"] - 1, snap):
             out.append(fault(t, mech, [a], [a], f"provoked back {back[-1] - h1['t']:+.1f} s from the first Glaukopis, before the second "
-                             f"(from +{SNAPSHOT} s): it hit them again with the vulnerability", "high", tag="glauk.swap"))
+                             f"(from +{SNAPSHOT} s): it hit them again with the vulnerability", certainty(snap - back[-1], TIME_ERR), tag="glauk.swap"))
         elif not (pb := p.cast_at(b, "Provoke", h1["t"] - 10, snap)):
             out.append(fault(t, mech, [b], [a], f"did not provoke for the Glaukopis swap; {a} took the second hit with the vulnerability", "high", tag="glauk.swap"))
         else:
@@ -1052,7 +1095,8 @@ def glaukopis(p, lo, hi):
     else:
         back = p.cast_at(a, "Provoke", h2["t"] - 1, t)
         when = f"provoked back {back[0] - h2['t']:+.1f} s from the second Glaukopis, too late (by +{SNAPSHOT} s)" if back else "did not provoke back after the second Glaukopis"
-        out.append(fault(t, mech, [a], [v], f"{when}: the auto-attack after it killed {v} through the vulnerability", "high", tag="glauk.swap"))
+        out.append(fault(t, mech, [a], [v], f"{when}: the auto-attack after it killed {v} through the vulnerability",
+                         certainty(back[0] - h2["t"] - SNAPSHOT, TIME_ERR) if back else "high", tag="glauk.swap"))
     return out
 
 
@@ -1250,7 +1294,7 @@ def para3(p, lp, priority=False):
             out.append(fault(e["t"], "Paradeigma III", [o], [o], f"did not step out of their own {shape}", "high", tag="p3.cross"))
         elif o and off > P3_CROSS_OFF:
             where = "the north platform's outer corner" if shape == "+" else "the south wall's middle"
-            out.append(fault(e["t"], "Paradeigma III", [o], [e["who"]], f"dropped the {shape} {off:.1f} y from its spot ({where}); its arms hit {e['who']}", "high", tag="p3.cross.off_spot"))
+            out.append(fault(e["t"], "Paradeigma III", [o], [e["who"]], f"dropped the {shape} {off:.1f} y from its spot ({where}); its arms hit {e['who']}", certainty(off - P3_CROSS_OFF, unc(0)), tag="p3.cross.off_spot"))
         elif o in wrong_plat:
             out.append(fault(e["t"], "Paradeigma III", [o], [e["who"]], f"dropped the {shape} from the wrong platform ({wrong_plat[o]}); it hit {e['who']}", "high", tag="p3.cross"))
         else:
@@ -1335,7 +1379,7 @@ def para3(p, lp, priority=False):
             w = why[1]; h = math.hypot(*glow[w]["pos"])
             reach = f"its {P3_TOWER_R:g} y reach stopped {h - P3_TOWER_R:.1f} y short of it" if h >= P3_TOWER_R else f"it reached only {P3_TOWER_R - h:.1f} y across it"
             out.append(fault(ts, "Paradeigma III", [w], blown | {w}, f"{w}'s tower unsoaked: dropped {h:.1f} y from the arena centre, {reach}, out of reach from the "
-                             f"other platform", "high", **boom, tag="p3.tower.out_of_reach"))
+                             f"other platform", certainty(h - (P3_TOWER_R - P3_ACROSS[1]), unc(0)), **boom, tag="p3.tower.out_of_reach"))
         elif why[0] == "undecided":
             w, sk = why[1:]; h = math.hypot(*glow[w]["pos"])
             out.append(fault(ts, "Paradeigma III", [w, sk], blown | {w, sk}, f"{w}'s tower unsoaked, undecided: dropped {h:.1f} y from the arena centre, it reached only "
@@ -1366,7 +1410,7 @@ def para3(p, lp, priority=False):
 # to someone else (orange: a player hit twice; purple: one at random). SPOT_ANGLE is each row's angle off the line to
 # Athena in clean spreads (median, degrees; quartiles within 7-15 of it, except ranged, who stand wider).
 MELEE_JOBS = {"Monk", "Dragoon", "Ninja", "Samurai", "Reaper", "Viper"}
-CLUSTER, SPOT_ANGLE, SPOT_MARGIN = 8.25, {"T": 17, "M": 50, "H": 98, "R": 146}, 20
+CLUSTER, SPOT_ANGLE, SPOT_MARGIN, SPOT_RING = 8.25, {"T": 17, "M": 50, "H": 98, "R": 146}, 20, 7.9
 CONE_HALF = 15      # degrees either side of an orange or purple cone's aim
 # how far off their seat's angle each row stands in clean orange spreads, 9 times in 10 (2026-10-06 on): past it, off
 # their spot (healers and ranged stand much wider than tanks: a flat 20 called a healer at 24 off it)
@@ -1402,8 +1446,9 @@ def cone_blame(p, lp, hs, group):
     angle around the cluster puts them over CONE_HALF degrees from the others (the cones are 30 degrees wide: pairs one
     hit stood a median 11 apart, pairs none did over 15; scratch/sc1audit/cones.py). Several would: those off their
     spot (past their row's SPOT_TOL); all when they all are; none, it cannot be decided (all, low). None alone: all of
-    them. High when SPOT_MARGIN past it. The user's rule as for the other mechanics, 2026-10-27 (it was the one further
-    off by SPOT_MARGIN, else a share). The tag last."""
+    them. Confidence: their move's margin past the cone's edge and how far past their tolerance they stood, against the
+    log's error as an angle at the ring (SPOT_RING). The user's rule as for the other mechanics, 2026-10-27 (it was the one
+    further off by SPOT_MARGIN, else a share). The tag last."""
     fr = spot_frame(p, lp, hs)
     if not fr or not all(w in fr[0] and w in fr[1] for w in group): return sorted(group), "low", "", "sc1.orange"
     seat, ang, want = fr
@@ -1414,10 +1459,14 @@ def cone_blame(p, lp, hs, group):
     fixes = [w for w in group if all(gap(want[w], ang[o]) > CONE_HALF for o in group if o != w)]
     past = lambda w: off[w] - SPOT_TOL[seat[w][0]]     # degrees past their row's tolerance
     out = [w for w in fixes if past(w) > 0]
+    # how sure: the log's error for a hit's position, as an angle at the ring's radius; their move clearing the others'
+    # cones and their being off their spot, each against it
+    u = math.degrees(math.atan2(unc(0), SPOT_RING))
+    sure = lambda w: least_sure([certainty(min(gap(want[w], ang[o]) for o in group if o != w) - CONE_HALF, u)] + ([certainty(past(w), u)] if past(w) > 0 else []))
     if len(fixes) == 1 or len(out) == 1:
         w = fixes[0] if len(fixes) == 1 else out[0]
-        return [w], "high" if past(w) >= SPOT_MARGIN else "medium", f"; {w} ({name(w)}) stood {off[w]:.0f} degrees off their spot around the cluster ({told})", "sc1.orange"
-    if out: return sorted(out), "medium", f"; each of them back at their spot would have done ({told})", "sc1.orange"
+        return [w], sure(w), f"; {w} ({name(w)}) stood {off[w]:.0f} degrees off their spot around the cluster ({told})", "sc1.orange"
+    if out: return sorted(out), least_sure([certainty(past(w), u) for w in out]), f"; each of them back at their spot would have done ({told})", "sc1.orange"
     if fixes: return sorted(group), "low", f"; could not be decided who stood in whose orange cone ({told})", "sc1.orange.undecided"
     return sorted(group), "medium" if any(past(w) > 0 for w in group) else "low", f"; no one of them alone back at their spot would have done ({told})", "sc1.orange"
 
@@ -1473,6 +1522,7 @@ def share_short(t, mech, e, n, m, gone, what, base=None, *, tags):
     f = fault(t, mech, gone, [e["who"]], f"{lead}: {who}, who shared it, {was} already dead (shared by {m}, {e['who']} "
               f"would have kept {hp - full:,.0f} HP)", "consequence", chain=gone, ability=e["name"], tag=tags[thin])
     if thin: f["cap"] = "low"
+    elif hp - full <= 2 * SHARE_ROLL * full: f["cap"] = "medium"   # spared by less than twice the roll
     return f
 CAMPS_APART = 10    # degrees: groups closer than this stood on top of each other, and the Strong Souls aim the lines
 ON_ONE_SPOT = 5     # this many players in both lasers: the groups stood on one spot, each in both is their own
@@ -1520,9 +1570,8 @@ def clip_geometry(p, lt, exp, S, w, clip):
 # game's data; the cast's logged source is stale), which reproduces 88% of lasers exactly. Each laser group stands
 # SC1_GROUP_R out, SC1_GROUP_ANG degrees either side of the laser cluster's bearing (the donut-only cluster; the Astral
 # laser's group clockwise of it): clean pulls' sharers stand a median 1.0 y from that spot, 95% within SC1_GROUP_TOL, in
-# every group. A position read more than SC1_GROUP_STALE s from a sample makes a verdict at most medium.
-SC1_LASER_HALF, SC1_GROUP_R, SC1_GROUP_ANG, SC1_GROUP_TOL, SC1_GROUP_STALE = 3.0, 11.3, 15, 2.6, 0.5
-SC1_EDGE = 0.5   # y either side of a laser's edge where a hit or a miss is as the log has it
+# every group. How sure a verdict is comes from its margins against the logged positions' error (certainty).
+SC1_LASER_HALF, SC1_GROUP_R, SC1_GROUP_ANG, SC1_GROUP_TOL = 3.0, 11.3, 15, 2.6
 
 
 def sc1_laser_replay(p, exp, S):
@@ -1545,42 +1594,47 @@ def sc1_laser_replay(p, exp, S):
     pos = {w: q for w in p.job if w not in dead and (q := sc1_where(p, w, t))}
     strong = {nm: next((x for x in S[k] if x in pos), None) for nm, k in LASER_STRONG.items()}
 
-    def hits(nm, movers=()):
+    def dists(nm, movers=()):
+        """{player: y from laser nm's line} with the movers at their group's spot (behind Athena: out of it), or None."""
         pp = {w: spot[group[w]] if w in movers and w in group else q[0] for w, q in pos.items()}
         s = pp.get(strong[nm])
         if not s: return None
         n = math.hypot(*s) or 1e-9
-        return {w for w, q in pp.items() if (q[0] * s[0] + q[1] * s[1]) / n > 0 and abs(q[0] * s[1] - q[1] * s[0]) / n <= SC1_LASER_HALF}
+        return {w: abs(q[0] * s[1] - q[1] * s[0]) / n if (q[0] * s[0] + q[1] * s[1]) / n > 0 else 99 for w, q in pp.items()}
+
+    def hits(nm, movers=()):
+        d = dists(nm, movers)
+        return None if d is None else {w for w, x in d.items() if x <= SC1_LASER_HALF}
     got = {nm: {e["who"] for e in calc if e["name"] == nm} for nm in LASER_STRONG}
     def fits(nm):
-        """The replay reproduces laser nm: everyone well inside it was hit, everyone well outside not (within SC1_EDGE of
-        its edge either way, as the log has it: the edge is soft, as Paradeigma I's and II's)."""
-        s = pos.get(strong[nm], (None,))[0]
-        if not s: return False
-        n = math.hypot(*s) or 1e-9
-        for w, (q, _) in pos.items():
-            d = abs(q[0] * s[1] - q[1] * s[0]) / n if (q[0] * s[0] + q[1] * s[1]) / n > 0 else 99
-            if d <= SC1_LASER_HALF - SC1_EDGE and w not in got[nm] or d > SC1_LASER_HALF + SC1_EDGE and w in got[nm]: return False
+        """The replay reproduces laser nm: everyone inside it by more than the log can tell (unc of their position and its
+        Strong Soul's) was hit, everyone outside it by more not; nearer its edge, as the log has it."""
+        d = dists(nm)
+        if d is None: return False
+        for w, x in d.items():
+            e = unc(pos[w][1], pos[strong[nm]][1])
+            if x <= SC1_LASER_HALF - e and w not in got[nm] or x > SC1_LASER_HALF + e and w in got[nm]: return False
         return True
-    return dict(hits=hits, fits={nm: fits(nm) for nm in LASER_STRONG},
+    return dict(hits=hits, dists=dists, fits={nm: fits(nm) for nm in LASER_STRONG},
                 off={w: math.dist(q[0], spot[group[w]]) for w, q in pos.items() if w in group}, gap={w: q[1] for w, q in pos.items()}, strong=strong)
 
 
 def sc1_misaim(R, nm, w):
-    """A laser the replay does not reproduce that hit w, who stood at their group's spot (within SC1_GROUP_TOL, read within
-    SC1_GROUP_STALE s): it was aimed where they were not, so not their mistake. (culprits, confidence, why): the laser's
-    Strong Soul when they stood off their spot (medium), else both, undecided (low). None when w was off their spot."""
+    """A laser the replay does not reproduce that hit w, who stood at their group's spot (inside SC1_GROUP_TOL by more than
+    the log can tell): it was aimed where they were not, so not their mistake. (culprits, confidence, why): the laser's
+    Strong Soul when they stood off their spot (as sure as they were off it), else both, undecided (low). None when w was
+    not surely at their spot. The last field: undecided."""
     s = R["strong"][nm] if R else None
-    if not (s and s != w and R["off"].get(w, 99) <= SC1_GROUP_TOL and R["gap"].get(w, 9) <= SC1_GROUP_STALE): return None
+    if not (s and s != w and SC1_GROUP_TOL - R["off"].get(w, 99) >= unc(R["gap"].get(w, 9))): return None
     at = lambda x: f"{x} {R['off'].get(x, 0):.1f} y from their group's spot"
     if R["off"].get(s, 0) > SC1_GROUP_TOL:
-        return [s], "medium", f"{s}, who aims it, stood {R['off'][s]:.1f} y from their group's spot ({at(w)}; the laser aimed where the positions do not put it)"
-    return [w, s], "low", f"the laser aimed where the positions do not put it, both at their spots ({at(w)}, {at(s)})"
+        return [s], certainty(R["off"][s] - SC1_GROUP_TOL, unc(R["gap"].get(s, 9))), f"{s}, who aims it, stood {R['off'][s]:.1f} y from their group's spot ({at(w)}; the laser aimed where the positions do not put it)", False
+    return [w, s], "low", f"the laser aimed where the positions do not put it, both at their spots ({at(w)}, {at(s)})", True
 
 
 def sc1_laser_fix(R, nm, w, want):
     """Whose move alone to their laser group's spot would have put `w` where they belong for laser nm (in it when
-    `want`, else out of it): w, or the laser's Strong Soul, who aims it. (culprits, confidence, why) or None. Both
+    `want`, else out of it): w, or the laser's Strong Soul, who aims it. (culprits, confidence, why, undecided) or None. Both
     would: the one off their spot (past SC1_GROUP_TOL); both when both are (two mistakes, medium); when neither is, it
     cannot be decided (both, low). Neither alone: both together (medium)."""
     s = R["strong"][nm]
@@ -1588,29 +1642,35 @@ def sc1_laser_fix(R, nm, w, want):
     opts = list(dict.fromkeys(x for x in (w, s) if x and ok((x,))))
     far = lambda x: R["off"].get(x, 0) > SC1_GROUP_TOL
     at = lambda x: f"{x} {R['off'].get(x, 0):.1f} y from their group's spot"
-    sure = lambda xs: "high" if all(far(x) for x in xs) and all(R["gap"].get(x, 9) <= SC1_GROUP_STALE for x in {w, *xs}) else "medium"
+    g = lambda x: R["gap"].get(x, 9)
+    offc = lambda x: certainty(R["off"].get(x, 0) - SC1_GROUP_TOL, unc(g(x)))   # how sure they were off their spot
+    # how sure x's move decides it: w's distance from the laser's edge with x at their spot, against the error of the
+    # position left as logged (the other one's)
+    edge = lambda x: certainty(abs((R["dists"](nm, (x,)) or {}).get(w, 99) - SC1_LASER_HALF), unc(g(s if x == w else w)))
     if len(opts) == 2:
         out = [x for x in opts if far(x)]
-        if not out: return [w, s], "low", f"either at their spot would have done ({at(w)}, {at(s)})"
-        if len(out) == 2: return [w, s], "medium", f"both away from their spots, either back would have done ({at(w)}, {at(s)})"
+        if not out: return [w, s], "low", f"either at their spot would have done ({at(w)}, {at(s)})", True
+        if len(out) == 2: return [w, s], least_sure([offc(w), offc(s)]), f"both away from their spots, either back would have done ({at(w)}, {at(s)})", False
         opts = out
     if len(opts) == 1:
         x = opts[0]
-        return [x], sure([x]), at(x) if x == w else f"{s}, who aims it, stood {R['off'].get(s, 0):.1f} y from their group's spot"
-    if s and s != w and ok((w, s)): return [w, s], "medium", f"both away from their spots ({at(w)}, {at(s)})"
+        if edge(x) == "low" and s and s != w:   # the move decides it by less than the log can tell: either could be the culprit
+            return [w, s], "low", f"at the laser's edge within what the log can tell ({at(w)}, read {g(w):.2f} s from a sample; {at(s)})", True
+        return [x], least_sure([edge(x)] + ([offc(x)] if far(x) else [])), at(x) if x == w else f"{s}, who aims it, stood {R['off'].get(s, 0):.1f} y from their group's spot", False
+    if s and s != w and ok((w, s)): return [w, s], least_sure([offc(x) for x in (w, s) if far(x)] or ["medium"]), f"both away from their spots ({at(w)}, {at(s)})", False
     return None
 
 
 # The bright Souls' towers (scratch/sc1audit, 2026-10-27): each drops on the cardinal beside the last cluster on its
 # side, Astral on the right and Umbral on the left as you face Athena from the cluster, SC1_TOWER_R out (the median).
 # Soaked towers landed within SC1_OFF of that spot nine times in ten, and their soakers came from within SC1_REACH as it
-# dropped (99%; the tower resolves 3 s after it drops). A position read more than SC1_STALE s from a sample is unsure.
+# dropped (99%; the tower resolves 3 s after it drops).
 # A tower, and the bright Soul's AoE as it drops, takes whoever stands within SC1_ON of it (the game's data, Action
 # 33550-33551, 33548-33549). A Strong Soul SC1_STEP y nearer their tower than a second before was stepping in.
-SC1_TOWER_R, SC1_OFF, SC1_REACH, SC1_STALE, SC1_ON, SC1_STEP = 10.9, 6.9, 15.2, 1.0, 3.0, 1.0
+SC1_TOWER_R, SC1_OFF, SC1_REACH, SC1_ON, SC1_STEP = 10.9, 6.9, 15.2, 3.0, 1.0
 # Heavensflame (Theos's Holy) reaches SC1_FLAME y (the game's data, Action 33542); who walked in is read over the last
-# SC1_FLAME_WINDOW s, and within SC1_FLAME_EDGE of the edge it cannot be told.
-SC1_FLAME, SC1_FLAME_WINDOW, SC1_FLAME_EDGE = 6.0, 1.5, 0.5
+# SC1_FLAME_WINDOW s, and nearer its edge than the logged positions' error (unc) it cannot be told.
+SC1_FLAME, SC1_FLAME_WINDOW = 6.0, 1.5
 
 
 def sc1_where(p, w, at):
@@ -1654,8 +1714,10 @@ def sc1_dropped_on(p, asp, v, at):
     (tw, want), here = sp, (sp[0][1], sp[0][2])
     off, clear, step = math.dist(here, want), math.dist(q[0], want), math.dist(q1[0], here) - math.dist(q[0], here)
     if off <= SC1_OFF or clear <= SC1_ON or step >= SC1_STEP: return None
+    # as sure as its margins against the log's error: the tower off its spot (the game's own position), they clear of it
+    # and not stepping in (their positions, read q[1] and q1[1] s from their samples)
     return (f"{off:.1f} y from its spot; {v} {math.dist(q[0], here):.1f} y from it, {clear:.1f} from the spot, {max(step, 0):.1f} y nearer than a second before",
-            "high" if q[1] <= SC1_STALE and q1[1] <= SC1_STALE else "medium")
+            least_sure([certainty(off - SC1_OFF, unc(0)), certainty(clear - SC1_ON, unc(q[1])), certainty(SC1_STEP - step, unc(q[1], q1[1]))]))
 
 
 def sc1_tower(p, asp, soaker, owner):
@@ -1673,17 +1735,17 @@ def sc1_tower(p, asp, soaker, owner):
     if not q: return None
     at = (tw[1], tw[2])
     d, dp, off = math.dist(q[0], at), math.dist(q[0], want), math.dist(at, want)
-    sure = q[1] <= SC1_STALE
+    us = unc(q[1])   # the soaker's position; the tower's and its spot's are the game's own
     facts = f"it dropped {off:.1f} y from its spot, {soaker} {d:.1f} y from it and {dp:.1f} from the spot"
     if off <= SC1_OFF:
-        return [soaker], "high" if sure else "medium", f"{soaker} could reach it ({facts})" if d <= SC1_REACH else f"{soaker} was not near it ({facts})", off, "sc1.tower.unsoaked"
+        return [soaker], certainty(SC1_OFF - off, unc(0)), f"{soaker} could reach it ({facts})" if d <= SC1_REACH else f"{soaker} was not near it ({facts})", off, "sc1.tower.unsoaked"
     if d <= SC1_ON:   # off its spot right on them: its AoE gave them the wrong Tilt
-        return [owner], "high" if sure else "medium", f"{owner} dropped it on {soaker}, off its spot ({facts})", off, "sc1.tower.dropped_on"
+        return [owner], least_sure([certainty(SC1_ON - d, us), certainty(off - SC1_OFF, unc(0))]), f"{owner} dropped it on {soaker}, off its spot ({facts})", off, "sc1.tower.dropped_on"
     if d <= SC1_REACH:
         return [soaker, owner], "low", f"undecided: {owner} dropped it off its spot, but {soaker} could still reach it ({facts})", off, "sc1.tower.undecided"
     if dp <= SC1_REACH:
-        return [owner], "high" if sure else "medium", f"{owner} dropped it out of {soaker}'s reach ({facts})", off, "sc1.tower.out_of_reach"
-    return [soaker, owner], "medium", f"both away from it ({facts})", off, "sc1.tower.unsoaked"
+        return [owner], least_sure([certainty(d - SC1_REACH, us), certainty(SC1_REACH - dp, us)]), f"{owner} dropped it out of {soaker}'s reach ({facts})", off, "sc1.tower.out_of_reach"
+    return [soaker, owner], least_sure([certainty(d - SC1_REACH, us), certainty(dp - SC1_REACH, us)]), f"both away from it ({facts})", off, "sc1.tower.unsoaked"
 
 
 def superchain1(p, lp):
@@ -1756,18 +1818,19 @@ def superchain1(p, lp):
         for w, nm in wrong:
             clip = w in both and any(w in ws for ws in exp.values())
             if rf := fix(nm, w, False):
-                cul, conf, why = rf
+                cul, conf, why, und = rf
                 lead = f"took both lasers ({nm} too)" if clip else f"took {nm}, not their laser group's"
-                rule = f"{undecided(w, nm)} ({'both lasers' if clip else 'not their laser'}): {why}" if conf == "low" else f"{lead}: {why}"
-                out.append(fault(t, "Superchain I", cul, [w], rule, conf, ability=nm, hit=clip, tag="sc1.laser.undecided" if conf == "low" else "sc1.laser.both" if clip else "sc1.laser.group"))
+                rule = f"{undecided(w, nm)} ({'both lasers' if clip else 'not their laser'}): {why}" if und else f"{lead}: {why}"
+                out.append(fault(t, "Superchain I", cul, [w], rule, conf, ability=nm, hit=clip, tag="sc1.laser.undecided" if und else "sc1.laser.both" if clip else "sc1.laser.group"))
             elif clip:
                 cul, why, conf, chain = clip_blame(p, lt, exp, S, w, nm, both)
+                und = False
                 if chain is None and len(both) < ON_ONE_SPOT and (ma := sc1_misaim(R, nm, w)):   # at their spot: the laser's aim
-                    cul, conf, why = ma[0], ma[1], (f"{undecided(w, nm)} (both lasers): " if ma[1] == "low" else f"took both lasers ({nm} too): ") + ma[2]
-                out.append(fault(t, "Superchain I", cul, [w], why, conf, chain=chain, ability=nm, hit=True, tag="sc1.laser.undecided" if conf == "low" else "sc1.laser.both"))
+                    cul, conf, why, und = ma[0], ma[1], (f"{undecided(w, nm)} (both lasers): " if ma[3] else f"took both lasers ({nm} too): ") + ma[2], ma[3]
+                out.append(fault(t, "Superchain I", cul, [w], why, conf, chain=chain, ability=nm, hit=True, tag="sc1.laser.undecided" if und else "sc1.laser.both"))
             elif ma := sc1_misaim(R, nm, w):
-                out.append(fault(t, "Superchain I", ma[0], [w], (f"{undecided(w, nm)} (not their laser): " if ma[1] == "low" else f"took {nm}, not their laser group's: ") + ma[2],
-                                 ma[1], ability=nm, tag="sc1.laser.undecided" if ma[1] == "low" else "sc1.laser.group"))
+                out.append(fault(t, "Superchain I", ma[0], [w], (f"{undecided(w, nm)} (not their laser): " if ma[3] else f"took {nm}, not their laser group's: ") + ma[2],
+                                 ma[1], ability=nm, tag="sc1.laser.undecided" if ma[3] else "sc1.laser.group"))
             else: out.append(fault(t, "Superchain I", [w], [w], f"in the wrong laser group (took {nm})", "high", tag="sc1.laser.group"))
         # a laser a sharer short: whoever belonged in it and lived, but took the other or neither
         dead = p.dead_by(t - 0.3)
@@ -1779,11 +1842,11 @@ def superchain1(p, lp):
             missing[nm] = (away, len(out))
             if all(fix(nm, w, True) for w in away):   # one fault for the sharers it left out, each with its reason
                 rs = [fix(nm, w, True) for w in away]
-                cul, conf = list(dict.fromkeys(x for r in rs for x in r[0])), min((r[1] for r in rs), key=lambda c: -CONF_ORDER[c])
+                cul, conf, und = list(dict.fromkeys(x for r in rs for x in r[0])), least_sure([r[1] for r in rs]), any(r[3] for r in rs)
                 miss = ", ".join(away)
-                rule = (f"could not be decided whose spot left {miss} out of the {nm}; it was a sharer short: " if conf == "low"
+                rule = (f"could not be decided whose spot left {miss} out of the {nm}; it was a sharer short: " if und
                         else f"{nm} a sharer short ({miss} not in it): ") + "; ".join(r[2] for r in rs)
-                out.append(fault(t, "Superchain I", cul, got, rule, conf, tag="sc1.laser.undecided" if conf == "low" else "sc1.laser.short"))
+                out.append(fault(t, "Superchain I", cul, got, rule, conf, tag="sc1.laser.undecided" if und else "sc1.laser.short"))
                 continue
             other = [w for w in away if w in wrong_group]
             out.append(fault(t, "Superchain I", away, got, f"not in the {nm} group ({', '.join(other) + ' took the other laser' if other else 'missed it'}); it was a sharer short",
@@ -1806,7 +1869,7 @@ def superchain1(p, lp):
     # clear never hit anyone else in 1,478 AoEs). A Strong Soul at or stepping into their tower is where they must be:
     # the Heavensflame player's, who keeps clear of the towers. Anyone else (a bright Soul stepping back, another
     # Heavensflame player; their spots vary by 10-30 y between groups): whoever closed the distance over the last
-    # SC1_FLAME_WINDOW s, both when both did; within SC1_FLAME_EDGE of its edge either way, or together all along, it
+    # SC1_FLAME_WINDOW s, both when both did; within the log's error of its edge either way, or together all along, it
     # cannot be decided (both, low). The user's rule, 2026-10-27 (scratch/sc1audit/flame_moves.py)
     hh = p.hits("Theos's Holy", 145.5, 149)
     by = collections.defaultdict(list)
@@ -1822,17 +1885,23 @@ def superchain1(p, lp):
         if not all(q): return None
         (qo, qo0, qv, qv0) = q
         tw = tower_of.get(v)
-        if tw and (math.dist(qv[0], tw) <= SC1_ON + SC1_FLAME_EDGE or math.dist(qv0[0], tw) - math.dist(qv[0], tw) >= SC1_STEP):
-            return [o], "medium", f"Heavensflame did not keep clear of the towers; hit {v} at their tower", "sc1.flame.spread"
+        # the log's error for each distance read: now, and with o's or v's move of the last SC1_FLAME_WINDOW s undone
+        e, eo, ev = unc(qo[1], qv[1]), unc(qo0[1], qv[1]), unc(qo[1], qv0[1])
+        at_tower, step = tw and math.dist(qv[0], tw) <= SC1_ON + unc(qv[1]), tw and math.dist(qv0[0], tw) - math.dist(qv[0], tw)
+        if tw and (at_tower or step >= SC1_STEP):
+            conf = certainty(SC1_ON + unc(qv[1]) - math.dist(qv[0], tw), unc(qv[1])) if at_tower else certainty(step - SC1_STEP, unc(qv[1], qv0[1]))
+            return [o], conf, f"Heavensflame did not keep clear of the towers; hit {v} at their tower", "sc1.flame.spread"
         d, o_stayed, v_stayed = math.dist(qo[0], qv[0]), math.dist(qo0[0], qv[0]), math.dist(qo[0], qv0[0])
         facts = f"{d:.1f} y apart; {o_stayed:.1f} had {o} stayed, {v_stayed:.1f} had {v}"
-        if d > SC1_FLAME + SC1_FLAME_EDGE:   # the positions do not even put them within reach: they cannot tell who walked in
+        if d > SC1_FLAME + e:   # the positions do not even put them within reach: they cannot tell who walked in
             return [o, v], "low", f"could not be decided who walked into whose Heavensflame ({facts}: the positions miss the hit)", "sc1.flame.undecided"
-        o_in, v_in = o_stayed > SC1_FLAME + SC1_FLAME_EDGE, v_stayed > SC1_FLAME + SC1_FLAME_EDGE
-        o_out, v_out = o_stayed <= SC1_FLAME - SC1_FLAME_EDGE, v_stayed <= SC1_FLAME - SC1_FLAME_EDGE   # still within reach with that move undone
-        if o_in and v_in: return [o, v], "medium", f"Heavensflame did not spread far enough: {o} and {v} both moved within reach ({facts})", "sc1.flame.spread"
-        if o_in and v_out: return [o], "medium", f"Heavensflame did not spread far enough: {o} moved within reach of {v} ({facts})", "sc1.flame.spread"
-        if v_in and o_out: return [v], "medium", f"{v} walked into {o}'s Heavensflame ({facts})", "sc1.flame.walked_in"
+        o_in, v_in = o_stayed > SC1_FLAME + eo, v_stayed > SC1_FLAME + ev
+        o_out, v_out = o_stayed <= SC1_FLAME - eo, v_stayed <= SC1_FLAME - ev   # still within reach with that move undone
+        c_in = lambda stayed, u: certainty(stayed - SC1_FLAME, u)     # how sure the move brought them within reach
+        c_out = lambda stayed, u: certainty(SC1_FLAME - stayed, u)    # how sure they were within reach without it
+        if o_in and v_in: return [o, v], least_sure([c_in(o_stayed, eo), c_in(v_stayed, ev)]), f"Heavensflame did not spread far enough: {o} and {v} both moved within reach ({facts})", "sc1.flame.spread"
+        if o_in and v_out: return [o], least_sure([c_in(o_stayed, eo), c_out(v_stayed, ev)]), f"Heavensflame did not spread far enough: {o} moved within reach of {v} ({facts})", "sc1.flame.spread"
+        if v_in and o_out: return [v], least_sure([c_in(v_stayed, ev), c_out(o_stayed, eo)]), f"{v} walked into {o}'s Heavensflame ({facts})", "sc1.flame.walked_in"
         return [o, v], "low", f"could not be decided who walked into whose Heavensflame ({facts})", "sc1.flame.undecided"
     for ws in by.values():
         owner = next((w for w in ws if w in hf), None)
@@ -1922,8 +1991,9 @@ def superchain1(p, lp):
             elif rp := sc1_tower(p, asp, sk[0], b):   # where it dropped, and where its soaker stood
                 cul, conf, why, off, ttag = rp
                 lsr = f"{b} took the wrong laser, so it dropped on the wrong side; " if b in wrong_group and b in cul else ""
-                rtag = "sc1.tower.undecided" if conf == "low" else "sc1.tower.wrong_side" if lsr and cul != [sk[0]] else ttag
-                rule = (f"did not soak the {asp}bright tower: {why}" if cul == [sk[0]] else f"{asp}bright tower unsoaked, {why}" if conf == "low"
+                und = ttag == "sc1.tower.undecided"
+                rtag = ttag if und else "sc1.tower.wrong_side" if lsr and cul != [sk[0]] else ttag
+                rule = (f"did not soak the {asp}bright tower: {why}" if cul == [sk[0]] else f"{asp}bright tower unsoaked, {why}" if und
                         else f"{asp}bright tower unsoaked: {lsr}{why}")
                 put(fault(t, "Superchain I", cul, hurt(cul), said(rule), conf, **boom, tag="sc1.tower.substitute" if sub else rtag))
             elif b in wrong_group:   # the laser side decides the tower side, so this tower landed away from its soaker
@@ -1941,7 +2011,9 @@ def superchain1(p, lp):
                    else "the bright Soul's AoE gave it, dropped on them" if src and src["tag"] == "sc1.glow.dropped_on"
                    else "from the laser they took" if src else "cause unclear")
             rule = f"the {asp} tower failed: {w} soaked it with the wrong Tilt ({why})"
-            if src: out.append(fault(t, "Superchain I", src["culprits"], blown, rule, src["confidence"], chain=src["chain"], after=src, **boom, tag="sc1.tower.wrong_tilt"))
+            if src:   # the mistake that gave them the Tilt, with its culprits' shares (one of two undecided stays one of two)
+                f = fault(t, "Superchain I", src["culprits"], blown, rule, src["confidence"], chain=src["chain"], after=src, **boom, tag="sc1.tower.wrong_tilt")
+                out.append(dict(f, shares=dict(src["shares"]), chain_share=src["chain_share"]))
             else: out.append(fault(t, "Superchain I", [w], blown | {w}, rule, "medium", **boom, tag="sc1.tower.wrong_tilt_unclear"))
     return out
 
@@ -1977,6 +2049,9 @@ def dialogos(p):
         if e["pos"] and e["who"] not in r: r[e["who"]] = math.hypot(*e["pos"])
     misplaced = lambda w: w in r and (r[w] < CENTRE_R[nm]) != (is_tank(w) == peri)   # tanks at the centre for Peridialogos
     pick = lambda ws, closest: (min if closest else max)((w for w in ws if w in r), key=r.get, default=None)
+    # how sure a verdict resting on where they stood is: their distance from the band's split against the log's error at
+    # the hit (one not out of place, or in the hit, is the log's own fact)
+    placed = lambda w: certainty(abs(r[w] - CENTRE_R[nm]), unc(0)) if misplaced(w) else "high"
     target = pick(in_tb, peri)                     # the player the tanks' hit was aimed at
     blamed = set()
     # the tanks' hit: a non-tank in it took it (from the tanks' place, or in line with them), unless it was aimed at a
@@ -1986,12 +2061,12 @@ def dialogos(p):
         cul = sorted(w for w in tanks if w not in in_tb or misplaced(w))
         if cul:
             out.append(fault(t, "Dialogos", cul, in_tb, f"not {where(peri)} for {nm} (the tanks' hit goes to the {'closest' if peri else 'farthest'} "
-                             f"player); it went to {target} and hit {', '.join(extra)}", "high", ability=nm, tag="dlg.tank_share"))
+                             f"player); it went to {target} and hit {', '.join(extra)}", least_sure([placed(w) for w in cul]), ability=nm, tag="dlg.tank_share"))
             blamed |= set(cul)
     else:
         for x in extra:
             how = f"stood {where(peri)} with the tanks" if misplaced(x) else "stood in line with the tanks"
-            out.append(fault(t, "Dialogos", [x], [x], f"{how} for {nm} (a hit the two tanks share)", "high", ability=nm, tag="dlg.tank_share"))
+            out.append(fault(t, "Dialogos", [x], [x], f"{how} for {nm} (a hit the two tanks share)", placed(x), ability=nm, tag="dlg.tank_share"))
             blamed.add(x)
         if out_t and target and is_tank(target):
             out.append(fault(t, "Dialogos", out_t, in_tb, f"left {nm} to {', '.join(sorted(in_tb & tanks))} (the two tanks share it)", "high", ability=nm, tag="dlg.tank_share"))
