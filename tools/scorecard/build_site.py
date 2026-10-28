@@ -13,10 +13,12 @@ day get the next free G1, G2, ... in the order given. The analysis itself is in 
 site/data.json holds player names and who caused which mistake, so it is git-ignored.
 
 --publish writes a copy of the site for public hosting into DIR (default: stats/ at the repository root, which
-the GitHub Pages workflow deploys like the rest of the repo): the page files and data.enc.json, the data encrypted
-with a passphrase (encrypt_data.js, needs Node). The plaintext data.json is never copied there. The passphrase is
-read from SCORECARD_PASSPHRASE, or asked for twice. To stop publishing, delete DIR; to move host, upload DIR (or
-serve site/ with its plaintext data behind the new host's own login).
+the GitHub Pages workflow deploys like the rest of the repo): the page files, public.json (what the rotation and
+gear pages need, PUBLIC_KEYS, open to everyone) and data.enc.json (the rest: progress, mistakes, our players'
+figures), encrypted with a passphrase (encrypt_data.js, needs Node). The plaintext data.json is never copied there,
+and nothing is published if a player's name turns up in public.json. The passphrase is read from
+SCORECARD_PASSPHRASE, or asked for twice. To stop publishing, delete DIR; to move host, upload DIR (or serve site/
+with its plaintext data behind the new host's own login).
 """
 import argparse, datetime, getpass, hashlib, json, os, shutil, subprocess, sys
 from pathlib import Path
@@ -30,6 +32,10 @@ HERE = Path(__file__).resolve().parent
 DATA = HERE / "site" / "data.json"
 PUBLISH_DIR = HERE.parent.parent / "stats"
 PAGE_FILES = ["index.html", "style.css", "app.js"]
+# what goes into public.json, unencrypted: a whitelist, so a new key stays behind the passphrase until it is added
+# here. The rotation and gear pages read only these (benchmark: only its clears, from public FFLogs reports); our
+# players' figures on those pages (`ours`) stay locked
+PUBLIC_KEYS = {"generated": None, "rotations": None, "gear": None, "benchmark": ["pools"]}
 
 
 def plain(v):
@@ -93,8 +99,55 @@ def benchmark_summary(bench, codes=()):
                 mech_end={m: float(hi) for lo, hi, m in C.MECH})   # and when it ends, for links to the whole mechanic on FFLogs
 
 
+def ours_by_job(reports, rotations):
+    """Our players' figures on the rotation pages, per job and without names: every clean 0:00-2:00 pull's rDPS and
+    the buffs it gave others, how many players those come from, and each player's rotation ceiling with their clean
+    pulls on it (the first one seen, as the band of the older ceiling uses it)."""
+    out, names, own = {}, {}, {}
+    for r in reports.values():
+        for p in r["players"]:
+            job, pulls = p["job"], p.get("clean_pulls") or []
+            o = out.setdefault(job, {"rdps": [], "given": [], "players": 0, "own": []})
+            for c in pulls:
+                o["rdps"].append(c["rdps"]); o["given"].append(c.get("given") or 0)
+                names.setdefault(job, set()).add(p["name"])
+            if p.get("ceiling") and p.get("ceiling_key") in (rotations.get(job) or {}).get("rotations", {}):
+                x = own.setdefault((job, p["name"]), {"ceiling": p["ceiling"], "key": p["ceiling_key"], "n": 0})
+                x["n"] += len(pulls)
+    for (job, _), x in own.items(): out[job]["own"].append(x)
+    for job, o in out.items(): o["players"] = len(names.get(job, ()))
+    return out
+
+
+def split_public(site):
+    """(public, private): the PUBLIC_KEYS part of the site data, and the rest. The private part keeps the whole
+    benchmark, since the page merges it over the public one once it is unlocked."""
+    public = {k: (site[k] if sub is None else {s: site[k][s] for s in sub if s in site[k]}) for k, sub in PUBLIC_KEYS.items() if k in site}
+    private = {k: v for k, v in site.items() if k not in PUBLIC_KEYS or PUBLIC_KEYS[k] is not None}
+    return public, private
+
+
+def leaked_names(site, text):
+    """Player names (every report's players and actors) that appear in text as a whole name ("Chi Ji" is not in
+    "Ten Chi Jin")."""
+    names = {p["name"] for r in site["reports"].values() for p in r["players"]} | {n for r in site["reports"].values() for n in r.get("actors", {})}
+    part = lambda c: c.isalnum() or c in "_'"   # a character that would make the match part of a longer word
+    def whole(n):
+        i = text.find(n)
+        while i >= 0:
+            if not (i and part(text[i - 1])) and not (i + len(n) < len(text) and part(text[i + len(n)])): return True
+            i = text.find(n, i + 1)
+        return False
+    return sorted(n for n in names if n and whole(n))
+
+
 def publish(out):
-    """Copy the page files and the encrypted data to out; never the plaintext."""
+    """Copy the page files, the public data and the encrypted rest to out; never the private part in plaintext."""
+    site = json.loads(DATA.read_text(encoding="utf-8"))
+    public, private = split_public(site)
+    public_text = json.dumps(public, ensure_ascii=False, separators=(",", ":"))
+    if leaked := leaked_names(site, public_text):
+        raise SystemExit(f"public.json would name {len(leaked)} player(s) ({', '.join(leaked[:5])}); nothing published")
     pw = os.environ.get("SCORECARD_PASSPHRASE")
     if not pw:
         pw = getpass.getpass("Passphrase for the published data: ")
@@ -108,9 +161,11 @@ def publish(out):
         page = page.replace(f'"{f}"', f'"{f}?v={v}"')
     (out / "index.html").write_text(page, encoding="utf-8")
     (out / "data.json").unlink(missing_ok=True)
-    env = dict(os.environ, SCORECARD_PASSPHRASE=pw)
-    subprocess.run(["node", str(HERE / "encrypt_data.js"), str(DATA), str(out / "data.enc.json")], env=env, check=True)
-    print(f"published to {out}: {', '.join(PAGE_FILES)}, data.enc.json")
+    env = dict(os.environ, SCORECARD_PASSPHRASE=pw)   # the private part goes to the encryption on stdin, never to a file
+    subprocess.run(["node", str(HERE / "encrypt_data.js"), "-", str(out / "data.enc.json")], env=env, check=True,
+                   input=json.dumps(private, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    (out / "public.json").write_text(public_text, encoding="utf-8")
+    print(f"published to {out}: {', '.join(PAGE_FILES)}, public.json ({len(public_text.encode()) // 1024} KB), data.enc.json")
 
 
 def main():
@@ -150,8 +205,11 @@ def main():
         site["reports"][code] = report_entry(code, group, data, bench)
     site["benchmark"] = benchmark_summary(bench, list(site["reports"]))
     site["rotations"] = S.rotations()   # the optimizer's rotations, per job and GCD (tools/rotation/dps.py --site)
+    for v in site["rotations"].values():   # how many of our players are at each GCD: not shown, and the rotations are public
+        for x in v["rotations"].values(): x.pop("players", None)
     site["gear"] = S.gear()             # the best-in-slot sets (tools/gear/sheets.py)
     site["strategies"] = C.strategy_dates()   # when each mechanic's strategy began to be blamed, for the charts
+    site["ours"] = ours_by_job(site["reports"], site["rotations"])   # our players' figures on the rotation pages, without names
     site["generated"] = datetime.datetime.now().isoformat(timespec="minutes")
     DATA.parent.mkdir(exist_ok=True)
     DATA.write_text(json.dumps(site, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")

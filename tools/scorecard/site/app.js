@@ -68,7 +68,7 @@ const shareCell = x => x != null && x < 0.999 ? el("span", { class: "muted", tit
 const confText = counts => CONF_LEVELS.filter(c => (counts || {})[c]).map(c => `${counts[c]} ${c}`).join(", ");
 
 // ---------- data shaping ----------
-function reports() { return Object.values(DATA.reports); }
+function reports() { return Object.values(DATA.reports || {}); }
 function days() {
   const by = {};
   for (const r of reports()) (by[r.day] = by[r.day] || []).push(r);
@@ -1574,20 +1574,23 @@ function rotationsPage() {
     el("p", { class: "lede" }, "The optimizer's best rotation per job, at our players' GCDs and a few more, grouped by role, highest rDPS to Palladion first."));
   if (!jobs.length) return app.append(el("p", { class: "empty" }, "No optimized rotations yet: run tools/rotation/dps.py --job <job> --site, then build_site.py."));
   const w = `0:00–${mmss(bestRot(jobs[0]).window)}`;
-  const head = ["Job", "GCDs", "Fastest", "Slowest", "Best-in-slot GCD", `Best nDPS ${w}`, `Best rDPS ${w}`, "Best rDPS 0:00–2:00", "Our players"], rows = [];
+  const head = ["Job", "GCDs", "Fastest", "Slowest", "Best-in-slot GCD", `Best nDPS ${w}`, `Best rDPS ${w}`, "Best rDPS 0:00–2:00"], rows = [];
   for (const role of ROLES) {   // the role's jobs, highest expected rDPS first
     const js = jobs.filter(j => (all[j].role || "Melee") === role);
     if (!js.length) continue;
     rows.push(el("tr", { class: "role" }, el("td", { colspan: head.length }, ROT_ROLES[role] || role)));
     for (const j of js) { const xs = Object.values(rotsOf(j)), g = xs.map(x => x.gcd);
       rows.push(linkRow([[jobIcon(j), jobName(j)], String(xs.length), `${Math.min(...g).toFixed(2)} s`, `${Math.max(...g).toFixed(2)} s`,
-        gearOf(j) ? `${gearOf(j).sets[0].stats.base_gcd.toFixed(2)} s` : "–", num(best(j)), num(rdps[j]), num(ceilingRdps(j).value), all[j].converted_from === "clears" ? "none" : String(xs[0].conv_players)], rotHref(j))); }
+        gearOf(j) ? `${gearOf(j).sets[0].stats.base_gcd.toFixed(2)} s` : "–", num(best(j)), num(rdps[j]), num(ceilingRdps(j).value)], rotHref(j))); }
   }
-  app.append(jobsCard(jobs), el("div", { class: "table-wrap" }, el("table", {},
+  app.append(...(LOCKED ? [] : [jobsCard(jobs)]), el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: i ? "num" : null }, h)))), el("tbody", {}, rows))));
 }
 const ROT_ROLES = { Melee: "Melee DPS", Ranged: "Physical Ranged DPS", Caster: "Magical Ranged DPS" };
 const bestRot = job => Object.values(rotsOf(job)).reduce((a, x) => x.dps > a.dps ? x : a);   // by expected nDPS
+// our players' figures on the job (build_site.py ours_by_job: clean pulls' rDPS and buffs given, players, their
+// ceilings), without names; empty while the published data is locked, so the pages use the clears' instead
+const oursOf = job => (DATA.ours || {})[job] || { rdps: [], given: [], players: 0, own: [] };
 
 // the job's best rotation as rDPS: its expected nDPS (to Palladion) plus what the job's raid buffs give the others over
 // that stretch. That credit is our players' median over their clean 0:00-2:00 pulls (the clears' mean for a job none
@@ -1597,8 +1600,7 @@ const bestRot = job => Object.values(rotsOf(job)).reduce((a, x) => x.dps > a.dps
 // rotation's dps_full plus the credit scaled by the clears' whole-kill rate (given_ratio_full: Palladion's downtime
 // gives nothing)
 function expectedRdps(job, x = bestRot(job), full = false) {   // x: one of the job's rotations (the credit is the same at every GCD)
-  const cl = DATA.benchmark.pools.clears, c = (cl.jobs || {})[job] || {}, given = [];
-  for (const r of reports()) for (const p of r.players) if (p.job === job) for (const q of p.clean_pulls || []) given.push(q.given || 0);
+  const cl = DATA.benchmark.pools.clears, c = (cl.jobs || {})[job] || {}, given = oursOf(job).given;
   const from = given.length ? "ours" : c.given != null ? "clears" : null, g120 = given.length ? median(given) : c.given || 0;
   if (full) {
     const ratio = c.given_ratio_full != null ? c.given_ratio_full : cl.given_ratio_full_all || 1, credit = g120 ? g120 * ratio : 0;
@@ -1629,20 +1631,13 @@ function rdpsNote(job, w, wf) {
 const BAND_PULLS = 5;
 function ceilingRdps(job) {
   const all = rotsOf(job), rs = Object.values(all), x = rs.reduce((a, r) => r.ceiling_2min > a.ceiling_2min ? r : a);
-  const c = (DATA.benchmark.pools.clears.jobs || {})[job] || {}, given = [], own = new Map();
-  for (const r of reports()) for (const p of r.players) if (p.job === job) {
-    for (const q of p.clean_pulls || []) given.push(q.given || 0);
-    if (p.ceiling && all[p.ceiling_key]) {
-      const o = own.get(p.name) || { ceiling: p.ceiling, key: p.ceiling_key, n: 0 };
-      o.n += (p.clean_pulls || []).length; own.set(p.name, o);
-    }
-  }
+  const c = (DATA.benchmark.pools.clears.jobs || {})[job] || {}, { given, own } = oursOf(job);
   const credit = given.length ? median(given) : c.given || 0, from = given.length ? "ours" : "clears";
   const b = (DATA.rotations[job] || {}).bis;
   if (b) return { value: b.ceiling + credit, ndps: b.ceiling, credit, from, gcd: b.gcd, crit: null, bis: b,
     lo: (b.lo != null ? b.lo : b.ceiling - b.sd) + credit, hi: (b.hi != null ? b.hi : b.ceiling + b.sd) + credit,
     bandFrom: b.procs ? "crit, direct-hit and proc luck, two pulls in three" : "crit and direct-hit luck, one standard deviation" };
-  const steady =[...own.values()].filter(o => o.n >= BAND_PULLS), use = steady.length ? steady : [...own.values()];
+  const steady = own.filter(o => o.n >= BAND_PULLS), use = steady.length ? steady : own;
   const ends = use.length ? use.map(o => x.ceiling_2min * o.ceiling / all[o.key].ceiling_2min)
     : [x.ceiling_2min * x.dps_lo / x.dps, x.ceiling_2min * x.dps_hi / x.dps];
   return { value: x.ceiling_2min + credit, ndps: x.ceiling_2min, credit, from, gcd: x.gcd, crit: x.crit,
@@ -1653,24 +1648,17 @@ function ceilingRdps(job) {
 // per job, all rDPS over 0:00-2:00 with tinctures taken out: our players' clean pulls (Echo pulls are not among them),
 // the clears' players (each one's mean over their kills) and the 0:00-2:00 ceiling with its band (ceilingRdps)
 function jobSpread(jobs) {
-  const ours = {}, cl = DATA.benchmark.pools.clears.jobs || {};
-  for (const r of reports()) {
-    for (const p of r.players) {
-      if (!jobs.includes(p.job)) continue;
-      const o = ours[p.job] = ours[p.job] || { pulls: [], names: new Set() };
-      for (const c of p.clean_pulls || []) { o.pulls.push(c.rdps); o.names.add(p.name); }
-    }
-  }
+  const cl = DATA.benchmark.pools.clears.jobs || {};
   const q = (s, f) => { const i = (s.length - 1) * f, lo = Math.floor(i); return s[lo] + (s[Math.min(lo + 1, s.length - 1)] - s[lo]) * (i - lo); };
   return jobs.map(job => {
-    const o = ours[job] || { pulls: [], names: new Set() }, s = [...o.pulls].sort((a, c) => a - c);
+    const o = oursOf(job), s = [...o.rdps].sort((a, c) => a - c);
     let box = null;
     if (s.length >= 5) {   // Tukey's box: whiskers to the last pull within 1.5 IQR, the rest are outliers
       const q1 = q(s, 0.25), q3 = q(s, 0.75), k = 1.5 * (q3 - q1);
       box = { q1, med: q(s, 0.5), q3, lo: s.find(v => v >= q1 - k), hi: [...s].reverse().find(v => v <= q3 + k) };
       box.out = s.filter(v => v < box.lo || v > box.hi);
     }
-    return { job, role: (DATA.rotations[job] || {}).role || "Melee", n: s.length, players: o.names.size, s, box,
+    return { job, role: (DATA.rotations[job] || {}).role || "Melee", n: s.length, players: o.players, s, box,
       top: ceilingRdps(job),
       clears: cl[job] ? (cl[job].rdps_each || []) : [], clearsMean: cl[job] ? cl[job].rdps : null };
   });
@@ -1769,14 +1757,14 @@ function rotationJobPage(code) {
   const head = [["GCD"], ...(crit ? [["Crit", "the crit rate the row is searched at"]] : []),
     [`nDPS ${wf}`, `${whole}: your own damage, at the median of the players it's converted at`], [`rDPS ${wf}`, `${whole}: nDPS plus the credit for your raid buffs`],
     [`nDPS ${w}`, `${cut}: your own damage`], [`rDPS ${w}`, `${cut}: nDPS plus the credit for your raid buffs`],
-    [`vs best nDPS ${wf}`, `${whole}, against the row with the most nDPS ${wf}`], ["Our players at it"]];
+    [`vs best nDPS ${wf}`, `${whole}, against the row with the most nDPS ${wf}`]];
   app.append(el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, head.map(([h, title], i) => el("th", { class: i ? "num" : null, title: title || null }, h)))),
     el("tbody", {}, keys.map(k => { const x = rs[k];
       const rf = expectedRdps(job, x, true).value;
       return linkRow([[`${x.gcd.toFixed(2)} s`, bisAt(job, x) ? el("span", { class: "tag", title: "the best-in-slot set's GCD" }, "BiS") : null], ...(crit ? [x.crit != null ? pct(x.crit) : "–"] : []),
         x.dps_full != null ? num(x.dps_full) : "–", rf != null ? num(rf) : "–", num(x.dps), num(expectedRdps(job, x).value),
-        full(x) === best ? "best" : signed(full(x) / best - 1, 1), String(x.players)], rotHref(job, k)); })))),
+        full(x) === best ? "best" : signed(full(x) / best - 1, 1)], rotHref(job, k)); })))),
     rdpsNote(job, w, wf));
 }
 
@@ -1795,7 +1783,7 @@ function rotationPage(code, key) {
   const waste = Object.entries(x.waste || {}), f = fightOf(job), icons = ((DATA.rotations || {})[job] || {}).icons || {};
   const plan = f ? [...new Map(f.runs.filter(w => w[6].startsWith("plan")).map(w => [w[4], w[6].replace("plan, ", "")])).entries()] : [];
   app.append(heading("h1", `${jobName(job)} at ${rotLabel(x)}`, ROT_ABOUT),
-    el("p", { class: "lede" }, `0:00–${mmss(x.window)}, no raid buffs${x.crit != null ? `, ${pct(x.crit)} crit` : ""}, our strategy's runs${plan.length ? ` (${plan.map(([m, v]) => `${shortMech(m)} ${v}`).join(", ")})` : ""}. ${x.players ? `${x.players} of our players ${x.players > 1 ? "play" : "plays"} at this GCD.` : (DATA.rotations[job] || {}).converted_from === "clears" ? `At a GCD of the clears' ${code}s.` : "An extra GCD: none of our players is at it."}`));
+    el("p", { class: "lede" }, `0:00–${mmss(x.window)}, no raid buffs${x.crit != null ? `, ${pct(x.crit)} crit` : ""}, our strategy's runs${plan.length ? ` (${plan.map(([m, v]) => `${shortMech(m)} ${v}`).join(", ")})` : ""}.`));
   if (bisAt(job, x)) app.append(el("p", { class: "note" }, "The best-in-slot set's GCD: ", el("a", { href: gearHref(job) }, "its gear →")));
   if (f) app.append(fightCard(f, rot));
   app.append(tiles([
@@ -2022,12 +2010,13 @@ function notFound() {
 
 // ---------- routing, theme, boot ----------
 function route(keepScroll = false) {   // keepScroll: redraw the same page in place (resize, theme), not a navigation
-  if (LOCKED) return;   // the passphrase screen stays until it is unlocked
   hideTip();
   const y = scrollY;
   const app = document.getElementById("app"); app.replaceChildren();
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
-  if (!DATA || (!reports().length && parts[0] !== "rotations" && parts[0] !== "gear")) { app.append(el("h1", {}, "No data yet"), el("p", { class: "lede" }, "Run build_site.py with some report links, then reload.")); return; }
+  const open = (parts[0] === "rotations" || parts[0] === "gear") && DATA && DATA.rotations;   // public.json is enough for these
+  if (LOCKED && !open) { lockedPage(); return; }
+  if (!DATA || (!reports().length && !open)) { app.append(el("h1", {}, "No data yet"), el("p", { class: "lede" }, "Run build_site.py with some report links, then reload.")); return; }
   if (parts[0] === "rotations" && parts.length === 1) rotationsPage();
   else if (parts[0] === "rotations" && parts.length === 2) rotationJobPage(parts[1]);
   else if (parts[0] === "rotations" && parts.length === 3) rotationPage(parts[1], parts[2]);
@@ -2066,11 +2055,19 @@ addEventListener("resize", () => {
   clearTimeout(resizeTimer); resizeTimer = setTimeout(() => route(true), 200);
 });
 addEventListener("hashchange", () => route());
-// ---------- data: plaintext data.json (private hosting) or data.enc.json behind a passphrase (public hosting) ----------
-let LOCKED = false;
+// ---------- data: plaintext data.json (private hosting), or public hosting: public.json (the rotation and gear
+// pages, open to everyone) and data.enc.json (everything else, behind a passphrase, fetched once a page needs it) ----------
+let LOCKED = false;   // public hosting, until data.enc.json is opened: only the rotation and gear pages draw
 const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const b64e = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
 const sessionKeyName = env => `p12s-key:${env.salt}`;
+let envelopeP = null;
+function envelope() {   // data.enc.json, fetched once
+  return envelopeP = envelopeP || fetch("data.enc.json", { cache: "no-store" }).then(r => {
+    if (!r.ok) { envelopeP = null; throw new Error("The locked data is missing from this site."); }
+    return r.json();
+  });
+}
 async function deriveKey(pass, env) {   // must match encrypt_data.js
   const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey({ name: "PBKDF2", salt: b64d(env.salt), iterations: env.iterations, hash: "SHA-256" }, base,
@@ -2082,34 +2079,47 @@ async function openEnvelope(env, key) {
   if (env.compressed === "gzip") stream = stream.pipeThrough(new DecompressionStream("gzip"));
   return JSON.parse(await new Response(stream).text());
 }
-async function unlock(env) {
+function canDecrypt(env) {
   if (!window.crypto || !crypto.subtle) throw new Error("This page has to be opened over https (or on localhost) to decrypt its data.");
   if (env.compressed === "gzip" && !window.DecompressionStream) throw new Error("This browser is too old to open the data; please update it.");
-  try {   // a key remembered earlier in this browser session
+}
+function opened(data) {   // the private part goes over the public one (its benchmark is the whole one)
+  Object.assign(DATA, data); LOCKED = false;
+  document.getElementById("lock").hidden = false;
+}
+async function openRemembered() {   // with a key remembered earlier in this browser session, without asking
+  try { if (!Object.keys(sessionStorage).some(k => k.startsWith("p12s-key:"))) return; } catch (e) { return; }
+  let env = null;
+  try {
+    env = await envelope(); canDecrypt(env);
     const raw = sessionStorage.getItem(sessionKeyName(env));
-    if (raw) return await openEnvelope(env, await crypto.subtle.importKey("raw", b64d(raw), "AES-GCM", true, ["decrypt"]));
-  } catch (e) { try { sessionStorage.removeItem(sessionKeyName(env)); } catch (e2) {} }
+    if (raw) opened(await openEnvelope(env, await crypto.subtle.importKey("raw", b64d(raw), "AES-GCM", true, ["decrypt"])));
+  } catch (e) { try { if (env) sessionStorage.removeItem(sessionKeyName(env)); } catch (e2) {} }
+}
+function lockedPage() {
   crumbs([["Locked", null]]);
-  return new Promise(resolve => {
-    const input = el("input", { type: "password", id: "pass", autocomplete: "current-password", required: true });
-    const remember = el("input", { type: "checkbox", id: "remember", checked: true });
-    const msg = el("p", { class: "note", role: "status" });
-    const btn = el("button", { type: "submit", class: "primary" }, "Unlock");
-    const form = el("form", { class: "unlock" },
-      el("label", { for: "pass" }, "Passphrase"), input,
-      el("label", { class: "check" }, remember, " Remember for this browser session"), btn, msg);
-    form.addEventListener("submit", async e => {
-      e.preventDefault(); btn.disabled = true; msg.textContent = "Unlocking…";
-      try {
-        const key = await deriveKey(input.value, env), data = await openEnvelope(env, key);
-        if (remember.checked) try { sessionStorage.setItem(sessionKeyName(env), b64e(await crypto.subtle.exportKey("raw", key))); } catch (e2) {}
-        resolve(data);
-      } catch (err) { msg.textContent = "That passphrase does not open the data."; btn.disabled = false; input.select(); }
-    });
-    document.getElementById("app").replaceChildren(el("h1", {}, "Locked"),
-      el("p", { class: "lede" }, "The scorecards are encrypted. Enter the raid's passphrase to open them; it never leaves this browser."), form);
-    input.focus();
+  envelope().catch(() => {});   // start the download while the passphrase is typed
+  const input = el("input", { type: "password", id: "pass", autocomplete: "current-password", required: true });
+  const remember = el("input", { type: "checkbox", id: "remember", checked: true });
+  const msg = el("p", { class: "note", role: "status" });
+  const btn = el("button", { type: "submit", class: "primary" }, "Unlock");
+  const form = el("form", { class: "unlock" },
+    el("label", { for: "pass" }, "Passphrase"), input,
+    el("label", { class: "check" }, remember, " Remember for this browser session"), btn, msg);
+  form.addEventListener("submit", async e => {
+    e.preventDefault(); btn.disabled = true; msg.textContent = "Unlocking…";
+    let env;
+    try { env = await envelope(); canDecrypt(env); } catch (err) { msg.textContent = err.message || String(err); btn.disabled = false; return; }
+    try {
+      const key = await deriveKey(input.value, env), data = await openEnvelope(env, key);
+      if (remember.checked) try { sessionStorage.setItem(sessionKeyName(env), b64e(await crypto.subtle.exportKey("raw", key))); } catch (e2) {}
+      opened(data); route();
+    } catch (err) { msg.textContent = "That passphrase does not open the data."; btn.disabled = false; input.select(); }
   });
+  const pub = DATA && DATA.rotations ? [" The ", el("a", { href: "#/rotations" }, "rotations"), " and ", el("a", { href: "#/gear" }, "best-in-slot gear"), " are open to everyone."] : [];
+  document.getElementById("app").append(el("h1", {}, "Locked"),
+    el("p", { class: "lede" }, "Raid progress is encrypted. Enter the passphrase to open it.", ...pub), form);
+  input.focus();
 }
 function lockAgain() {
   try { for (const k of Object.keys(sessionStorage)) if (k.startsWith("p12s-key:")) sessionStorage.removeItem(k); } catch (e) {}
@@ -2122,14 +2132,14 @@ async function boot() {
     let r = await fetch("data.json", { cache: "no-store" });
     if (r.ok) DATA = await r.json();
     else {
-      r = await fetch("data.enc.json", { cache: "no-store" });
-      if (!r.ok) throw new Error("data.json is missing. Run tools/scorecard/build_site.py with report links, then serve this folder with python -m http.server.");
-      LOCKED = true; DATA = await unlock(await r.json()); LOCKED = false;
-      document.getElementById("lock").hidden = false;
+      r = await fetch("public.json", { cache: "no-store" });
+      DATA = r.ok ? await r.json() : {};
+      if (!r.ok) await envelope().catch(() => { throw new Error("data.json is missing. Run tools/scorecard/build_site.py with report links, then serve this folder with python -m http.server."); });
+      LOCKED = true;
+      await openRemembered();
     }
     route();
   } catch (e) {
-    LOCKED = false;
     document.getElementById("app").replaceChildren(el("h1", {}, "Cannot open the data"), el("p", { class: "lede" }, e.message || String(e)));
   }
 }
