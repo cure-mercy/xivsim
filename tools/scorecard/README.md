@@ -143,6 +143,13 @@ all progress and only that player's full reports. It uses a throwaway account an
 
 `#/admin` (the Admin link in the header, shown to admins) has:
 
+- **Find a raid day's reports on FFLogs.** Pick the day, and optionally characters to look for (`First Last`, or
+  `First Last@World`, comma-separated). The worker lists that day's public P12S Savage reports, each with its pulls,
+  uploader and which of our players (anyone in a report on the site) were in its P12S pulls; characters looked for are
+  in bold, and those in none of them are named. A report already on the site or the list says so. One that repeats
+  another's pulls (a second upload of the same night: half its pulls or more start within 5 seconds of the other's)
+  says "same pulls as G3". The rest have a group field and an Add button, with Live ticked when the log's last pull is
+  under 30 minutes old. Reports without our players are behind a button.
 - **Reports.** Add a report by its FFLogs link or code, with its group name (G1, G2, …; empty takes the day's next
   free one). For each report there are buttons to rename its group, rebuild it from a fresh download, watch it live,
   or remove it. Each row shows the state the worker reports: queued, building, ok, or error with FFLogs' message.
@@ -154,6 +161,14 @@ The analysis runs in Python, not in the browser or the database, so the page onl
 reports with the same functions as `build_site.py`, removes what was removed, writes `data.json` and uploads. A
 build from the command line also keeps the list in step: reports it adds appear there, and reports it removes leave.
 `site_lock()` (`site/.build.lock`) keeps the worker and a command-line build from writing `data.json` at the same time.
+
+**Finding reports.** The search (`report_searches`: the page inserts the day and names, the worker answers within a
+few seconds, and keeps a week of searches) uses FFLogs' report listing for a time window: the reports FFLogs files
+under Anabaseios, P12S's zone, plus every report the uploaders of our reports uploaded that day (a night that began
+with other content can be filed under another zone; uploaders are cached in `.cache/uploaders.json`). It costs about
+60 of the 18,000 points an hour. FFLogs never lists unlisted or private reports, so those (3 of our first 25) still
+need their link. A character's own list on FFLogs (`recentReports`) would be the direct way, but it lags weeks behind:
+for our players it had none of our P12S reports.
 
 **Live reports.** FFLogs' API has no webhooks or subscriptions (its GraphQL schema has no subscription type), so a
 live log is polled. Every 3 minutes the worker asks for the report's uploaded segments (`fflogs.report_state`, a

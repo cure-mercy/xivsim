@@ -160,7 +160,7 @@ def probe(cfg=None):
     """Row-level security from outside: the public key alone, a logged-in user who isn't linked, and one linked to a
     single player must see exactly what ACCESS_CONCEPT.md's access rules allow. Uses throwaway accounts, deleted after."""
     cfg = cfg or config()
-    tables = ["reports", "progress", "report_full", "site_meta", "players", "report_players", "user_players", "profiles", "report_sources"]
+    tables = ["reports", "progress", "report_full", "site_meta", "players", "report_players", "user_players", "profiles", "report_sources", "report_searches"]
     def rows(t, token=None):   # refused outright counts as nothing seen
         try: return call("GET", f"/rest/v1/{t}?select=*", key=cfg["anon"], token=token, cfg=cfg)
         except RuntimeError as e:
@@ -178,6 +178,9 @@ def probe(cfg=None):
     try:
         tok = call("POST", "/auth/v1/token?grant_type=password", dict(email=email, password=pw), key=cfg["anon"], cfg=cfg)["access_token"]
         for t in tables: expect("unlinked", t, len(rows(t, tok)), 1 if t == "profiles" else 0)
+        try: call("POST", "/rest/v1/report_searches", dict(day="2026-01-01"), key=cfg["anon"], token=tok, cfg=cfg); asked = "accepted"
+        except RuntimeError as e: asked = "refused" if " 401 " in str(e) or " 403 " in str(e) else str(e)
+        expect("unlinked", "search FFLogs", asked, "refused")   # only admins make the worker ask FFLogs
         rp = call("GET", "/rest/v1/report_players?select=*&limit=1", cfg=cfg)
         if not rp: print("  (no reports uploaded: the linked checks are skipped)")
         else:
@@ -198,6 +201,7 @@ def probe(cfg=None):
                 expect("linked", "report_full", sorted(r["code"] for r in call("GET", "/rest/v1/report_full?select=code", key=cfg["anon"], token=tok, cfg=cfg)), sorted(mine))
                 expect("linked", "players", len(rows("players", tok)), 1)
                 expect("linked", "report_sources", len(rows("report_sources", tok)), 0)
+                expect("linked", "report_searches", len(rows("report_searches", tok)), 0)
             finally:
                 call("DELETE", f"/rest/v1/user_players?player_id=eq.{pid}", cfg=cfg)
                 if prev: call("POST", "/rest/v1/user_players", prev, cfg=cfg)

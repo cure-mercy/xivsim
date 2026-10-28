@@ -2171,9 +2171,10 @@ async function adminPage() {
   // the redraw every 15 s waits while a field is being typed in (or was changed and not saved)
   const busy = box => box.contains(document.activeElement) && document.activeElement.tagName === "INPUT"
     || [...box.querySelectorAll("input[type=text], input[type=number]")].some(i => i.value !== i.defaultValue) || box.querySelector("input[type=checkbox]:checked");
-  app.append(el("h2", {}, "Reports"), el("p", { class: "lede" }, "The reports on the site. The worker builds what this list asks for within a minute; a live report is checked for new pulls every 3 minutes until its watch ends (12 hours at most)."), reportsBox,
-    el("h2", {}, "People"), people);
   const act = fn => async () => { try { await fn(); } catch (e) { alert(e.message); return; } reportsBox.replaceChildren(); draw(); };
+  app.append(el("h2", {}, "Reports"), el("p", { class: "lede" }, "The reports on the site. The worker builds what this list asks for within a minute; a live report is checked for new pulls every 3 minutes until its watch ends (12 hours at most)."),
+    el("h3", {}, "Find a raid day's reports on FFLogs"), findBox(act), el("h3", {}, "The list"), reportsBox,
+    el("h2", {}, "People"), people);
   let lastBuilt = null;
   async function draw() {
     if (location.hash !== "#/admin") return;
@@ -2201,10 +2202,79 @@ function addReportForm(act) {
   form.addEventListener("submit", e => { e.preventDefault();
     const code = (link.value.trim().match(/reports\/([A-Za-z0-9]+)/) || [null, link.value.trim()])[1].split("#")[0];
     if (!REPORT_CODE.test(code)) { msg.textContent = "That is not an FFLogs report link or code (16 letters and digits)."; return; }
-    act(async () => { const { error } = await SB.from("report_sources").insert({ code, group_name: group.value.trim() || null,
-      live_until: live.checked ? new Date(Date.now() + Math.min(12, Math.max(1, +hours.value || 6)) * 3600e3).toISOString() : null });
-      if (error) throw new Error(error.code === "23505" ? `${code} is on the list already: rename, rebuild or watch it there.` : error.message); })(); });
+    act(() => addSource(code, group.value, live.checked ? hours.value : 0))(); });
   return form;
+}
+async function addSource(code, group, liveHours) {   // onto the list the worker builds; liveHours 0: not live
+  const { error } = await SB.from("report_sources").insert({ code, group_name: group.trim() || null,
+    live_until: liveHours ? new Date(Date.now() + Math.min(12, Math.max(1, +liveHours || 6)) * 3600e3).toISOString() : null });
+  if (error) throw new Error(error.code === "23505" ? `${code} is on the list already: rename, rebuild or watch it there.` : error.message);
+}
+// a raid day's P12S reports on FFLogs, with which of our players are in each: the worker searches (worker.search) and
+// answers in report_searches; the newest search shows until the next one
+function findBox(act) {
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60e3).toISOString().slice(0, 10);
+  const day = el("input", { type: "date", id: "fday", required: true, value: today, max: today });
+  const names = el("input", { type: "text", id: "fnames", autocomplete: "off", maxlength: 300, placeholder: "optional: First Last, First Last@World, …" });
+  const msg = el("p", { class: "note", role: "status" }), out = el("div");
+  const form = el("form", { class: "unlock wide" }, el("label", { for: "fday" }, "Raid day"), day, el("label", { for: "fnames" }, "Characters to look for"), names,
+    el("button", { type: "submit", class: "primary" }, "Search"), msg);
+  let wait = null;
+  async function show(id, asked) {   // the search's answer, polled until the worker has it
+    clearTimeout(wait);
+    if (location.hash !== "#/admin") return;
+    let q;
+    try { q = sbCheck(await SB.from("report_searches").select("*").eq("id", id).single()); } catch (e) { msg.textContent = e.message; return; }
+    if (q.state === "queued" || q.state === "running") {
+      msg.textContent = Date.now() - asked > 60e3 ? "Still waiting for the worker. Is it running?" : "Searching…";
+      wait = setTimeout(() => show(id, asked), 2000); return;
+    }
+    msg.textContent = q.state === "error" ? q.message : "";
+    if (q.state === "done") out.replaceChildren(...foundReports(q, act));
+  }
+  form.addEventListener("submit", async e => { e.preventDefault(); msg.textContent = "Searching…"; out.replaceChildren();
+    try { const q = sbCheck(await SB.from("report_searches").insert({ day: day.value, names: names.value.trim() }).select("id").single()); show(q.id, Date.now()); }
+    catch (err) { msg.textContent = err.message; } });
+  SB.from("report_searches").select("id").order("asked_at", { ascending: false }).limit(1).then(sbCheck)
+    .then(r => { if (r.length) show(r[0].id, Date.now()); }).catch(() => {});
+  return el("div", {}, form, out);
+}
+function foundReports(q, act) {
+  const res = q.results, all = res.reports, ours = all.filter(r => r.ours.length || r.asked.length || r.site || r.listed);
+  const out = [el("p", { class: "note" }, `${dayName(q.day)}${q.names ? `, looking for ${q.names}` : ""}: ${all.length} public P12S Savage reports on FFLogs, ${ours.length} with our players`,
+    ` (searched ${localTime(q.done_at)}). Unlisted and private reports never show up here: add those by link below.`)];
+  if (res.not_found.length) out.push(el("p", { class: "warn" }, `Not in any of them: ${res.not_found.join(", ")}.`));
+  const time = ms => new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const table = rows => el("div", { class: "table-wrap" }, el("table", { class: "admin" },
+    el("thead", {}, el("tr", {}, ["Start", "Report", "Pulls", "Our players", ""].map((h, i) => el("th", { class: i === 2 ? "num" : null }, h)))),
+    el("tbody", {}, rows.map(r => {
+      const recent = Date.now() - r.end < 30 * 60e3;   // still being written, most likely
+      let status;
+      if (r.site) status = `on the site as ${r.site.group}`;
+      else if (r.listed) status = `on the list (${r.listed})`;
+      else if (r.same) status = el("span", { class: "muted" }, `same pulls as ${r.same.group || r.same.code}`);
+      else {
+        const g = el("input", { type: "text", maxlength: 24, size: 6, placeholder: "G?", "aria-label": `Group name for ${r.code}` });
+        const live = el("input", { type: "checkbox", checked: recent, "aria-label": `Watch ${r.code} live` });
+        const add = el("button", { type: "button", class: "small", on: { click: () => act(async () => {
+          await addSource(r.code, g.value, live.checked ? 6 : 0); r.listed = "queued"; add.replaceWith("added: on the list"); })() } }, "Add");
+        status = el("span", { class: "actions" }, g, " ", el("label", { class: "check" }, live, " live 6 h"), " ", add);
+      }
+      const who = [...new Set([...r.asked, ...r.ours])];
+      return el("tr", { class: r.site || r.same ? "muted" : null },
+        el("td", {}, time(r.start), recent ? el("div", { class: "note" }, `last pull ${time(r.end)}`) : ""),
+        el("td", {}, fflogsLink(r.code), el("div", { class: "note" }, [r.title, r.owner, r.visibility !== "public" ? r.visibility : null].filter(Boolean).join(" · "))),
+        el("td", { class: "num" }, `${r.pulls}`, r.kills ? el("div", { class: "note" }, `${r.kills} kill${r.kills > 1 ? "s" : ""}`) : ""),
+        el("td", {}, `${r.ours.length} of ${r.players}`, who.length ? el("div", { class: "note names" }, who.map((n, i) => [i ? ", " : "", el("span", { class: "nm" }, r.asked.includes(n) ? el("b", {}, n) : n)]).flat()) : ""),
+        el("td", {}, status));
+    }))));
+  if (ours.length) out.push(table(ours));
+  const rest = all.filter(r => !ours.includes(r));
+  if (rest.length) {
+    const box = el("div");
+    out.push(el("p", {}, el("button", { type: "button", class: "small", on: { click: e => { e.target.parentNode.remove(); box.replaceChildren(table(rest)); } } }, `Show the ${rest.length} without our players`)), box);
+  }
+  return out;
 }
 function reportTable(src, act) {
   const upd = (code, cols) => act(async () => sbCheck(await SB.from("report_sources").update(cols).eq("code", code)))();

@@ -187,6 +187,51 @@ def report_state(code):
     return dict(segments=r["segments"], end=r["endTime"], fights=len(r["fights"]))
 
 
+def find_reports(start, end, encounter, difficulty, zone, users=()):
+    """Reports started between start and end (ms) with pulls of the encounter at that difficulty: the zone's reports,
+    and those the given FFLogs users uploaded (FFLogs files a report under one zone, so a night that began elsewhere is
+    under another). FFLogs lists only public reports: unlisted and private ones never turn up. A character's own list
+    (recentReports) is no help: it lags weeks behind and had none of our P12S reports.
+    Returns [dict(code, title, start, end, owner, visibility, pulls, kills, at=[each pull's start, s], players=[(name, server) in those pulls])]."""
+    # 25 a page: 100 with the players is past the query size FFLogs allows
+    q = '''query($z:Int,$u:Int,$s:Float,$e:Float,$p:Int,$enc:Int){reportData{reports(zoneID:$z,userID:$u,startTime:$s,endTime:$e,limit:25,page:$p){
+        has_more_pages data{code title startTime endTime visibility owner{name} fights(encounterID:$enc){difficulty kill startTime friendlyPlayers}
+        masterData{actors(type:"Player"){id name server}}}}}}'''
+    out = {}
+    for z, u in [(zone, None)] + [(None, u) for u in sorted(set(users))]:
+        page = 1
+        while True:
+            d = gql(q, {"z": z, "u": u, "s": start, "e": end, "p": page, "enc": encounter})["reportData"]["reports"]
+            for r in d["data"]:
+                f = [x for x in r["fights"] or [] if x["difficulty"] == difficulty]
+                if f and start <= r["startTime"] < end:
+                    ids = {i for x in f for i in x["friendlyPlayers"] or []}   # in its P12S pulls, not the rest of the night
+                    out[r["code"]] = dict(code=r["code"], title=r["title"], start=r["startTime"], end=r["endTime"], owner=(r["owner"] or {}).get("name"),
+                                          visibility=r["visibility"], pulls=len(f), kills=sum(1 for x in f if x["kill"]), at=[round((r["startTime"] + x["startTime"]) / 1000) for x in f],
+                                          players=sorted({(a["name"], a["server"] or "") for a in r["masterData"]["actors"] if a["id"] in ids}))
+            if not d["has_more_pages"]: break
+            page += 1
+    return sorted(out.values(), key=lambda r: r["start"])
+
+
+def report_owners(codes):
+    """The FFLogs user id who uploaded each report, cached in .cache/uploaders.json (an upload's owner doesn't change)."""
+    cf = CACHE / "uploaders.json"
+    known = json.loads(cf.read_text()) if cf.exists() else {}
+    new = [c for c in codes if c not in known]
+    for i in range(0, len(new), 20):   # one query for 20 reports
+        part, ask = new[i:i + 20], lambda cs: gql("{reportData{" + " ".join(f'r{k}:report(code:"{c}"){{owner{{id}}}}' for k, c in enumerate(cs)) + "}}")["reportData"]
+        try: d = ask(part)
+        except RuntimeError:   # one of them gone from FFLogs: ask one at a time
+            d = {}
+            for k, c in enumerate(part):
+                try: d[f"r{k}"] = ask([c])["r0"]
+                except RuntimeError: d[f"r{k}"] = None
+        for k, c in enumerate(part): known[c] = ((d[f"r{k}"] or {}).get("owner") or {}).get("id")
+    if new: CACHE.mkdir(exist_ok=True); cf.write_text(json.dumps(known, indent=0))
+    return {c: known[c] for c in codes}
+
+
 def character_id(name, server, region, lookup=True):
     """FFLogs' id for a character, which stays the same when it is renamed or moves worlds; cached in
     .cache/characters.json. A character FFLogs does not know (or hides) gets a stable negative id from its name and

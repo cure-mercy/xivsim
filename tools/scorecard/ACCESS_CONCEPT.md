@@ -207,6 +207,8 @@ test account and checks that `report_full` returns no rows to either.
   key. The service key stays with `build_site.py`, `supa.py` and `worker.py`.
 - **Reports from the admin page**: the page edits a list (`report_sources`) and `worker.py`, running in WSL, builds it,
   since the analysis is Python. Live logs are polled (FFLogs has no webhooks) every 3 minutes, for 12 hours at most.
+  The page also finds a raid day's P12S reports on FFLogs, with our players in each (the worker searches); unlisted
+  reports never show up there and still need their link.
 - Not built: an admin command that removes a player completely. Unlinking and deleting an account exist; the player's
   name stays in the full records of the reports they played in.
 
