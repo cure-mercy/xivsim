@@ -1100,7 +1100,16 @@ def glaukopis(p, lo, hi):
     return out
 
 
-BRIGHT_PRIORITY = ("H1", "T1", "T2", "H2")   # bright Souls' middle platforms, east to west
+BRIGHT_PRIORITY = ("H1", "T1", "T2", "H2")   # bright Souls' middle platforms, east to west (from 2026-10-26)
+
+
+def bright_seat_lp(s1, s2):
+    """The 2026-10-25 rule for the bright Souls' middle platforms (the raidplan then, briefs b238cf0): LP1 the northern,
+    LP2 the southern; both in one light party, the healer keeps theirs and the tank takes the other. s1, s2: their seats
+    ("H1", "T2", ...). Whether each belongs on the northern one: (s1's, s2's)."""
+    if s1[1] != s2[1]: return s1[1] == "1", s2[1] == "1"
+    keeps = s1[0] == "H"   # same party: the healer keeps their party's side
+    return (s1[1] == "1") == keeps, (s1[1] == "1") != keeps
 
 
 def seats(p, lp):
@@ -1210,9 +1219,10 @@ def p3_white_flame(p, t, sup, match, seat, col, spos):
     return out
 
 
-def para3(p, lp, priority=False):
-    """priority: the bright Souls take the middle platforms by BRIGHT_PRIORITY, so when both soak one tower the one
-    who belongs on the other side is wrong; without it (before the groups agreed on it) both share the blame."""
+def para3(p, lp, bright_by=None):
+    """bright_by: how the bright Souls take the middle platforms, so when both soak one tower the one who belongs on the
+    other side is wrong: "light_party" (bright_seat_lp, the 2026-10-25 raid's), "priority" (BRIGHT_PRIORITY east to
+    west, from 2026-10-26); None, both share the blame."""
     out = []
     sup = {k: p.holders(f"{k} Soul", 200, 210) for k in ("Quartered", "X-Marked", "Astralbright", "Umbralbright")}
     bright = [(w, a) for a in ("Astral", "Umbral") for w in sup[f"{a}bright"]]
@@ -1244,14 +1254,20 @@ def para3(p, lp, priority=False):
             bad = [w for w in who if role.get(w) != want] or who
             place = {"+": "the north platform (Quartered)", "X": "the south platform (X-Marked)", "bright": "a middle platform (bright Souls)"}[want]
             rule = f"{' and '.join(who)} soaked the same tower on {place}, leaving another tower empty (Electrify)"
-            # two bright Souls on one middle tower: the priority says which of them belongs on the other side; without
-            # it, both share the blame
-            rank = {w: BRIGHT_PRIORITY.index(s) for s, w in seats(p, lp).items() if s in BRIGHT_PRIORITY}
-            if priority and len(who) == 2 and set(bad) == set(who) and all(role.get(w) == "bright" and w in rank for w in who):
-                first, second = sorted(who, key=rank.get)
-                west = es[0]["pos"][0] < 0
-                bad = [first if west else second]
-                rule += f"; {bad[0]} belongs on the {'eastern' if west else 'western'} one (priority H1 > T1 > T2 > H2, east to west)"
+            # two bright Souls on one middle tower: the day's rule says which of them belongs on the other side; without
+            # one, both share the blame
+            seat = {w: s for s, w in seats(p, lp).items() if s in BRIGHT_PRIORITY}
+            if bright_by and len(who) == 2 and set(bad) == set(who) and all(role.get(w) == "bright" and w in seat for w in who):
+                if bright_by == "priority":
+                    first, second = sorted(who, key=lambda w: BRIGHT_PRIORITY.index(seat[w]))
+                    west = es[0]["pos"][0] < 0
+                    bad = [first if west else second]
+                    rule += f"; {bad[0]} belongs on the {'eastern' if west else 'western'} one (priority H1 > T1 > T2 > H2, east to west)"
+                else:   # the northern middle platform's tower lies north of the centre line
+                    north = es[0]["pos"][1] < 0
+                    bad = [w for w, n in zip(who, bright_seat_lp(seat[who[0]], seat[who[1]])) if n != north]
+                    rule += (f"; {bad[0]} belongs on the {'southern' if north else 'northern'} one (light parties: LP1 the northern, LP2 the "
+                             "southern; the healer keeps theirs when both are in one)")
             out.append(fault(t, "Paradeigma III", bad, wipe | set(who), rule, "high" if len(bad) < len(who) else "medium", **zap, tag="p3.support_tower.empty",
                              share="own" if len(bad) < len(who) else "one_of"))   # which of them belonged elsewhere untold
     # platforms: Quartered takes the north-most, X-Marked the south-most
@@ -2167,8 +2183,9 @@ RULEBOOK = {
     "Superchain I": [(None, AVOIDABLE_ONLY),   # before the group's strategy: only avoidable hits (orb, donut) are blamed
                      ("2026-10-06", superchain1)],   # the strategy officially introduced
     "Dialogos": [(None, AVOIDABLE_ONLY), ("2026-10-06", lambda p, lp: dialogos(p))],   # with Superchain I's
-    "Paradeigma III": [(None, AVOIDABLE_ONLY), ("2026-10-25", para3),   # the original strategy arrived
-                       ("2026-10-26", lambda p, lp: para3(p, lp, priority=True))],   # bright Souls by H1 > T1 > T2 > H2
+    "Paradeigma III": [(None, AVOIDABLE_ONLY),
+                       ("2026-10-25", lambda p, lp: para3(p, lp, bright_by="light_party")),   # the original strategy arrived: bright Souls by light party
+                       ("2026-10-26", lambda p, lp: para3(p, lp, bright_by="priority"))],   # bright Souls by H1 > T1 > T2 > H2
     "Glaukopis / Ultima Blade": [(None, AVOIDABLE_ONLY), ("2026-09-29", lambda p, lp: glaukopis(p, 236, 280))],   # the same swap
     "Palladion": [(None, NOT_YET)],   # to start blaming it: ("YYYY-MM-DD", GENERIC) or a rule
 }
