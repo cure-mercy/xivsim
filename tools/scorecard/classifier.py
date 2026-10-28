@@ -1090,6 +1090,36 @@ def pair_blame(p, lp, hs, crowd):
 # Superchain I's lasers run from Athena, each aimed at its Strong Soul, 6 y wide (the game's data). Seen from Athena the two laser
 # groups stand a median 17 degrees apart in pulls where no one took both; where someone did, a median 5 (2026-10-26)
 LASER_STRONG = {"Astral Impact": "Astralstrong", "Umbral Impact": "Umbralstrong"}
+LASER_SHARERS = 4   # each laser is shared by 4 (the user's rule): a Soul pair and two Tilts
+LASER_OF_SOUL = {"Astralstrong": "Astral Impact", "Umbralbright": "Astral Impact", "Umbralstrong": "Umbral Impact", "Astralbright": "Umbral Impact"}
+SHARE_ROLL = 0.05   # a hit's damage rolls +-5%: a full share sparing them by less than that cannot be told from not
+
+
+def sc1_laser_of(p, S, w, t):
+    """The laser a player shares: by their Soul, else by the Tilt they held (Umbral Tilt shares the Astral laser), at
+    their death if they died before t; None when neither tells (1 of 207 players dead by the lasers in the caches)."""
+    nm = next((nm for s, nm in LASER_OF_SOUL.items() if w in S[s]), None)
+    if nm: return nm
+    at = max((d["t"] - 2.05 for d in p.deaths if d["who"] == w and d["t"] - 2 < t), default=t - 0.2)
+    return "Astral Impact" if w in p.has_debuff_at("Umbral Tilt", at) else "Umbral Impact" if w in p.has_debuff_at("Astral Tilt", at) else None
+
+
+def share_short(t, mech, e, n, m, gone, what, base=None):
+    """A lethal hit `e` of a share that n players took and m should have, the rest of them (gone) already dead: when the
+    hit split m ways would have spared its target, a fault chained to the dead (their death's culprits are blamed);
+    within SHARE_ROLL of it, the same but undecided (low). None when they would have died all the same, or when the
+    living who should have shared it (base, with them) would have been enough: then it is their fault alone."""
+    hp, ab = e["amount"] - e.get("overkill", 0), e.get("absorbed", 0)
+    at = lambda k: (e["amount"] + ab) * n / k - ab
+    full = at(m)
+    if hp <= full or base and base > n and hp > at(base): return None
+    thin = hp - full <= SHARE_ROLL * full
+    who, was = " and ".join(gone), "was" if len(gone) == 1 else "were"
+    lead = f"could not be decided whether a full {what} would have spared {e['who']}" if thin else f"{what} a sharer short"
+    f = fault(t, mech, gone, [e["who"]], f"{lead}: {who}, who shared it, {was} already dead (shared by {m}, {e['who']} "
+              f"would have kept {hp - full:,.0f} HP)", "consequence", chain=gone, ability=e["name"])
+    if thin: f["cap"] = "low"
+    return f
 CAMPS_APART = 10    # degrees: groups closer than this stood on top of each other, and the Strong Souls aim the lines
 ON_ONE_SPOT = 5     # this many players in both lasers: the groups stood on one spot, each in both is their own
 
@@ -1352,10 +1382,12 @@ def superchain1(p, lp):
             else: out.append(fault(t, "Superchain I", [w], [w], f"in the wrong laser group (took {nm})", "high"))
         # a laser a sharer short: whoever belonged in it and lived, but took the other or neither
         dead = p.dead_by(t - 0.3)
+        missing = {}   # laser -> (its living sharers not in it, the fault blaming them)
         for nm, ws in exp.items():
             got = {e["who"] for e in lt if e["name"] == nm}
             away = sorted(ws - got - dead)
             if not got or not away: continue
+            missing[nm] = (away, len(out))
             if all(fix(nm, w, True) for w in away):   # one fault for the sharers it left out, each with its reason
                 rs = [fix(nm, w, True) for w in away]
                 cul, conf = list(dict.fromkeys(x for r in rs for x in r[0])), min((r[1] for r in rs), key=lambda c: -CONF_ORDER[c])
@@ -1367,6 +1399,20 @@ def superchain1(p, lp):
             other = [w for w in away if w in wrong_group]
             out.append(fault(t, "Superchain I", away, got, f"not in the {nm} group ({', '.join(other) + ' took the other laser' if other else 'missed it'}); it was a sharer short",
                              "high" if other else "medium"))
+        # a laser short of its LASER_SHARERS because sharers of it were already dead: a death a full share would have
+        # spared follows from theirs, unless its living sharers joining would have been enough (a wrong-group player's
+        # death, both lasers included, stays their own). With living ones missing too, both are the one hit's causes
+        for nm in exp:
+            es = [e for e in lt if e["name"] == nm]
+            n, gone = len({e["who"] for e in es}), sorted(w for w in dead if sc1_laser_of(p, S, w, t) == nm)
+            away, k = missing.get(nm, ([], None))
+            base = min(LASER_SHARERS, n + len(away))
+            if not gone or not es or base >= LASER_SHARERS: continue
+            for e in es:
+                if e["who"] not in wrong_group and (e.get("targetResources") or {}).get("hitPoints") == 0:
+                    if f := share_short(t, "Superchain I", e, n, min(LASER_SHARERS, base + len(gone)), gone, nm, base):
+                        out.append(f)
+                        if k is not None: out[k]["ability"] = nm   # one cause with the living sharers' fault
     # Heavensflame spread: each AoE lands on its owner and hits whoever is within SC1_FLAME of them (an owner standing
     # clear never hit anyone else in 1,478 AoEs). A Strong Soul at or stepping into their tower is where they must be:
     # the Heavensflame player's, who keeps clear of the towers. Anyone else (a bright Soul stepping back, another
@@ -1575,6 +1621,12 @@ def dialogos(p):
         if killed and not killed[0] in in_st:
             out.append(fault(st[0]["t"], "Dialogos", killed, in_st, f"the Dialogos stack was short: {', '.join(killed)} died to {nm} just before", "consequence",
                              chain=killed, ability="Dialogos"))
+        # the rest of the party already dead: a death a full stack would have spared follows from theirs
+        gone = sorted(w for w in dead if not is_tank(w))
+        for e in st if gone else []:
+            if (e.get("targetResources") or {}).get("hitPoints") == 0:
+                base = len(in_st) + len(miss) + len(killed)   # the living who left it, and the tanks' hit's dead, first
+                if f := share_short(e["t"], "Dialogos", e, len(in_st), base + len(gone), gone, "Dialogos stack", base): out.append(f)
     return out
 
 
@@ -1691,30 +1743,33 @@ def classify(p, lp, day=None):
     def from_chain(i, f):
         """Blame whoever caused the deaths behind a fault (its chain), as sure as the least sure of them, besides the
         fault's own culprits when it merges a direct one; those carried over from the earlier deaths are not counted
-        again (carried). Several chained faults about one hit (two unsoaked towers) are told one by one, "(1) ... (2) ...",
-        each with the earlier deaths behind it. The same story as a tree for the site (trace): {rule, deaths: [{who, t, by,
-        why: the death's own tree}], parts: [the trees of chained faults merged with it]}."""
+        again (carried). Several faults about one hit (two unsoaked towers) are told side by side: the direct ones, then
+        "and at once" the chained ones, "(1) ... (2) ..." when several, each with the earlier deaths behind it. The same story as a tree for the site (trace): {rule, deaths:
+        [{who, t, by, why: the death's own tree}]}, or for several causes {parts: [their trees]}."""
         direct = f.get("direct", [])
         why_of = lambda chain: [(n, r) for n in chain for r in [next((r for r in reversed(res) if r["victim"] == n and r["kind"] == "death"), None)] if r and r["culprits"]]
         why = why_of(f["chain"])
         culprits = list(dict.fromkeys(direct + [c for _, r in why for c in r["culprits"]]))
-        if not culprits: return dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=[], confidence="consequence", derived=True)
+        follows = list(dict.fromkeys(f["chain"] + [n for g in f.get("parts", []) for n in g["chain"]]))   # whose deaths it follows from
+        if not culprits: return dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=[], confidence="consequence", derived=True, follows=follows)
         by = lambda n, r: "their own mistake" if r["culprits"] == [n] else "caused by " + ", ".join(r["culprits"])
         trace = lambda rule, ws: rule + ("; earlier: " + "; ".join(f"{n}'s death, {by(n, r)}: {r['cause']}" for n, r in ws) if ws else "")
         cause = trace(f["rule"], why)
-        if f.get("parts"):   # the direct causes first (the label comes from before "; earlier"), then each chained one's trace
+        if f.get("parts"):   # the direct causes first, then "and at once" each chained one's trace: causes of the one hit
+            # (both towers exploding), not one the background of the other (it read "; earlier:", 2026-10-28)
             chained = list(dict.fromkeys(trace(g["rule"], why_of(g["chain"])) for g in f["parts"] if g["chain"]))
-            told = " ".join(f"({k}) {t}" for k, t in enumerate(chained, 1)) if len(chained) > 1 else "".join(chained)
             plain = "; ".join(dict.fromkeys(g["rule"] for g in f["parts"] if not g["chain"]))
-            cause = plain + ("; earlier: " + told if told else "") if plain else told
+            told = " ".join(f"({k}) {t}" for k, t in enumerate(chained, 1)) if len(chained) > 1 else "".join(chained)
+            cause = plain + ("; and at once: " + told if told else "") if plain else told   # the label comes from before "; and at once"
         tree = lambda rule, ws: dict(rule=rule, **({"deaths": [dict(who=n, t=round(r["t"], 1), by=r["culprits"], why=r.get("trace") or dict(rule=r["cause"])) for n, r in ws]} if ws else {}))
         node = tree(f["rule"], why)
         if f.get("parts"):
-            nodes = list({json.dumps(t, sort_keys=True): t for t in (tree(g["rule"], why_of(g["chain"])) for g in f["parts"] if g["chain"])}.values())
-            node = dict(rule=plain, parts=nodes) if plain or len(nodes) > 1 else nodes[0]
-        return dict(i, mechanic=f["mechanic"], cause=cause, trace=node,
+            nodes = ([dict(rule=plain)] if plain else []) + list({json.dumps(t, sort_keys=True): t for t in (tree(g["rule"], why_of(g["chain"])) for g in f["parts"] if g["chain"])}.values())
+            node = dict(parts=nodes) if len(nodes) > 1 else nodes[0]   # several causes of one hit: told side by side
+        return dict(i, mechanic=f["mechanic"], cause=cause, trace=node, follows=follows,
                     culprits=culprits, derived=not direct, carried=[c for c in culprits if c not in direct] if direct else [],
-                    confidence=least_sure(([f["direct_conf"]] if direct else []) + [r["confidence"] for _, r in why]))
+                    confidence=least_sure(([f["direct_conf"]] if direct else []) + [r["confidence"] for _, r in why]
+                                          + [g["cap"] for g in f.get("parts", [f]) if g.get("cap")]))   # cap: a chain the rule is unsure of
 
     def add(r):
         """A mistake in a NOT_YET mechanic keeps its cause but blames no one, as does a death there no rule explains;

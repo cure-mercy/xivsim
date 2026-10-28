@@ -35,6 +35,7 @@ SIMULTANEOUS_S = 0.6             # deaths this close to the one that lost the pu
                                  # in the hand-checked pulls up to 0.53 s apart; its next step comes 0.8 s or more later)
 RAIDWIDE = {"Electrify", "Unmitigated Explosion"}   # kill everyone left alive: two such deaths are already a mass death,
 RAIDWIDE_S = 5                   # when they come this soon after the collapse began (later, the pull was already lost)
+LONE_S = 1.5                     # a death with no other this close leads the collapse alone (see lone_start)
 MISTAKE_AFTER_WIPE = 2           # mistakes are counted up to this long after the one that decided the wipe
 # the fight's phases, each from the start of one major mechanic to the next (the HP checkpoints' boundaries)
 WINDOWS = [("Opener & Paradeigma I", 0.0, 55.4), ("Paradeigma II", 55.4, 112.4), ("Superchain I & Dialogos", 112.4, 193.9),
@@ -50,6 +51,7 @@ DD_PENALTY = 0.38
 # causes, grouped for the summaries: (text in the classifier's cause, label)
 CAUSES = [("pulled Athena early", "Early pull"), ("broken gear", "Broken gear (low max HP)"), ("fell off the arena", "Fell off the arena"), ("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulnerability"), ("Glaukopis", "Glaukopis tank swap"), ("tanks' hit", "Tank share (Apo / Peridialogos)"),
           ("the two tanks share", "Tank share (Apo / Peridialogos)"), ("Dialogos stack", "Dialogos stack"),
+          ("could not be decided whether a full", "Superchain laser a sharer short, undecided"), ("who shared it,", "Superchain laser a sharer short (sharer dead)"),
           ("left the arena", "Left the arena"),
           ("Heavensflame not spread away", "Heavensflame in a bright Soul's AoE"),
           ("could not be decided who walked into whose Heavensflame", "Heavensflame undecided (both blamed)"), ("walked into", "Walked into a Heavensflame"),
@@ -89,7 +91,9 @@ MECHS = {"Paradeigma II", "Superchain I", "Paradeigma III"}
 
 def cause_label(text, mech=""):
     """Summary label for a classifier cause; tether and tower failures are named with their mechanic."""
-    # a chain's own rules (each numbered part's, when several faults are about one hit), not the earlier deaths'
+    # a chain's own rules (each numbered part's, when several faults are about one hit), not the earlier deaths'; with
+    # direct causes too, those name it (the chained ones follow "; and at once:")
+    text = text.split("; and at once: ")[0]
     parts = re.split(r" \(\d+\) ", text[4:]) if text.startswith("(1) ") else [text]
     text = "; ".join(t.split("; earlier")[0] for t in parts).split("after their earlier")[-1]
     for trigger, table, generic in GROUPED:   # tethers first: "clipped ... soak from the tower's outer side" is a tether failure
@@ -393,6 +397,20 @@ def mistakes_of(res):
     return out
 
 
+def lone_start(collapse, res):
+    """Whether the collapse's first death did not lose the pull: alone (no other death within LONE_S), nothing later in
+    the pull follows from it (no entry chains to it or names its victim as a culprit, after the wipe call too: a dead
+    tank shows up as auto-attacks then), every later death in the collapse explained by a rule without it (an
+    unexplained one may be its fallout), and the next step killing two or more (it would have lost the pull on its own;
+    one lone death does not pass the wipe to the next). The user's rule, 2026-10-28: a dispensable player's death
+    before an unrelated cascade (Zj8T pull 2: a Heavensflame player's donut, then the lasers) did not lose it."""
+    r, later = collapse[0], collapse[1:]
+    if later[0]["t"] - r["t"] <= LONE_S: return False
+    if any(r["victim"] in q.get("follows", ()) or r["victim"] in q["culprits"] for q in res if q["t"] > r["t"] and q is not r): return False
+    if any(not q["culprits"] or "cause unclear" in q["cause"] for q in later): return False
+    return len({q["victim"] for q in later if q["t"] - later[0]["t"] <= LONE_S}) >= 2
+
+
 def wipe_of(res):
     """Who lost the pull. A player jumping off the arena (a death without a hit) means the wipe was called, so only
     deaths before the first jump count, and a pull with none was called without one (the jump decides, no culprit).
@@ -415,6 +433,7 @@ def wipe_of(res):
     i = run_start(len(deaths) - 1)
     while jump is None and i > 0 and len({r["victim"] for r in deaths[i:]}) == 1: i = run_start(i - 1)
     collapse = deaths[i:]
+    while len({r["victim"] for r in collapse[1:]}) > 1 and lone_start(collapse, res): collapse = collapse[1:]
     same_hit = lambda r: [q for q in collapse if q["ability"] == r["ability"] and 0 <= q["t"] - r["t"] <= 3]
     mass = next((r for r in collapse if (r["culprits"] or r["confidence"] == "not blamed") and (len(same_hit(r)) >= 4 or r["ability"] in RAIDWIDE
                                                            and len(same_hit(r)) >= 2 and r["t"] - collapse[0]["t"] <= RAIDWIDE_S)), None)
