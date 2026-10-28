@@ -34,6 +34,17 @@ CASES = ROOT / "tests" / "blame_cases.json"
 TOL = 0.25            # seconds an incident's time may move and still be the same incident
 RULES_DAY = "2026-10-25"   # the last strategy's introduction: pulls checked from before it are judged by its rule book
 SKIP_DEBUFFS = {"Weakness", "Brink of Death", "Damage Down", "Magic Vulnerability Up", "Physical Vulnerability Up", "Concussion"}
+BUILT = {}   # report code -> its pulls, built once per process: a later run (scratch/blame/mutate.py's) reuses them
+
+
+def _loaded(code, D, C):
+    """A cached report's pulls by fight id. A Pull holds only the report's data, so it is built once; the light parties
+    are inferred afresh on every call, as they run classifier rules that a caller may have swapped since."""
+    if code not in BUILT:
+        BUILT[code] = D.pulls(code, C) if (D.fflogs.CACHE / f"report_{code}.json").exists() else []
+    rows = BUILT[code]
+    lp = C.infer_light_parties([p for _, _, p, _, _ in rows]) if rows else None
+    return {f["id"]: (f, n, p, lp, day) for f, n, p, _, day in rows}
 
 
 def _modules():
@@ -66,7 +77,7 @@ def run(known=False):
     loaded = {}
     for case in cases:
         if case["code"] not in loaded:
-            loaded[case["code"]] = {x[0]["id"]: x for x in D.pulls(case["code"], C)} if (D.fflogs.CACHE / f"report_{case['code']}.json").exists() else {}
+            loaded[case["code"]] = _loaded(case["code"], D, C)
         x = loaded[case["code"]].get(case["fight"])
         if x is None:
             log.append(f"FAIL {case['code']} #{case['fight']}: not in the cache"); bad = True; continue

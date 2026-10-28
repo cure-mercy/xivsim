@@ -1,7 +1,7 @@
 /* Shared by the solvers. Each runs inside a probe page that tests/run.py builds from index.html, plays its
    drill against the clock, and leaves its log in a <pre id="__log"> for run.py to read back. */
 window.Probe = (function(){
-  const log = [], finishers = [];
+  const log = [];
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // Every recap a pull ends with (the list in its feedback), logged once each.
@@ -18,7 +18,6 @@ window.Probe = (function(){
   }
 
   function finish(){
-    finishers.forEach(fn => fn(log));
     log.push('ERRORS=' + JSON.stringify(window.__errors));
     const pre = document.createElement('pre');
     pre.id = '__log';
@@ -69,5 +68,5 @@ window.Probe = (function(){
     return canon(P);
   }
 
-  return { run, snapshot, onFinish: fn => finishers.push(fn) };
+  return { run, snapshot };
 })();

@@ -49,7 +49,10 @@ WINDOWS = [("Opener & Paradeigma I", 0.0, 55.4), ("Paradeigma II", 55.4, 112.4),
 RAISE_PENALTY, RAISE_S = {"Weakness": 0.22, "Brink of Death": 0.50}, 100
 DD_PENALTY = 0.38
 # causes, grouped for the summaries: (text in the classifier's cause, label)
-CAUSES = [("pulled Athena early", "Early pull"), ("broken gear", "Broken gear (low max HP)"), ("fell off the arena", "Fell off the arena"), ("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulnerability"), ("Glaukopis", "Glaukopis tank swap"), ("tanks' hit", "Tank share (Apo / Peridialogos)"),
+CAUSES = [("held a Soul and a tether both", "Paradeigma II: a Soul and a tether on one player (party short)"),
+          ("died holding the tether, so it went to", "Paradeigma II: a dead holder's tether went to another"),
+          ("healing and mitigation fell short", "Healing / mitigation (everyone)"),
+          ("pulled Athena early", "Early pull"), ("broken gear", "Broken gear (low max HP)"), ("fell off the arena", "Fell off the arena"), ("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulnerability"), ("Glaukopis", "Glaukopis tank swap"), ("tanks' hit", "Tank share (Apo / Peridialogos)"),
           ("the two tanks share", "Tank share (Apo / Peridialogos)"), ("Dialogos stack", "Dialogos stack"),
           ("could not be decided whether a full", "Superchain laser a sharer short, undecided"), ("who shared it,", "Superchain laser a sharer short (sharer dead)"),
           ("left the arena", "Left the arena"),
@@ -81,6 +84,8 @@ TOWERS = [(("platform tower", "same tower"), "support tower left empty (Electrif
           (("soaked", "stepped into"), "wrong player in a tower")]
 # tether laser failures (Paradeigma II and III), labelled the same way
 TETHERS = [(("not stretched",), "tether not stretched far enough"),
+           (("could not be decided who stood in whose tether laser",), "tether laser undecided (both blamed)"),
+           (("off their line, their tether laser hit",), "tether held off its line (laser through another)"),   # Paradeigma II's
            (("clipped them",), "tether laser clipped a soaking support"),
            (("their tether laser hit", "'s tether laser hit"), "tether laser through another DPS (holder off their seat)"),   # Paradeigma III's; II's "a tether laser hit" is not
            (("died before their tether laser landed",), "a dead DPS's tether laser hit another"),
@@ -279,6 +284,44 @@ def fetch_p3(data):
     data["p3"] = out
 
 
+P2_WINDOW = (66, 83)   # seconds into the pull: Paradeigma II from the Souls landing to the towers resolving (lasers ~77 s, towers ~80.6)
+P2_CASTS = ("Searing Radiance", "Shadowsear", "Astral Glow", "Umbral Glow", "Astral Advance", "Umbral Advance")
+
+
+def p2_compact(f, events, abilities):
+    """One pull's Paradeigma II, for the classifier (Pull.p2): {tethers: [[t, add instance, player id]], casts: [[t, name,
+    source instance, target id or None, x, y]] (the adds' tether lasers, the Glows and the towers' Advance, where each
+    came from), pos: [[t, player id, x, y]]}, times in seconds from the pull. The calculated hits miss a laser's holder
+    when another laser killed them first, and the damage events hold only the hit players' positions."""
+    players, seen, tethers, casts, pos = set(f["friendlyPlayers"]), set(), [], [], []
+    xy = lambda r: (round((r["x"] - 10000) / 100, 2), round((r["y"] - 10000) / 100, 2)) if r and "x" in r else None
+    for e in events:
+        k = json.dumps(e, sort_keys=True)
+        if k in seen: continue
+        seen.add(k)
+        t, nm = round((e["timestamp"] - f["startTime"]) / 1000, 3), abilities.get(str(e.get("abilityGameID")))
+        if e["type"] == "tether" and e.get("targetID") in players: tethers.append([t, e.get("sourceInstance"), e["targetID"]])
+        if e["type"] in ("begincast", "cast") and nm in P2_CASTS and (p := xy(e.get("sourceResources"))):
+            casts.append([t, nm, e.get("sourceInstance"), e.get("targetID") if e.get("targetID") in players else None, *p])
+        for side in ("source", "target"):
+            if e.get(f"{side}ID") in players and (p := xy(e.get(f"{side}Resources"))): pos.append([t, e[f"{side}ID"], *p])
+    return dict(tethers=sorted(tethers), casts=sorted(casts, key=lambda c: c[0]), pos=sorted(pos))
+
+
+def fetch_p2(data):
+    """Paradeigma II's tethers, casts and positions for every pull that lasts into it (p2_compact)."""
+    fights, out = [f for f in data["fights"] if f["endTime"] - f["startTime"] > P2_WINDOW[0] * 1000], {}
+    for i in range(0, len(fights), 8):
+        part, evs = fights[i:i + 8], collections.defaultdict(list)
+        for h in ("Enemies", "Friendlies"):
+            q = "query($c:String!){reportData{report(code:$c){" + " ".join(WF_EVENTS % (f["id"], f["id"], f["startTime"] + P2_WINDOW[0] * 1000,
+                min(f["endTime"], f["startTime"] + P2_WINDOW[1] * 1000), h) for f in part) + "}}}"
+            r = fflogs.gql(q, {"c": data["code"]})["reportData"]["report"]
+            for f in part: evs[f["id"]] += r[f"f{f['id']}"]["data"]
+        for f in part: out[str(f["id"])] = p2_compact(f, evs[f["id"]], data["abilities"])
+    data["p2"] = out
+
+
 SC1_WINDOW = (127, 151)   # seconds into the pull: Superchain I from its first resolution to the bright Souls' towers resolving
                           # (the lasers ~137 s, the towers drop ~145 s and resolve 3 s later)
 SC1_VERSION = 2           # bumped when sc1_compact changes: caches holding another are fetched again
@@ -334,7 +377,8 @@ def fetch(code, refresh, bench):
                                 ("tables_given", lambda: fetch_tables(data, [f for f in data["fights"] if str(f["id"]) in data["tables"]]),
                                  "the rDPS raid buffs gave others"),
                                 ("pots", lambda: fetch_pots(data), "tinctures"), ("wf", lambda: fetch_wf(data), "positions at White Flame"),
-                                ("p3", lambda: fetch_p3(data), "tethers at Paradeigma III"), ("sc1", lambda: fetch_sc1(data), "towers at Superchain I")):
+                                ("p3", lambda: fetch_p3(data), "tethers at Paradeigma III"), ("sc1", lambda: fetch_sc1(data), "towers at Superchain I"),
+                                ("p2", lambda: fetch_p2(data), "tethers and positions at Paradeigma II")):
             if key not in data or key == "sc1" and data.get("sc1_v") != SC1_VERSION:   # reports cached before this part existed, or changed
                 if CACHED_ONLY: print(f"  {code}: no {what} in the cache, left out (--cached)", file=sys.stderr); continue
                 print(f"  {code}: fetching {what}", file=sys.stderr); fill(); cf.write_text(json.dumps(data))
@@ -363,6 +407,7 @@ def fetch(code, refresh, bench):
     fetch_wf(data)
     fetch_p3(data)
     fetch_sc1(data)
+    fetch_p2(data)
     fflogs.CACHE.mkdir(exist_ok=True); cf.write_text(json.dumps(data))
     return data
 
@@ -488,7 +533,7 @@ def analyse(group, data, bench):
                 hp={k: v for k, v in data.get("hp", {}).items() if k not in echo})
     names = {a["id"]: a["name"] for a in data["masterData"]["actors"] if a["subType"] in ROLE}
     rep = {"masterData": data["masterData"], "deaths": data["deaths"]}
-    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf"), "p3": data.get("p3"), "sc1": data.get("sc1")}
+    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf"), "p3": data.get("p3"), "sc1": data.get("sc1"), "p2": data.get("p2")}
     import acts                                 # the players' casts, for the rules that read them (the Glaukopis swap)
     A = acts.report(data["code"], data["fights"])
     pulls = [Pull(data["code"], f, rep, ev, acts=A.get(str(f["id"]))) for f in data["fights"]]

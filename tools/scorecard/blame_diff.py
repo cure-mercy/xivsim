@@ -59,9 +59,14 @@ def pulls(code, C=classifier):
     af = fflogs.CACHE / f"acts_{code}.json"
     A = json.loads(af.read_text()) if af.exists() else {}
     rep = {"masterData": data["masterData"], "deaths": data["deaths"]}
-    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf"), "p3": data.get("p3"), "sc1": data.get("sc1")}
+    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf"), "p3": data.get("p3"), "sc1": data.get("sc1"), "p2": data.get("p2")}
+    # a Pull keeps only its own fight's events: hand each just those, not the whole report's to sift
+    own = collections.defaultdict(lambda: {"dmg": [], "debuffs": [], "deaths": []})
+    for k, src in (("dmg", ev), ("debuffs", ev), ("deaths", rep)):
+        for e in src[k]: own[e.get("fight")][k].append(e)
     with_acts = "acts" in inspect.signature(C.Pull).parameters    # older classifiers read no casts
-    ps = [C.Pull(code, f, rep, ev, **({"acts": A.get(str(f["id"]))} if with_acts else {})) for f in data["fights"]]
+    ps = [C.Pull(code, f, dict(rep, deaths=own[f["id"]]["deaths"]), dict(ev, dmg=own[f["id"]]["dmg"], debuffs=own[f["id"]]["debuffs"]),
+                 **({"acts": A.get(str(f["id"]))} if with_acts else {})) for f in data["fights"]]
     lp = C.infer_light_parties(ps)
     day = datetime.datetime.fromtimestamp(data["startTime"] / 1000).date().isoformat()   # the raid day, as build_site.py's
     return [(f, n, p, lp, day) for n, (f, p) in enumerate(zip(data["fights"], ps), 1)]
