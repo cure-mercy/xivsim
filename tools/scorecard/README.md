@@ -466,6 +466,13 @@ told (the user's rule, 2026-10-28): everyone alive is blamed (low, "Healing / mi
 already dead are passed to whoever caused their deaths. Theos's Ultima is shared damage, not one. Anything the rules cannot explain is left unattributed
 rather than guessed.
 
+**Rule tags.** Every rule's fault carries a tag, a stable id such as `p2.tower.undecided` or `sc1.laser.both` (`fault(...,
+tag=)`, required), and every classifier entry the tag of the rule that decided it. Code decides by tags, never by a rule's
+text, so wording can change freely: the summaries' labels come from `LABELS` in `scorecard.py` (a label, or a tower or
+tether failure named with its mechanic), and an entry about several faults at once (two towers exploding together) is
+named by the first of them in `MAIN_ORDER` in `classifier.py`. A new rule needs a new tag and a label for it; an unknown
+tag stops the analysis.
+
 **Confidence.** Every blame carries how sure its rule is of the culprit: *high* (the rule says who: an avoidable hit,
 a missing baiter, a Soul in the wrong quadrant), *medium* (inferred: who stood in whose line, both tanks for a swap that
 neither cast explains, a crowd joining a pair) or *low* (shared between players the rule cannot tell apart, mostly

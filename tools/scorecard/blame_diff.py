@@ -78,7 +78,7 @@ def judge(C, S, f, p, lp, day):
     res, _ = C.classify(p, lp, day) if "day" in inspect.signature(C.classify).parameters else C.classify(p, lp)
     cul, trig = S.wipe_of(res) if not f.get("kill") else ([], None)
     cutoff = trig["t"] + S.MISTAKE_AFTER_WIPE if trig else (f["endTime"] - f["startTime"]) / 1000
-    counted = [tuple(m[:5]) + ((m[5] if len(m) > 5 else None),) for m in S.mistakes_of(res) if m[1] <= cutoff]
+    counted = [tuple(m[:5]) + ((m[5] if len(m) > 5 else None), (m[6] if len(m) > 6 else None)) for m in S.mistakes_of(res) if m[1] <= cutoff]
     return dict(res=res, wipe=(sorted(cul), trig), counted=counted)
 
 
@@ -97,10 +97,15 @@ def mmss(t):
     return f"{int(t // 60)}:{t % 60:04.1f}"
 
 
+def label(S, cause, mech, tag):
+    """S's summary label for a rule: by its tag, or by its text for scorecards from before the tags (LABELS)."""
+    return S.cause_label(tag, mech) if hasattr(S, "LABELS") else S.cause_label(cause, mech)
+
+
 def view(r, S):
     """What of an entry is compared: culprits, confidence, fallout or not, and its summary label."""
     return (tuple(sorted(r["culprits"])), r["confidence"], bool(r.get("derived")),
-            S.cause_label(r["cause"], r["mechanic"]) if r["culprits"] else "-")
+            label(S, r["cause"], r["mechanic"], r.get("tag")) if r["culprits"] else "-")
 
 
 def say(r, S):
@@ -112,7 +117,7 @@ def wipe_label(S, trig):
     """S's name for what lost the pull (scorecards before wipe_label named only the culprit's cause)."""
     if trig is None: return "Unclear"
     if hasattr(S, "wipe_label"): return S.wipe_label(trig)
-    return S.cause_label(trig["cause"], trig["mechanic"]) if trig["culprits"] else "No culprit found"
+    return label(S, trig["cause"], trig["mechanic"], trig.get("tag")) if trig["culprits"] else "No culprit found"
 
 
 def wipe_text(w, S):
@@ -144,8 +149,8 @@ def main():
             o, w = judge(OC, OS, f, op, olp, day), judge(classifier, scorecard, f, np_, nlp, day)
             n_pulls += 1; n_inc += len(w["res"])
             for side, j, S in (("old", o, OS), ("new", w, scorecard)):
-                for c, t, cause, mech, kind, conf in j["counted"]:
-                    tot[f"mech_{side}"][mech] += 1; tot[f"cause_{side}"][S.cause_label(cause, mech)] += 1; tot[f"conf_{side}"][conf or "?"] += 1
+                for c, t, cause, mech, kind, conf, tag in j["counted"]:
+                    tot[f"mech_{side}"][mech] += 1; tot[f"cause_{side}"][label(S, cause, mech, tag)] += 1; tot[f"conf_{side}"][conf or "?"] += 1
                 if not f.get("kill"):
                     tot[f"wipe_{side}"][wipe_label(S, j["wipe"][1])] += 1
             lines = []

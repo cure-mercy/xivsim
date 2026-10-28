@@ -4,7 +4,7 @@ groups' clears (benchmark.json), the damage lost to deaths, and damage per phase
 
 build_site.py is the command that uses it. Needs .fflogs_v2 at the repository root (see fflogs.py).
 """
-import collections, datetime, json, re, statistics as st, sys
+import collections, datetime, json, statistics as st, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -35,6 +35,7 @@ SIMULTANEOUS_S = 0.6             # deaths this close to the one that lost the pu
                                  # in the hand-checked pulls up to 0.53 s apart; its next step comes 0.8 s or more later)
 RAIDWIDE = {"Electrify", "Unmitigated Explosion"}   # kill everyone left alive: two such deaths are already a mass death,
 RAIDWIDE_S = 5                   # when they come this soon after the collapse began (later, the pull was already lost)
+UNCLEAR = {"p2.tower.unclear", "sc1.tower.wrong_tilt_unclear"}   # rules that blame without knowing why it failed (lone_start)
 LONE_S = 1.5                     # a death with no other this close leads the collapse alone (see lone_start)
 MISTAKE_AFTER_WIPE = 2           # mistakes are counted up to this long after the one that decided the wipe
 # the fight's phases, each from the start of one major mechanic to the next (the HP checkpoints' boundaries)
@@ -48,65 +49,65 @@ WINDOWS = [("Opener & Paradeigma I", 0.0, 55.4), ("Paradeigma II", 55.4, 112.4),
 # Brink of Death had too few samples (x0.36 over 3) and is taken as half damage
 RAISE_PENALTY, RAISE_S = {"Weakness": 0.22, "Brink of Death": 0.50}, 100
 DD_PENALTY = 0.38
-# causes, grouped for the summaries: (text in the classifier's cause, label)
-CAUSES = [("held a Soul and a tether both", "Paradeigma II: a Soul and a tether on one player (party short)"),
-          ("died holding the tether, so it went to", "Paradeigma II: a dead holder's tether went to another"),
-          ("healing and mitigation fell short", "Healing / mitigation (everyone)"),
-          ("pulled Athena early", "Early pull"), ("broken gear", "Broken gear (low max HP)"), ("fell off the arena", "Fell off the arena"), ("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulnerability"), ("stood in the Glaukopis line", "Stood in the Glaukopis line"), ("no tank was left to hold Athena", "Glaukopis with the tanks dead"), ("Glaukopis", "Glaukopis tank swap"), ("tanks' hit", "Tank share (Apo / Peridialogos)"),
-          ("the two tanks share", "Tank share (Apo / Peridialogos)"), ("Dialogos stack", "Dialogos stack"),
-          ("could not be decided whether a full", "Superchain laser a sharer short, undecided"), ("who shared it,", "Superchain laser a sharer short (sharer dead)"),
-          ("left the arena", "Left the arena"),
-          ("Heavensflame not spread away", "Heavensflame in a bright Soul's AoE"),
-          ("could not be decided who walked into whose Heavensflame", "Heavensflame undecided (both blamed)"), ("walked into", "Walked into a Heavensflame"),
-          ("dropped their towers together", "Bright Souls' towers dropped together"), ("bright Soul's AoE", "Bright Soul's AoE"),
-          ("Trinity of Souls", "Trinity of Souls: on the cleaved side"), ("green orb", "Green orb (Superchain)"),
-          ("Ray of Light", "Ray of Light column"), ("donut", "Donut (Superchain)"),
-          ("could not be decided who stood in whose orange cone", "Orange cone undecided (all blamed)"), ("could not be decided whose spot", "Superchain laser undecided (both blamed)"), ("took both lasers", "Both Superchain lasers on one player"), ("could not be decided who drew the White Flame", "White Flame bait undecided (both blamed)"), ("White Flame line-up", "Missed White Flame bait"), ("closer to the White Flame add", "Too close to a White Flame add"), ("off their spot in the White Flame line", "Off their White Flame line-up spot"), ("did not bait their White Flame", "Missed White Flame bait"),
-          ("White Flame", "White Flame line"), ("tether laser", "Tether laser"), ("laser group", "Superchain laser group"),
-          ("share", "Superchain laser group"), ("Heavensflame", "Heavensflame spread"), ("orange cone", "Orange cone overlap"),
-          ("purple jack", "Purple pair"), ("purple-jack pair", "Purple pair"), ("Soul AoE", "Soul AoE"), ("the + ", "+ / X placement"), ("the X ", "+ / X placement"),
-          ("arms of", "+ / X placement"), ("dash line", "Palladion dash line"), ("destroyed tile", "Destroyed tile"),
-          ("auto-attacks", "Tank death to auto-attacks")]
-# tower failures, labelled by mechanic and by what went wrong; the first match wins
-TOWERS = [(("platform tower", "same tower"), "support tower left empty (Electrify)"),
-          (("held it in their place",), "tower held by a substitute, who died to it"),
-          (("with the wrong Tilt",), "tower soaked with the wrong Tilt"),
-          (("tower unsoaked, undecided",), "tower unsoaked, undecided (both blamed)"),
-          (("DPS soaked a support tower",), "DPS in a support tower"),
-          (("died before dropping", "died holding"), "Soul died before dropping their tower"),
-          (("wrong quadrant", "sweep", "two towers dropped", "dropped their Soul"), "Soul tower in the wrong quadrant"),
-          (("wrong side",), "tower dropped on the wrong side"),
-          (("dropped it out of",), "tower dropped out of its soaker's reach"),
-          (("dropped their tower on", "dropped it on"), "bright tower dropped on its soaker"),
-          (("own tile instead", "at the centre instead"), "bright tower placed wrong"),
-          (("before the bright Soul",), "stepped into the tower too early"),
-          (("did not soak", "both away from it", "unsoaked because", "soaker could not", "cause unclear", "instead of soaking", "belonged on"), "tower not soaked"),
-          (("soaked", "stepped into"), "wrong player in a tower")]
-# tether laser failures (Paradeigma II and III), labelled the same way
-TETHERS = [(("not stretched",), "tether not stretched far enough"),
-           (("could not be decided who stood in whose tether laser",), "tether laser undecided (both blamed)"),
-           (("off their line, their tether laser hit",), "tether held off its line (laser through another)"),   # Paradeigma II's
-           (("clipped them",), "tether laser clipped a soaking support"),
-           (("their tether laser hit", "'s tether laser hit"), "tether laser through another DPS (holder off their seat)"),   # Paradeigma III's; II's "a tether laser hit" is not
-           (("died before their tether laser landed",), "a dead DPS's tether laser hit another"),
-           (("stood in", "two DPS tether"), "stood in another player's tether laser")]
-GROUPED = (("tether laser", TETHERS, "Tether"), ("tower", TOWERS, "Tower"), ("Soul in", TOWERS, "Tower"))
+# what each classifier rule (its tag, classifier.fault) is called in the summaries: a label, or (group, kind) for tower
+# and tether failures, named with their mechanic (MECHS) or the group ("Tower: ...")
+TOWER, TETHER = "Tower", "Tether"
+LABELS = {
+    # any mechanic
+    "jump": "Left the arena", "early_pull": "Early pull", "broken_gear": "Broken gear (low max HP)", "fell_off": "Fell off the arena",
+    "raidwide": "Healing / mitigation (everyone)", "tank_autos": "Tank death to auto-attacks", "unexplained": "Other",
+    "avoid.Trinity of Souls": "Trinity of Souls: on the cleaved side", "avoid.Ray of Light": "Ray of Light column",
+    "avoid.Superchain Burst": "Green orb (Superchain)", "avoid.Superchain Coil": "Donut (Superchain)", "avoid.Clear Cut": "Clear Cut cone",
+    "avoid.Unnatural Enchainment": "Destroyed tile", "avoid.Sample": "Destroyed tile", "avoid.Palladian Ray": "Palladion puddle",
+    "palladion.dash": "Palladion dash line",
+    # Paradeigma I
+    "p1.wf.not_in_line_up": "Missed White Flame bait", "p1.wf.too_close": "Too close to a White Flame add",
+    "p1.wf.off_spot": "Off their White Flame line-up spot", "p1.wf.line": "White Flame line", "p1.wf.baiter_dead": "White Flame line",
+    "p1.wf.undecided": "White Flame bait undecided (both blamed)", "p1.auto": "Auto-attack through wave 2's vulnerability",
+    # Paradeigma II
+    "p2.tether.not_stretched": (TETHER, "tether not stretched far enough"), "p2.tether.stood_in": (TETHER, "stood in another player's tether laser"),
+    "p2.tether.holder_off": (TETHER, "tether held off its line (laser through another)"), "p2.tether.undecided": (TETHER, "tether laser undecided (both blamed)"),
+    "p2.tether.dead_holder": "Tether laser", "p2.soul_and_tether": "Paradeigma II: a Soul and a tether on one player (party short)",
+    "p2.soul.wrong_quadrant": (TOWER, "Soul tower in the wrong quadrant"), "p2.soul_aoe": "Soul AoE",
+    "p2.tower.wrong_quadrant": (TOWER, "Soul tower in the wrong quadrant"), "p2.tower.soul_dead": (TOWER, "Soul died before dropping their tower"),
+    "p2.tower.wrong_player": (TOWER, "wrong player in a tower"), "p2.tower.unsoaked": (TOWER, "tower not soaked"), "p2.tower.unclear": (TOWER, "tower not soaked"),
+    "p2.tower.undecided": (TOWER, "tower unsoaked, undecided (both blamed)"), "p2.tower.out_of_reach": (TOWER, "tower dropped out of its soaker's reach"),
+    # Glaukopis
+    "glauk.swap": "Glaukopis tank swap", "glauk.line": "Stood in the Glaukopis line", "glauk.tanks_dead": "Glaukopis with the tanks dead",
+    # Superchain I
+    "sc1.purple": "Purple pair", "sc1.orange": "Orange cone overlap", "sc1.orange.undecided": "Orange cone undecided (all blamed)",
+    "sc1.laser.group": "Superchain laser group", "sc1.laser.short": "Superchain laser group", "sc1.laser.both": "Both Superchain lasers on one player",
+    "sc1.laser.undecided": "Superchain laser undecided (both blamed)", "sc1.laser.short_dead": "Superchain laser a sharer short (sharer dead)",
+    "sc1.laser.short_undecided": "Superchain laser a sharer short, undecided",
+    "sc1.flame.spread": "Heavensflame spread", "sc1.flame.walked_in": "Walked into a Heavensflame", "sc1.flame.undecided": "Heavensflame undecided (both blamed)",
+    "sc1.flame.bright_aoe": "Heavensflame in a bright Soul's AoE", "sc1.bright_aoe": "Bright Soul's AoE", "sc1.bright_together": "Bright Souls' towers dropped together",
+    "sc1.glow.early": (TOWER, "stepped into the tower too early"), "sc1.glow.dropped_on": (TOWER, "bright tower dropped on its soaker"),
+    "sc1.tower.soul_dead": (TOWER, "Soul died before dropping their tower"), "sc1.tower.wrong_side": (TOWER, "tower dropped on the wrong side"),
+    "sc1.tower.wrong_player": (TOWER, "wrong player in a tower"), "sc1.tower.substitute": (TOWER, "tower held by a substitute, who died to it"),
+    "sc1.tower.unsoaked": (TOWER, "tower not soaked"), "sc1.tower.undecided": (TOWER, "tower unsoaked, undecided (both blamed)"),
+    "sc1.tower.out_of_reach": (TOWER, "tower dropped out of its soaker's reach"), "sc1.tower.dropped_on": (TOWER, "bright tower dropped on its soaker"),
+    "sc1.tower.wrong_tilt": (TOWER, "tower soaked with the wrong Tilt"), "sc1.tower.wrong_tilt_unclear": (TOWER, "tower soaked with the wrong Tilt"),
+    # Dialogos
+    "dlg.tank_share": "Tank share (Apo / Peridialogos)", "dlg.stack": "Dialogos stack",
+    # Paradeigma III
+    "p3.support_tower.empty": (TOWER, "support tower left empty (Electrify)"), "p3.support_tower.dps": (TOWER, "DPS in a support tower"),
+    "p3.tether.not_stretched": (TETHER, "tether not stretched far enough"), "p3.tether.stood_in": (TETHER, "stood in another player's tether laser"),
+    "p3.tether.holder_off": (TETHER, "tether laser through another DPS (holder off their seat)"), "p3.tether.clipped": (TETHER, "tether laser clipped a soaking support"),
+    "p3.tether.dead_holder": (TETHER, "a dead DPS's tether laser hit another"), "p3.cross": "+ / X placement", "p3.bright_aoe": "Bright Soul's AoE",
+    "p3.wf.missed": "Missed White Flame bait", "p3.wf.line": "White Flame line", "p3.wf.baiter_dead": "White Flame line", "p3.wf.own": "White Flame line",
+    "p3.tower.soul_dead": (TOWER, "Soul died before dropping their tower"), "p3.tower.wrong_player": (TOWER, "wrong player in a tower"),
+    "p3.tower.unsoaked": (TOWER, "tower not soaked"), "p3.tower.misplaced": (TOWER, "bright tower placed wrong"),
+}
 MECHS = {"Paradeigma II", "Superchain I", "Paradeigma III"}
 
 
-def cause_label(text, mech=""):
-    """Summary label for a classifier cause; tether and tower failures are named with their mechanic."""
-    # a chain's own rules (each numbered part's, when several faults are about one hit), not the earlier deaths'; with
-    # direct causes too, those name it (the chained ones follow "; and at once:")
-    text = text.split("; and at once: ")[0]
-    parts = re.split(r" \(\d+\) ", text[4:]) if text.startswith("(1) ") else [text]
-    text = "; ".join(t.split("; earlier")[0] for t in parts).split("after their earlier")[-1]
-    for trigger, table, generic in GROUPED:   # tethers first: "clipped ... soak from the tower's outer side" is a tether failure
-        if trigger in text:
-            for keys, kind in table:
-                if any(k in text for k in keys):
-                    return f"{mech}: {kind}" if mech in MECHS else f"{generic}: {kind}"
-    return next((lab for key, lab in CAUSES if key in text), "Other")
+def cause_label(tag, mech=""):
+    """Summary label for a classifier entry's rule (its tag); tether and tower failures are named with their mechanic.
+    An unknown tag is an error: every rule needs a label here."""
+    lab = LABELS[tag]
+    if isinstance(lab, str): return lab
+    group, kind = lab
+    return f"{mech}: {kind}" if mech in MECHS else f"{group}: {kind}"
 
 
 # ---------- fetching ----------
@@ -425,8 +426,9 @@ def first_mistake(data, f):
 def mistakes_of(res):
     """Every distinct mistake in a pull: classifier entries with a culprit that are not just fallout of an earlier
     mistake, one per culprit per 2 s (a bait that kills four players is one mistake). Yields (culprit, t, cause, mechanic,
-    kind, confidence): kind is "death" when any of the mistake's events killed someone, else "DD" when one gave Damage
-    Down, else "hit" (neither: both Superchain lasers on someone who lived); confidence is the surest of its entries'.
+    kind, confidence, tag): kind is "death" when any of the mistake's events killed someone, else "DD" when one gave Damage
+    Down, else "hit" (neither: both Superchain lasers on someone who lived); confidence is the surest of its entries'; tag
+    the rule's (cause_label names it).
     Culprits an entry carries over from an earlier death are counted there."""
     out, rank = [], {"death": 0, "DD": 1, "hit": 2}
     for r in res:
@@ -435,10 +437,10 @@ def mistakes_of(res):
         for c in r["culprits"]:
             if c in r.get("carried", ()): continue
             same = next((i for i, m in enumerate(out) if m[0] == c and abs(m[1] - r["t"]) <= 2), None)
-            if same is None: out.append((c, r["t"], r["cause"], r["mechanic"], kind, r["confidence"]))
+            if same is None: out.append((c, r["t"], r["cause"], r["mechanic"], kind, r["confidence"], r["tag"]))
             else:
                 m = out[same]
-                out[same] = m[:4] + (min(m[4], kind, key=rank.get), min(m[5], r["confidence"], key=lambda x: CONF_ORDER.get(x, 1)))
+                out[same] = m[:4] + (min(m[4], kind, key=rank.get), min(m[5], r["confidence"], key=lambda x: CONF_ORDER.get(x, 1)), m[6])
     return out
 
 
@@ -452,7 +454,7 @@ def lone_start(collapse, res):
     r, later = collapse[0], collapse[1:]
     if later[0]["t"] - r["t"] <= LONE_S: return False
     if any(r["victim"] in q.get("follows", ()) or r["victim"] in q["culprits"] for q in res if q["t"] > r["t"] and q is not r): return False
-    if any(not q["culprits"] or "cause unclear" in q["cause"] for q in later): return False
+    if any(not q["culprits"] or q["tag"] in UNCLEAR for q in later): return False
     return len({q["victim"] for q in later if q["t"] - later[0]["t"] <= LONE_S}) >= 2
 
 
@@ -499,7 +501,7 @@ def wipe_of(res):
 
 def wipe_label(trig):
     """The site's name for what lost the pull."""
-    if trig["culprits"]: return cause_label(trig["cause"], trig["mechanic"])
+    if trig["culprits"]: return cause_label(trig["tag"], trig["mechanic"])
     if trig.get("jump"): return "Wipe called (left the arena)"
     return "Not blamed yet (no rules)" if trig["confidence"] == "not blamed" else "No culprit found"
 
@@ -586,9 +588,9 @@ def analyse(group, data, bench):
         # every mistake while the pull was still alive; what happens during the collapse is forced or noise
         cutoff = trig["t"] + MISTAKE_AFTER_WIPE if trig else dur
         traces = {r["cause"]: r["trace"] for r in res if r.get("trace")}   # the site shows a chained cause as a tree
-        for c, t, cause, mech, kind, cf in mistakes_of(res):
+        for c, t, cause, mech, kind, cf, tag in mistakes_of(res):
             if t <= cutoff:
-                lab = cause_label(cause, mech); nmist[c] += 1; mcauses[c][lab] += 1; all_causes[lab] += 1
+                lab = cause_label(tag, mech); nmist[c] += 1; mcauses[c][lab] += 1; all_causes[lab] += 1
                 nkind[(c, kind)] += 1
                 w = CONF_WEIGHT.get(cf, 1.0); wmist[c] += w; wkind[(c, kind)] += w; mconf[c][cf] += 1
                 row["mistakes"].append(dict(who=c, t=round(t, 1), mechanic=mech, label=lab, cause=cause, kind=kind, conf=cf,
@@ -630,7 +632,7 @@ def analyse(group, data, bench):
                 if r["kind"] == "DD": row["lost_dd"] += hp
                 per_event[(id(r), r["kind"])] += hp
                 who = r["culprits"] or ["(no one)"]
-                lab = cause_label(r["cause"], r["mechanic"]) if r["culprits"] else "No culprit found"
+                lab = cause_label(r["tag"], r["mechanic"]) if r["culprits"] else "No culprit found"
                 lost_causes[lab] += hp
                 for c in who:
                     caused[c] += hp / len(who); caused_by[c][lab] += hp / len(who); by[c] += hp / len(who)
@@ -679,7 +681,7 @@ def analyse(group, data, bench):
                             wipe=row["wipe"]["label"] if row["wipe"] else None,
                             caused=bool(row["wipe"] and name in row["wipe"]["culprits"]),
                             mistakes=[m["label"] for m in row["mistakes"] if m["who"] == name],
-                            died=dict(t=round(death[0], 1), how=cause_label(death[1]["cause"], death[1]["mechanic"]) if death[1].get("culprits")
+                            died=dict(t=round(death[0], 1), how=cause_label(death[1]["tag"], death[1]["mechanic"]) if death[1].get("culprits")
                                       else death[1].get("ability") or "unattributed") if death else None,
                             dmg=round(sum(v * sec for v, sec in ph) / sum(sec for _, sec in ph), 3) if ph else None, phases=len(ph),
                             loss=r.get("loss"), top=r.get("top"), dps=r.get("dps")))
