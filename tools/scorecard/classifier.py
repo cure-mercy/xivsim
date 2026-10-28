@@ -1058,6 +1058,103 @@ def seats(p, lp):
     return out
 
 
+# Paradeigma III's spots by the plan (briefs.html#para3). The platforms alternate columns, so the north platform's column
+# (its x sign, p3_column) places the rest: the yellow adds between the tiles at (c * 10, -10.5) and (-c * 10, 10.5), the
+# + at the north platform's outer corner, the X at the south wall's middle. Since 2026-10-25 every + and X landed within
+# 1.6 y of its spot or 5.7-16 y off it (scratch/review/p3_crossx.py): past P3_CROSS_OFF it was dropped off its spot.
+P3_ADD, P3_CROSS_OFF = (10.0, 10.5), 3.0
+# A bright tower takes whoever stands within P3_TOWER_R of it (the game's data, Action 33550-33551; a player is a point).
+# The centre tower is soaked from the other middle platform, which meets its own only at the arena centre: it has to
+# reach P3_ACROSS[0] y past the centre to be humanly reachable from there, and reaching less than P3_ACROSS[1] it is not
+# (the user's ruling, 2026-10-28; every soak from the other platform was of a tower within 2.0 y of the centre); between
+# the two it cannot be decided whether its soaker could have.
+P3_TOWER_R, P3_ACROSS = 3.0, (1.0, 0.5)
+
+
+def p3_column(seat, spos, quartered):
+    """The north platform's column (+1 east, -1 west): the DPS seats' north middle platform lies in the other one; else
+    where the + support soaked their tower. None when neither tells."""
+    xs = [-math.copysign(1, s[0][0]) for s in seat.values() if s[0][1] < 0]
+    if xs: return xs[0]
+    q = next((spos[w] for w in quartered if w in spos and spos[w][1] < -8), None)
+    return math.copysign(1, q[0]) if q else None
+
+
+P3_WF_TIE = 2.0   # y: a split of the lasers between the adds that fits within this of the best one cannot be told from it
+
+
+def p3_split(calc, col):
+    """Which add fired each of Paradeigma III's White Flame lasers (calc: their calculated hits): (best split's cost, the
+    runner-up's that gives some laser the other add, or None, [the lasers' hits], [each laser's add by the best split],
+    [by the runner-up]). A laser fits an add by its logged source when that is the add's (in some pulls it is, in others
+    a stale spot), else by its target's distance from the add (the player in it nearest the add), with everyone else it
+    hit on the ray from the add through them (a laser runs on past its target: awWM pull 20's went through two). Each add
+    fires two, so with four lasers the splits are two and two (a player halfway between the adds cannot be placed by
+    distance alone)."""
+    adds = {"northern": (col * P3_ADD[0], -P3_ADD[1]), "southern": (-col * P3_ADD[0], P3_ADD[1])}
+    lasers = collections.defaultdict(list)
+    for e in calc: lasers[e.get("sourceInstance")].append(e)
+    ls = list(lasers.values())
+
+    def cost(es, k):
+        src = next(((sr["x"] / 100 - 100, sr["y"] / 100 - 100) for e in es if (sr := e.get("sourceResources")) and "x" in sr), None)
+        at = next((a for a, q in adds.items() if src and math.dist(src, q) < 1.5), None)
+        if at: return 0 if at == k else 1e6
+        tg = min(es, key=lambda e: math.dist(adds[k], e["pos"]))
+        off = max((p2_ray(adds[k], tg["pos"], e["pos"]) for e in es), default=0)
+        return math.dist(adds[k], tg["pos"]) + (1e3 if off > WF_FLAME + 1 else 0)
+    if len(ls) == 4: splits = [["northern" if i in c else "southern" for i in range(4)] for c in itertools.combinations(range(4), 2)]
+    else: splits = [list(ks) for ks in itertools.product(adds, repeat=len(ls))]
+    scored = sorted((sum(cost(es, k) for es, k in zip(ls, ks)), ks) for ks in splits)
+    best = scored[0]
+    second = next(((c, ks) for c, ks in scored[1:] if ks != best[1]), (None, None))
+    return best[0], second[0], ls, best[1], second[1]
+
+
+def p3_white_flame(p, t, sup, match, seat, col, spos):
+    """Paradeigma III's White Flame per add: the + and X supports each bait the add on their platform's edge with the
+    middle (the northern add from the north platform; chained to their tile, a support on the other one's platform can
+    only bait that one's add, a separate mistake), and of the matching DPS pair the straight tether the add in its own
+    column, the crossed one the add across (16 of 16 clean baits, scratch/review/p3_wfseats.py). Which add fired each
+    laser: p3_split; where another split fits within P3_WF_TIE, a laser the two give different adds counts for both, and
+    whoever it blames is undecided (low). An add's laser through anyone else is its missing baiter's, or a dead baiter's
+    death's; with neither, those it hit stood in its line. None when the adds or the DPS seats are unknown."""
+    calc = [e for e in p.calc if e["name"] == "White Flame" and 222.5 <= e["t"] <= 225 and e["pos"]]
+    if col is None or not calc or any(w not in seat for w in match): return None
+    adds = ("northern", "southern")
+    plat = lambda w, default: "northern" if w in spos and spos[w][1] < -8 else "southern" if w in spos and spos[w][1] > 8 else default
+    of = {**{w: plat(w, "northern") for w in sup["Quartered"]}, **{w: plat(w, "southern") for w in sup["X-Marked"]}}
+    for w in match:   # straight: the add in their own column; crossed: the one across
+        own = "northern" if (seat[w][0][0] > 0) == (col > 0) else "southern"
+        of[w] = own if seat[w][1] else next(k for k in adds if k != own)
+    best, second, ls, ks, ks2 = p3_split(calc, col)
+    tie = second is not None and second - best < P3_WF_TIE
+    hit, unsure = collections.defaultdict(set), set()
+    for i, es in enumerate(ls):
+        who = {e["who"] for e in es}
+        hit[ks[i]] |= who
+        if tie and ks2[i] != ks[i]: hit[ks2[i]] |= who; unsure |= who
+    dead, out = p.dead_by(t - 0.3), []
+    for k in adds:
+        exp = {w for w, a in of.items() if a == k}
+        missing, gone, extra = sorted(exp - hit[k] - dead), sorted(exp & dead), sorted(hit[k] - exp)
+        if not extra and not missing: continue
+        low = bool(set(extra) & unsure)
+        how = " (which add fired which laser cannot be decided: undecided)" if low else ""
+        if missing:
+            out.append(fault(t, "Paradeigma III", missing, extra, f"did not bait their White Flame (the {k} add); it hit {', '.join(extra) or 'no one else'}{how}",
+                             "low" if low else "high" if extra else "medium", ability="White Flame", tag="p3.wf.missed"))
+        if gone and extra:   # a dead baiter's laser found someone else
+            f = fault(t, "Paradeigma III", gone, extra, f"White Flame (the {k} add) went to {', '.join(extra)} because {', '.join(gone)} (a baiter) was already dead{how}",
+                      "consequence", chain=gone, ability="White Flame", tag="p3.wf.baiter_dead")
+            if low: f["cap"] = "low"
+            out.append(f)
+        if extra and not missing and not gone:
+            out += [fault(t, "Paradeigma III", [w], [w], f"stood in a White Flame line (the {k} add's){how}", "low" if w in unsure else "medium",
+                          ability="White Flame", tag="p3.wf.line") for w in extra]
+    return out
+
+
 def para3(p, lp, priority=False):
     """priority: the bright Souls take the middle platforms by BRIGHT_PRIORITY, so when both soak one tower the one
     who belongs on the other side is wrong; without it (before the groups agreed on it) both share the blame."""
@@ -1127,26 +1224,35 @@ def para3(p, lp, priority=False):
             if (e.get("targetResources") or {}).get("hitPoints") == 0:
                 out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], "died to their own tether laser (not stretched far enough)", "high", tag="p3.tether.not_stretched"))
     match = [w for w, a in tilt.items() if a == asp]; opp = [w for w, a in tilt.items() if a != asp]
-    # + and X: both locked to true north; the owner steps out of their own arms
+    col = p3_column(seat, spos, sup["Quartered"])
+    # + and X: both locked to true north; the owner steps out of their own arms. Each has its spot (+ the north platform's
+    # outer corner, X the south wall's middle): one dropped well off it is its owner's, whoever its arms hit
     own = {"Theos's Cross": (sup["Quartered"], "+"), "Theos's Saltire": (sup["X-Marked"], "X")}
     for e in p.hits(("Theos's Cross", "Theos's Saltire"), 221.5, 223.8):
         owners, shape = own[e["name"]]; o = owners[0] if owners else None
+        at = p.source_at({e["name"]}, 221.5, 223.8)
+        c = col or (math.copysign(1, at[0]) if at else None)
+        spot = ((c * 19.0, -19.0) if c else None) if shape == "+" else (0.0, 19.2)
+        off = math.dist(at, spot) if at and spot else 0
         if e["who"] == o:
             out.append(fault(e["t"], "Paradeigma III", [o], [o], f"did not step out of their own {shape}", "high", tag="p3.cross"))
+        elif o and off > P3_CROSS_OFF:
+            where = "the north platform's outer corner" if shape == "+" else "the south wall's middle"
+            out.append(fault(e["t"], "Paradeigma III", [o], [e["who"]], f"dropped the {shape} {off:.1f} y from its spot ({where}); its arms hit {e['who']}", "high", tag="p3.cross.off_spot"))
         elif o in wrong_plat:
             out.append(fault(e["t"], "Paradeigma III", [o], [e["who"]], f"dropped the {shape} from the wrong platform ({wrong_plat[o]}); it hit {e['who']}", "high", tag="p3.cross"))
         else:
             out.append(fault(e["t"], "Paradeigma III", [e["who"]], [e["who"]], f"stood in the arms of {o or 'a'}'s {shape}", "medium", tag="p3.cross"))
     # where the bright towers went: same-colour pair on the Soul's side -> centre corner, otherwise its own tile
     glow = {e["who"]: e for e in p.hits(("Astral Glow", "Umbral Glow"), 222, 224.5) if e["who"] in dict(bright) and e["pos"]}
-    pairx = lambda ws: [p_ for p_ in (next((e["pos"] for e in tl if e["who"] == w and e["pos"]), None) for w in ws) if p_]
+    pairx = lambda ws: [p_ for p_ in (seat[w][0] if w in seat else next((e["pos"] for e in tl if e["who"] == w and e["pos"]), None) for w in ws) if p_]
     mx = pairx(match); mside = (1 if sum(x for x, _ in mx) > 0 else -1) if mx else None
     misplaced = {}
+    want_centre = lambda pos: mside is not None and (pos[0] > 0) == (mside > 0)
     for w, e in glow.items():
         x, y = e["pos"]; centre = math.hypot(x, y) < 6.5
-        want_centre = mside is not None and (x > 0) == (mside > 0)
-        if mside is not None and centre != want_centre:
-            misplaced[w] = "on its own tile instead of the centre corner" if want_centre else "at the centre instead of on its own tile"
+        if mside is not None and centre != want_centre(e["pos"]):
+            misplaced[w] = "on its own tile instead of the centre corner" if want_centre(e["pos"]) else "at the centre instead of on its own tile"
     gi = collections.defaultdict(list)
     for e in p.hits(("Astral Glow", "Umbral Glow"), 222, 224.5): gi[(e["name"], e.get("sourceInstance"))].append(e)
     for (nm, inst), es in gi.items():
@@ -1163,7 +1269,8 @@ def para3(p, lp, priority=False):
         exp_all = set(sup["Quartered"]) | set(sup["X-Marked"]) | set(match); exp = exp_all - dead
         missing = [w for w in sorted(exp) if w not in hit]; extra = [w for w in hit if w not in exp]
         gone = sorted(exp_all & dead)
-        if extra and gone and not missing:   # a baiter was already dead, so their laser found someone else
+        if (per_add := p3_white_flame(p, t, sup, match, seat, col, spos)) is not None: out += per_add   # each add's baiters
+        elif extra and gone and not missing:   # a baiter was already dead, so their laser found someone else
             out.append(fault(t, "Paradeigma III", gone, extra, f"White Flame went to {', '.join(extra)} because {', '.join(gone)} (a baiter) was already dead", "consequence", chain=gone, tag="p3.wf.baiter_dead"))
         elif missing: out.append(fault(t, "Paradeigma III", missing, extra, f"did not bait their White Flame; it hit {', '.join(extra) or 'someone else'}", "high" if extra else "medium", tag="p3.wf.missed"))
         elif extra:
@@ -1182,17 +1289,26 @@ def para3(p, lp, priority=False):
     for w, a in bright:   # a bright Soul who died before dropping leaves their tower where they fell, and nobody soaks it
         if w not in glow and w in p.dead_by(222.5) and expl:
             out.append(fault(ts, "Paradeigma III", [w], blown, f"{w} died before dropping their bright tower; it went unsoaked", "consequence", chain=[w], **boom, tag="p3.tower.soul_dead"))
-    soaked_near = lambda pos: any(s["pos"] and math.dist(s["pos"], pos) < 6 for s in soaks)
+    # a tower holds when someone with the opposite Tilt soaks it; soaked only by the wrong Tilt, it explodes all the same
+    soaked_near = lambda pos: any(s["pos"] and s["who"] in opp and math.dist(s["pos"], pos) < 6 for s in soaks)
     dead = p.dead_by(ts - 0.3)
     alive, gone = [x for x in opp if x not in dead], [x for x in opp if x in dead]
     idle = [x for x in alive if x not in {s["who"] for s in soaks}]
+    # whose tower it is: of the opposite pair, the straight tether soaks the centre tower and the crossed one the tower on
+    # their own platform (briefs.html#para3)
+    soaker = lambda pos: next((x for x in opp if x in seat and seat[x][1] == want_centre(pos)), None) if mside is not None else None
     unsoaked = collections.defaultdict(list)   # why -> the bright Souls whose towers went unsoaked for it
     for w, e in glow.items():
         if soaked_near(e["pos"]): continue
+        sk, across = soaker(e["pos"]), P3_TOWER_R - math.hypot(*e["pos"])
         if opp and not alive: why = "soakers dead"          # no one left to soak it, wherever it stood
-        elif gone and not idle: why = "soaker dead"         # a soaker short and the living ones at the other tower: likewise
+        elif sk and sk in dead: why = ("its soaker dead", sk)   # its own soaker dead: whoever else stepped in, theirs
+        elif not sk and gone and not idle: why = "soaker dead"   # a soaker short and the living ones at the other tower: likewise
+        elif want_centre(e["pos"]) and across < P3_ACROSS[1]:   # out of reach from the other platform
+            why = ("misplaced", w) if w in misplaced else ("out of reach", w)
+        elif want_centre(e["pos"]) and across < P3_ACROSS[0] and sk: why = ("undecided", w, sk)
         elif w in misplaced: why = ("misplaced", w)
-        elif idle and missing and set(idle) <= set(extra): why = "swap"   # the soakers took the White Flame, its baiters did not
+        elif sk: why = ("its soaker", sk)
         elif idle: why = "idle"
         elif alive: why = "other tower"                       # every living soaker took the other tower
         else: why = "unknown"
@@ -1201,9 +1317,22 @@ def para3(p, lp, priority=False):
         towers = " and ".join(f"{w}'s" for w in ws) + (" towers" if len(ws) > 1 else " tower")
         if why in ("soakers dead", "soaker dead"):
             out.append(fault(ts, "Paradeigma III", gone, blown, f"{towers} unsoaked because {'its soakers were' if len(gone) > 1 else 'its soaker was'} already dead", "consequence", chain=gone, **boom, tag="p3.tower.unsoaked"))
-        elif why == "swap":
-            out.append(fault(ts, "Paradeigma III", idle + missing, blown | set(idle), f"{' and '.join(idle)} took the White Flame meant for "
-                             f"{' and '.join(missing)} instead of soaking (the DPS pairs' roles swapped): {towers} went unsoaked", "medium", **boom, tag="p3.tower.unsoaked"))
+        elif why[0] == "its soaker dead":
+            out.append(fault(ts, "Paradeigma III", [why[1]], blown, f"{towers} unsoaked because its soaker was already dead ({why[1]})", "consequence", chain=[why[1]], **boom, tag="p3.tower.unsoaked"))
+        elif why[0] == "out of reach":
+            w = why[1]; h = math.hypot(*glow[w]["pos"])
+            reach = f"its {P3_TOWER_R:g} y reach stopped {h - P3_TOWER_R:.1f} y short of it" if h >= P3_TOWER_R else f"it reached only {P3_TOWER_R - h:.1f} y across it"
+            out.append(fault(ts, "Paradeigma III", [w], blown | {w}, f"{w}'s tower unsoaked: dropped {h:.1f} y from the arena centre, {reach}, out of reach from the "
+                             f"other platform", "high", **boom, tag="p3.tower.out_of_reach"))
+        elif why[0] == "undecided":
+            w, sk = why[1:]; h = math.hypot(*glow[w]["pos"])
+            out.append(fault(ts, "Paradeigma III", [w, sk], blown | {w, sk}, f"{w}'s tower unsoaked, undecided: dropped {h:.1f} y from the arena centre, it reached only "
+                             f"{P3_TOWER_R - h:.1f} y across it for {sk} on the other platform", "low", **boom, tag="p3.tower.undecided"))
+        elif why[0] == "its soaker":
+            sk = why[1]
+            where = f"soaked {next((f'{x}' for x, ex in glow.items() if x not in ws and any(s['who'] == sk and s['pos'] and math.dist(s['pos'], ex['pos']) < 6 for s in soaks)), 'another')}'s instead" \
+                if any(s["who"] == sk for s in soaks) else "soaked none"
+            out.append(fault(ts, "Paradeigma III", [sk], blown | {sk}, f"did not soak {towers}, theirs as the {'straight' if seat[sk][1] else 'crossed'} tether ({where})", "high", **boom, tag="p3.tower.unsoaked"))
         elif why == "idle":
             out.append(fault(ts, "Paradeigma III", idle, blown | set(idle), f"did not soak {towers}", "high", **boom, tag="p3.tower.unsoaked"))
         elif why == "other tower":
@@ -2010,8 +2139,9 @@ def classify(p, lp, day=None):
         "and at once" the chained ones, "(1) ... (2) ..." when several, each with the earlier deaths behind it. The same story as a tree for the site (trace): {rule, deaths:
         [{who, t, by, why: the death's own tree}]}, or for several causes {parts: [their trees]}."""
         direct = f.get("direct", [])
-        why_of = lambda chain: [(n, r) for n in chain for r in [next((r for r in reversed(res) if r["victim"] == n and r["kind"] == "death"), None)] if r and r["culprits"]]
-        why = why_of(f["chain"])
+        # the death behind it is the one before the fault, not a later one (raised, they can die again in its fallout: yd7c pull 26)
+        why_of = lambda chain, t: [(n, r) for n in chain for r in [next((r for r in reversed(res) if r["victim"] == n and r["kind"] == "death" and r["t"] <= t), None)] if r and r["culprits"]]
+        why = why_of(f["chain"], f["t"])
         culprits = list(dict.fromkeys(direct + [c for _, r in why for c in r["culprits"]]))
         follows = list(dict.fromkeys(f["chain"] + [n for g in f.get("parts", []) for n in g["chain"]]))   # whose deaths it follows from
         if not culprits: return dict(i, mechanic=f["mechanic"], cause=f["rule"], culprits=[], confidence="consequence", derived=True, follows=follows, tag=f["tag"])
@@ -2020,14 +2150,14 @@ def classify(p, lp, day=None):
         cause = trace(f["rule"], why)
         if f.get("parts"):   # the direct causes first, then "and at once" each chained one's trace: causes of the one hit
             # (both towers exploding), not one the background of the other (it read "; earlier:", 2026-10-28)
-            chained = list(dict.fromkeys(trace(g["rule"], why_of(g["chain"])) for g in f["parts"] if g["chain"]))
+            chained = list(dict.fromkeys(trace(g["rule"], why_of(g["chain"], g["t"])) for g in f["parts"] if g["chain"]))
             plain = "; ".join(dict.fromkeys(g["rule"] for g in f["parts"] if not g["chain"]))
             told = " ".join(f"({k}) {t}" for k, t in enumerate(chained, 1)) if len(chained) > 1 else "".join(chained)
             cause = plain + ("; and at once: " + told if told else "") if plain else told   # the label comes from before "; and at once"
         tree = lambda rule, ws: dict(rule=rule, **({"deaths": [dict(who=n, t=round(r["t"], 1), by=r["culprits"], why=r.get("trace") or dict(rule=r["cause"])) for n, r in ws]} if ws else {}))
         node = tree(f["rule"], why)
         if f.get("parts"):
-            nodes = ([dict(rule=plain)] if plain else []) + list({json.dumps(t, sort_keys=True): t for t in (tree(g["rule"], why_of(g["chain"])) for g in f["parts"] if g["chain"])}.values())
+            nodes = ([dict(rule=plain)] if plain else []) + list({json.dumps(t, sort_keys=True): t for t in (tree(g["rule"], why_of(g["chain"], g["t"])) for g in f["parts"] if g["chain"])}.values())
             node = dict(parts=nodes) if len(nodes) > 1 else nodes[0]   # several causes of one hit: told side by side
         return dict(i, mechanic=f["mechanic"], cause=cause, trace=node, follows=follows, tag=f["tag"],
                     culprits=culprits, derived=not direct, carried=[c for c in culprits if c not in direct] if direct else [],

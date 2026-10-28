@@ -18,7 +18,8 @@ needed thought. After `add`, check every verdict against `show` before keeping t
 pull by the rule book of that day instead of its raid day's: the pulls checked from before a strategy was introduced
 (Superchain I, 2026-10-06; the last, Paradeigma III, 2026-10-25: RULES_DAY) still test them, while the scorecard does
 not blame those days by them. A case with `own_day` is judged by its raid day instead, to test the dates themselves.
-An incident's `cause_has` is text its cause must contain, and a case's `wipe_label` the label of what lost the pull:
+An incident's `cause_has` is text its cause must contain (`cause_lacks`, text it must not), and a case's `wipe_label` the label
+of what lost the pull:
 for rules whose wording or label matters, not only whom they blame. An incident with `saved` is a death that saved the
 pull (the site's green "saved the pull"); every other incident must not be marked so.
 
@@ -103,6 +104,8 @@ def run(known=False):
             else: lines.append(f"FAIL {where}: expected {meant}, got {said}: {got['cause']}")
             if want.get("cause_has") and want["cause_has"] not in got["cause"]:
                 lines.append(f"FAIL {where}: the cause no longer says \"{want['cause_has']}\": {got['cause']}")
+            if want.get("cause_lacks") and want["cause_lacks"] in got["cause"]:
+                lines.append(f"FAIL {where}: the cause says \"{want['cause_lacks']}\", which it should not: {got['cause']}")
             if bool(want.get("saved")) != bool(got.get("saved")):
                 lines.append(f"FAIL {where}: " + ("no longer marked as saving the pull" if want.get("saved") else "marked as saving the pull, which the case does not say"))
         if "wipe" in case:
