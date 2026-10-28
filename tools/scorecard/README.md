@@ -211,7 +211,10 @@ Discord login works locally only once a Discord application is set up (below). I
    `https://<project>.supabase.co/auth/v1/callback`.
 3. In the Supabase dashboard, go to Authentication → Sign In / Providers, enable Discord, and enter the
    application's client id and secret. Under URL Configuration, set the Site URL to
-   `https://cure-mercy.github.io/xivsim/stats/` and add the same address as a redirect URL. Turn off email sign-ups.
+   `https://cure-mercy.github.io/xivsim/stats/` and add `https://cure-mercy.github.io/xivsim/stats/**` as a redirect
+   URL. Leave the Email provider on, with Confirm email: `supa.py probe` logs its throwaway account in by password,
+   which turning the provider off stops (it also blocks password logins for accounts an admin made). Someone who
+   signs up by email is like a new Discord user: they see nothing until an admin approves a link.
 4. Apply the schema from WSL: `supabase login`, then `supabase link --project-ref <ref>`, then `supabase db push`.
 5. Put the project's URL, publishable (anon) key and secret (service_role) key in `.supabase` at the repository root,
    in the format `supa.py` describes. Then run `build_site.py --publish`, check with `supa.py probe`, and commit and
@@ -241,6 +244,9 @@ its own login, upload `site/` with the plaintext `data.json` instead; the page t
 passphrase (it only asks when `data.json` is missing).
 
 ## What the site shows
+
+The header links the three sections side by side, Raid days, Rotations and Gear (plus Admin for admins), and marks
+the one the page is in; the breadcrumbs below start from that section.
 
 | Page | What it shows |
 |---|---|

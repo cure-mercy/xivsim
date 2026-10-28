@@ -59,6 +59,7 @@ a:hover{ text-decoration: underline; }
 .crumbs a{ color: var(--ink-2); }
 .crumbs span[aria-current]{ color: var(--ink); }
 .navlink{ color: var(--ink-2); }
+.navlink[aria-current]{ color: var(--ink); font-weight: 600; }
 tr.moving td{ background: var(--series-wash); }
 .page > figure.card + .grid{ margin-top: 12px; }
 /* two columns of sections (player page: opener | rotation and abilities), one when narrow */
