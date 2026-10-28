@@ -91,7 +91,7 @@ LABELS = {
     "p3.support_tower.empty": (TOWER, "support tower left empty (Electrify)"), "p3.support_tower.dps": (TOWER, "DPS in a support tower"),
     "p3.tether.not_stretched": (TETHER, "tether not stretched far enough"), "p3.tether.stood_in": (TETHER, "stood in another player's tether laser"),
     "p3.tether.holder_off": (TETHER, "tether laser through another DPS (holder off their seat)"), "p3.tether.clipped": (TETHER, "tether laser clipped a soaking support"),
-    "p3.tether.dead_holder": (TETHER, "a dead DPS's tether laser hit another"), "p3.cross": "+ / X placement", "p3.bright_aoe": "Bright Soul's AoE",
+    "p3.tether.dead_holder": (TETHER, "a dead DPS's tether laser hit another"), "p3.tether.undecided": (TETHER, "tether laser undecided (both blamed)"), "p3.cross": "+ / X placement", "p3.bright_aoe": "Bright Soul's AoE",
     "p3.wf.missed": "Missed White Flame bait", "p3.wf.line": "White Flame line", "p3.wf.baiter_dead": "White Flame line", "p3.wf.own": "White Flame line",
     "p3.tower.soul_dead": (TOWER, "Soul died before dropping their tower"), "p3.tower.wrong_player": (TOWER, "wrong player in a tower"),
     "p3.tower.unsoaked": (TOWER, "tower not soaked"), "p3.tower.misplaced": (TOWER, "bright tower placed wrong"),
