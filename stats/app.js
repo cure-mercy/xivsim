@@ -528,12 +528,13 @@ function whatHappened(x, who) {
     for (const d of node.deaths || []) {
       if (seen.has(d.who)) { items.push(el("li", { class: "muted" }, `${d.who} died at ${mmss(d.t)} (told above)`)); continue; }
       seen.add(d.who);
-      items.push(el("li", {}, el("b", {}, d.who), ` died at ${mmss(d.t)}, ${by(d)}: ${d.why.rule}`, list(d.why)));
+      items.push(el("li", {}, el("b", {}, d.who), ` died at ${mmss(d.t)}, ${by(d)}: ${d.why.rule || `${d.why.parts.length} failures at once`}`, list(d.why)));
     }
     return items.length ? el("ul", { class: "trace" }, items) : null;
   };
   const deaths = new Set(), count = node => { (node.parts || []).forEach(count); (node.deaths || []).forEach(d => { deaths.add(d.who); count(d.why); }); };
   count(tr);
+  // several causes of one hit (both towers exploding) are told in the fold, each with the earlier deaths behind it
   const head = own(tr.rule || `${tr.parts.length} failures at once`);
   return el("div", {}, head, el("details", { class: "trace" }, el("summary", {}, `how it came about: ${deaths.size} earlier death${deaths.size === 1 ? "" : "s"}`), list(tr)));
 }
