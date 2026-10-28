@@ -12,9 +12,18 @@ python tools/scorecard/build_site.py <report link> [<report link> ...]
 python -m http.server -d tools/scorecard/site 8000          then open http://localhost:8000
 ```
 
+To check a rendered page from a script, dump its DOM with headless Chrome while the server runs:
+`chrome --headless=new --disable-gpu --virtual-time-budget=8000 --dump-dom "http://localhost:8000/index.html#/day/<day>/<group>/pulls/<n>"`
+(the virtual-time budget lets the hash route render). The trainer works the same way from the repository root.
+
 Each link is one raid group's report; full links (with or without `#fight=…`) and bare report codes both work.
 Reports are grouped into raid days by the date they were logged, and new reports on a day are named G1, G2, …
 in the order given. A report already on the site is analysed again and keeps its name.
+
+`tools/logs.csv` lists our groups' reports: a row per raid day, a column per group (G1-G5). The site names groups after
+those columns, so give a day's new links with their columns' names, `--names "G1,G3"`. The CSV's Date column is only a
+label (it has had typos): the raid day is always FFLogs' log date. Copy `site/data.json` (git-ignored, see below) before
+a run you may want to undo.
 
 | Option | What it does |
 |---|---|
@@ -42,6 +51,12 @@ deploy.
 
   Create a client at <https://www.fflogs.com/api/clients/>. Any key names ending in `_ID` and `_SECRET` work.
   The access token is cached in `.cache/token.json` until it expires.
+
+Deaths and other events are read with paged event queries (`fflogs.events` follows `nextPageTimestamp`); tables
+(`fflogs.tables`) only over short windows with few entries. FFLogs can cut a table short without a warning: the v1
+API's deaths table stopped at 200 entries, which once corrupted a "no death before 2:00" filter. A script that needs a
+long table pages it itself (the next request starting at the last entry's timestamp, duplicates dropped by id and
+timestamp).
 
 ### Archived reports
 
@@ -176,7 +191,9 @@ player's donut death 7 s before an unrelated laser cascade did not lose that pul
 victim, after the wipe call too: a dead tank shows up as auto-attacks then), every later death in the collapse has a
 rule's culprit (an unexplained one may be its fallout), and the next step kills two or more. 16 of 898 wipes moved;
 of the rest it could have moved, 12 are kept by a later death chained to them, 4 by one naming the victim, 44 by
-unexplained deaths, 38 of them in mechanics not blamed yet on their day.
+unexplained deaths, 38 of them in mechanics not blamed yet on their day. Another rule was tried on 2026-10-26 and
+reverted: the wipe falls when the last player able to Raise dies. It put six hand-checked wipes 7-20 s after the
+collapse that had lost them.
 
 ### Boss HP checkpoints
 
@@ -259,7 +276,9 @@ role (melee, physical ranged, magical ranged) with job icons and ordered by expe
   under what P1 asks of the job with our strategy (`ROT_CHALLENGES` in `site/app.js`, from the optimizer's findings:
   update it when a job's rotation or our strategy changes), the fight timeline without a rotation (hovering or tapping a
   point marks the stretches it is about), and the set card of Best-in-slot gear; the GCD that is the set's carries a BiS
-  tag. Monk's rotations also depend on the crit rate (its chakra), so its are per GCD and crit rate.
+  tag. Monk's rotations also depend on the crit rate (its chakra), so its are per GCD and crit rate. A `--site` rerun can
+  move what `ROT_CHALLENGES` states (True North counts, timings and GCD gaps drift between searches, and near-ties flip
+  from one GCD to the next), so after one each claim is checked against every GCD's rotation of the job, not just one.
 - **A GCD's page**: the rotation from the pull until Palladion takes Athena away (4:41) with its expected DPS over that
   stretch, its own 0:00-2:00 ceiling (a search over the scorecard's window, which is what players' ceilings use), its
   potency, casts per skill and any resources wasted. It is drawn compactly in the game's action icons, a line for each
@@ -284,7 +303,8 @@ players plays (Ninja) gets its rotations too, at the GCDs of the benchmark clear
 
 **Refreshing them**: `python tools/rotation/dps.py --job blm --site` (and `--job rpr`, `--job drg`, ...; `--offline`
 converts from the acts caches when FFLogs is down, and the pages say so; `--gcds 2.30,2.40` adds GCDs none of our
-players has; `2.48/2.15` names the hasted GCD where a tier holds two, as Samurai's, Viper's and Black Mage's can), then
+players has; `2.48/2.15` names the hasted GCD where a tier holds two, as Samurai's, Viper's and Black Mage's can, and
+`-cNN` the crit rate in percent it is searched at, `2.45-c28`, for Monk, whose chakra comes from crits), then
 `build_site.py --reanalyse` (the rotations themselves are picked up by any `build_site.py` run).
 
 ### Best-in-slot gear
@@ -294,7 +314,10 @@ The Gear pages (`#/gear`, `#/gear/<job>`) and the set card on each Rotations job
 icons from XIVAPI, cached in `.cache/icons/`): the best searched GCD tier's set and, as tabs, the searched tiers within
 0.4% of it. A job's Rotations table tags the GCD that is a set's (the rotations' GCDs are before a trait's haste, so
 Monk's and Ninja's compare at that); the tag only shows where a rotation was searched at that GCD (`dps.py --bis-gcds`, with the hasted GCD for Samurai and Viper;
-`scratch/gear/rerun_all.py` adds the missing ones). Such rotations are marked `bis_gcd`: once no set sits at their GCD and no
+`scratch/gear/rerun_all.py` adds the missing ones). `--bis-gcds` takes the forms of `--gcds`, and the tag matches a set's
+GCD, hasted GCD and crit rate (`bisAt` in `site/app.js`). Without them it lands on the wrong rotation: a plain GCD took
+the middle speed factor's hasted GCD and missed Samurai's and Viper's sets, and Monk's BiS row, searched at the default
+crit 0.25 against its set's 0.283, lost "best" to another GCD (2026-10-25). Such rotations are marked `bis_gcd`: once no set sits at their GCD and no
 player plays it, the next `rerun_all.py` run drops them, while extras asked for with `--gcds` stay.
 Any `build_site.py` run picks up new sets.
 
@@ -442,7 +465,9 @@ in the trainer's mechanic briefs (`briefs.html`), mechanic by mechanic, with the
 pull's raid day. The rules produce faults (who is to blame for which hits, how sure, and the rule's tag); each death or
 Damage Down then goes to the fault about the hit behind it.
 
-**How a rule decides.** Where the positions are cached (`fetch_wf`, `fetch_p2`, `fetch_sc1`, `fetch_p3`), a rule replays
+**How a rule decides.** Where the positions are cached (`fetch_wf`, `fetch_p2`, `fetch_sc1`, `fetch_p3`: damage events
+only carry the hit players' positions at the hit, so these fetch every player's positions over the mechanic's window,
+e.g. 35-47 s for White Flame, `WF_WINDOW`), a rule replays
 the mechanic from them (whom an add's laser targets, where a line runs, where a tower dropped) and blames whoever's move
 alone to their own spot would have prevented the hit (the user's rule, 2026-10-27). When either of two moves would have,
 the one off their spot is blamed, both when both were off (medium); when neither was, the model cannot tell them apart
@@ -453,12 +478,12 @@ a replay does not reproduce what the log shows, or the positions are missing, an
 
 | Mechanic | What is judged |
 |---|---|
-| Paradeigma I | White Flame: each add fires at its two nearest living players as the laser is cast. The baiting light party of each wave (or of each adds' side, `by_side`) and every baiter's line-up seat are learned from the group's clean waves (`infer_light_parties`, `line_up_seats`); non-baiters belong in the stack on the far side. The replay (`wf_replay`, 90% of waves reproduced) blames whoever's move to their spot alone spares a player hit more than they should be, else the fewest players who together would, all of the corrections with the fewest players inside their tolerance (when every one of them moves someone out of place, only those are blamed, not the players inside their tolerance); the label follows the culprit's role (missed bait, too close to an add, off their spot, in a laser line). Without the replay: a missing baiter is theirs unless someone out of place stood closer to their add (`wf_closer`); one as close within what the positions tell apart (the measured error of the two positions, `unc`; see Confidence) makes it a tie: the interloper's when clearly off their spot, else undecided. A player in a baiter's line is their own. Trinity of Souls is the victim's. Athena's auto-attack at ~50.5 s through wave 2's Magic Vulnerability (`para1_auto`): a provoke while carrying it, light party 1's tank taking a wave 2 laser, a shirk, else both tanks. |
+| Paradeigma I | White Flame: each add fires at its two nearest living players as the laser is cast. The baiting light party of each wave (or of each adds' side, `by_side`) and every baiter's line-up seat are learned from the group's clean waves (`infer_light_parties`, `line_up_seats`); non-baiters belong in the stack on the far side. A baiter is measured against the spot for their seat's rank (`SEAT_ALONG`, medians over clean waves), not against where that player habitually stands. The White Flame laser logs a stale position (Athena's spot) in about half the waves, so the adds' places then come from their own White Flame cast just before it, and each laser is matched to its add geometrically (`wf_pair`). The replay (`wf_replay`, 90% of waves reproduced) blames whoever's move to their spot alone spares a player hit more than they should be, else the fewest players who together would, all of the corrections with the fewest players inside their tolerance (when every one of them moves someone out of place, only those are blamed, not the players inside their tolerance); the label follows the culprit's role (missed bait, too close to an add, off their spot, in a laser line). Without the replay: a missing baiter is theirs unless someone out of place stood closer to their add (`wf_closer`); one as close within what the positions tell apart (the measured error of the two positions, `unc`; see Confidence) makes it a tie: the interloper's when clearly off their spot, else undecided. A player in a baiter's line is their own. Trinity of Souls is the victim's. Athena's auto-attack at ~50.5 s through wave 2's Magic Vulnerability (`para1_auto`): a provoke while carrying it, light party 1's tank taking a wave 2 laser, a shirk, else both tanks. |
 | Paradeigma II | The quadrant sweep (supports clockwise from north-east, DPS counter-clockwise from north-west), read from where the tether holders stood, says where each Soul drops and who soaks it. Tether lasers replayed from their holders (`para2_tethers`): a holder dying to their own laser nearer than `P2_STRETCH`, a laser through someone else (`p2_tether_fix`: the holder off their line or the victim off their spot). Towers: a Soul in the wrong quadrant (the dropper), an unsoaked tower on its spot (the soaker), one off its spot (`p2_unsoaked`: out of the soaker's reach the dropper's, in reach undecided), two stacked, a soak with the same-colour Tilt (it explodes, 15 of 15) or while holding a Soul; a Soul dropped off the sweep is blamed with whoever soaked it with the same-colour Tilt, and for the quadrant's own tower going unsoaked when its soaker took the misplaced one instead. A Soul holder dead before dropping leaves the game to drop the tower on someone else, and with the party short a Soul holder gets a tether too: both are the deaths' fallout, that holder's own tower included. Ray of Light is the victim's. |
 | Glaukopis | The tank swap (`glaukopis`): the second tank provokes during the cast, the first provokes back as the second hit lands; the boss picks its target 1.2 s after a hit (`SNAPSHOT`). Only a death counts: provoking back too early, not provoking, or provoking back too late for the heavy auto-attack after the second hit; both tanks when neither's casts explain it. Each hit is a 5 y line from Athena through its tank (game data): a non-tank in it is their own; with every tank dead, the hits are whoever killed the tanks'. |
 | Superchain I | Orange cones and purple pairs at the first cluster, by each seat's angle around it (`spot_frame`, `cone_blame`, `pair_blame`; a party that fits its seats better mirrored is read mirrored). The lasers replayed from the centre through each Strong Soul (`sc1_laser_replay`, 88% reproduced; within the positions' error of a laser's edge a hit is as the log has it, and a move that decides it by less is undecided; a laser it cannot reproduce that hit a player at their group's spot is its Strong Soul's when they stood off theirs, else undecided, `sc1_misaim`): the wrong laser group, both lasers on one player (a mistake even when they live), a laser a sharer short; a death a full share would have spared goes to the dead sharers (`share_short`). Heavensflame (`flame`): a Strong Soul hit at their tower is the Heavensflame player's, anyone else whoever closed the distance. The bright Souls' drop: a Strong Soul stepping in early, a tower dropped on its waiting soaker (`sc1_dropped_on`), two Souls dropping together (`sc1_together`: whoever's tower dropped off its spot, undecided at its edge). Towers (`sc1_tower`) as in Paradeigma II, and: anyone with the tower's Tilt holds it, a player who dies holding it in its Strong Soul's place is the absent soaker's (`saved` on the site), and a Strong Soul with the wrong Tilt explodes it, blamed on what gave them that Tilt. Orbs and donuts are the victim's. |
 | Dialogos | The tanks' hit is a 6 y circle (game data) on the closest player for Peridialogos and the farthest for Apodialogos, the party's stack the opposite: the tanks belong at the centre for Peridialogos and out for Apodialogos, the party the other way (`CENTRE_R`). A non-tank in the tanks' hit is theirs, unless it was aimed at a non-tank where the party belongs (then the tanks'); a tank leaving the hit to the other; a stack aimed at a tank; party members missing from the stack; a stack short of the dead (`share_short`). |
-| Paradeigma III | Support towers (Electrify): a support not in their platform's tower, two in one (which of them belongs elsewhere by `BRIGHT_PRIORITY` from 2026-10-26), a DPS in one. DPS tether lasers, their holders from the adds' tethers and their seats from the simulator (`tether_lasers`, `tether_seats`): unstretched, through another DPS (`tether_cross`: whoever's seat clears it by more), clipping a support (`tether_clip`). The rest by the plan's roles (2026-10-28, approved by the user; `scratch/review/p3_*.py`): the + and X (not stepping out of their own; one landing over 3 y from its spot, the north platform's outer corner or the south wall's middle, is its owner's whoever its arms hit: correct drops land within 1.6 y, `P3_CROSS_OFF`). White Flame per add (`p3_white_flame`): the + and X supports bait the add on their own platform's edge, of the matching DPS pair the straight tether the add in its own column and the crossed one the add across (16 of 16 clean baits); which add fired each laser comes from `p3_split` (each add fires two; a split within 2 y of the best, `P3_WF_TIE`, is undecided, low); an add's laser through anyone else is its missing baiter's, or a dead baiter's death's, else theirs for standing in its line. The bright towers: a tile whose DPS pair shares the Souls' colour sends its tower to the centre corner, the other stays mid-tile; the straight tether of the opposite pair soaks the centre tower and the crossed one the tile's. A centre tower has to reach 1 y past the arena centre to be humanly soaked from the other platform (a tower reaches 3 y, game data; a player is a point; the user's ruling: under 0.5 y it is out of reach and its dropper's, between undecided, `P3_ACROSS`; every soak from the other platform was of a tower within 2.0 y of the centre). An unsoaked tower is its soaker's by seat, or chained to them when dead, even where someone with the wrong Tilt stepped in (it explodes all the same). Falling with a destroyed tile (`Sample`) is the victim's. |
+| Paradeigma III | Support towers (Electrify): a support not in their platform's tower, two in one (which of them belongs elsewhere by `BRIGHT_PRIORITY` from 2026-10-26), a DPS in one. DPS tether lasers, their holders from the adds' tethers and their seats from the simulator (`tether_lasers`, `tether_seats`): unstretched, through another DPS (`tether_cross`: whoever's seat clears it by more), clipping a support (`tether_clip`). Only 28 pulls were played under the strategy, all on one raid day, too few to fit spots as for the other mechanics, so the rest go by the plan's roles (2026-10-28, approved by the user; `scratch/review/p3_*.py`): the + and X (not stepping out of their own; one landing over 3 y from its spot, the north platform's outer corner or the south wall's middle, is its owner's whoever its arms hit: correct drops land within 1.6 y, `P3_CROSS_OFF`). White Flame per add (`p3_white_flame`): the + and X supports bait the add on their own platform's edge, of the matching DPS pair the straight tether the add in its own column and the crossed one the add across (16 of 16 clean baits); which add fired each laser comes from `p3_split` (each add fires two; a split within 2 y of the best, `P3_WF_TIE`, is undecided, low); an add's laser through anyone else is its missing baiter's, or a dead baiter's death's, else theirs for standing in its line. The bright towers: a tile whose DPS pair shares the Souls' colour sends its tower to the centre corner, the other stays mid-tile; the straight tether of the opposite pair soaks the centre tower and the crossed one the tile's. A centre tower has to reach 1 y past the arena centre to be humanly soaked from the other platform (a tower reaches 3 y, game data; a player is a point; the user's ruling: under 0.5 y it is out of reach and its dropper's, between undecided, `P3_ACROSS`; every soak from the other platform was of a tower within 2.0 y of the centre). An unsoaked tower is its soaker's by seat, or chained to them when dead, even where someone with the wrong Tilt stepped in (it explodes all the same). Falling with a destroyed tile (`Sample`) is the victim's. |
 | Palladion | Not blamed yet (see the rule book). |
 | Later mechanics | Generic rules only: standing in an avoidable AoE is the victim's mistake. |
 | Any time | Athena's first auto-attack, in the first 15 s, on a non-tank: that player pulled her early (medium). Max HP under half the other non-tanks' median: broken gear (medium). A death with no hit mid-pull that is not a jump: fell off the arena (low). A death to a raidwide (`RAIDWIDES`: On the Soul, Ultima Blade) no rule explains, before the wipe is called: everyone alive, low, and the dead passed to whoever killed them (the user's rule, 2026-10-28). These count on days before a strategy too. |
@@ -469,7 +494,10 @@ the earliest fault that hit the victim in the 4.5 s before. A death one step (`A
 everyone left alive (`WIPE_HITS`: Electrify, Unmitigated Explosion), such as a tether laser just before Electrify, is two
 failures at once, the faults about both hits as one cause (the user's rule, 2026-10-28). The site tells such a cause as
 "N failures at once", each failure in the fold, and each culprit's mistake is counted as their own failure (`by_culprit`). A death within `STUNG_S` (1 s) of an avoidable hit on the same
-player is their own, whatever else made it lethal. A later death from the same player's earlier mistake is fallout of it,
+player is their own, whatever else made it lethal. The 1 s comes from the gap histogram: across the caches these gaps
+run 0-1.0 s, and a mechanic's next step comes 1.3 s or later. The rule does not apply when a rule already blames the
+victim alone for the hit that killed them, such as their own wrong laser: that death stays a mistake of its own, next to
+the avoidable hit. A later death from the same player's earlier mistake is fallout of it,
 counted once. When a mechanic fails because the player who should have done it was already dead (an unsoaked tower, a
 bait that found someone else, a share a sharer short), the blame passes to whoever caused that death; the site shows the
 chain as a tree (`trace`), the immediate cause first and the earlier deaths folded under it. A player killed by a hit
@@ -523,7 +551,8 @@ verdicts are as reliable as rule-based high ones, and low ones score well becaus
 culprit, so low's weight worked as a share of blame between candidates rather than a discount for doubt: hence the shares
 above, and no discount. The errors found
 were concentrated in the fallbacks; the first five were fixed the same day (approved by the user; the figures are from
-before the fixes):
+before the fixes). The rules were then fixed against these very verdicts, so measuring again needs a fresh draw; this
+one was `scratch/accuracy/sample.py --draw 25 1028`.
 
 - Paradeigma I without the replay (`wf_closer`): a baiter at their seat is blamed (high) when someone out of place stood as
   close to the add, within half a yalm, or ran past it (3 of 175).
@@ -541,15 +570,11 @@ before the fixes):
 Several undecided towers had landed 12-18 y off their spot while their soaker waited at or near it; the ruling makes
 those both players', where a stricter reading would blame the dropper alone.
 
-**Testing a change.** `python tests/run.py blame` checks the classifier against 97 pulls checked by hand: every
-incident's expected culprits and each pull's wipe (`tests/blame.py`; the cases, in `tests/blame_cases.json`, name players,
-so they are git-ignored like `site/data.json`, and the suite needs the caches). It fails when a hand-checked verdict
-changes; verdicts the classifier is known to get wrong are recorded with the right answer (`python tests/blame.py run
---known` lists them, and a fix shows as FIXED). The suite's pulls were used to fix the rules, so its passing is no measure
-of accuracy (see above). `python tools/scorecard/blame_diff.py` then prints every attribution that changed over all cached
-pulls between the working tree and a git revision (`--rev`, default HEAD) or saved copies (`--old-dir`), with totals of
-counted mistakes by mechanic, cause and confidence and of wipes by what lost them. `python tests/blame.py show CODE FIGHT`
-lays a pull out for checking by hand, and `add` appends one to the cases (`--own-day` to judge it on its raid day).
+**Testing a change.** `python tests/run.py blame` checks the classifier against the hand-checked pulls in the
+git-ignored `tests/blame_cases.json`, and `python tools/scorecard/blame_diff.py` prints every attribution a change moved
+over all cached pulls. The suite's pulls were used to fix the rules, so its passing is no measure of accuracy (see
+above). The workflow, the case fields and the check that every rule has a guarding case:
+[tests/README.md](../../tests/README.md#blame-suite-the-scorecards-mistake-classifier).
 
 The classifier assumes the group plays the strategy in the briefs: the line-up for Paradeigma I rather than tank
 invulnerabilities, the quadrant sweep, and the Paradeigma III placements. A group that plays a mechanic differently will
@@ -563,12 +588,15 @@ changing it. An entry is a rule function, `GENERIC` (only the generic rules; als
 blamed") or `AVOIDABLE_ONLY` (for the days before a strategy: only standing in an avoidable hit, and a death within
 `STUNG_S` of one). Fallout of an earlier mistake keeps its blame, and a collapse in a mechanic not blamed decides the wipe
 with no culprit rather than passing it to an unrelated earlier mistake. The suite judges its pulls from before a strategy
-by the strategies' rules all the same (`rules_day`, 2026-10-25), unless a case says `own_day`.
+by the strategies' rules all the same (`rules_day`, 2026-10-25), unless a case says `own_day`. The site draws each dated
+entry on its raid-day charts as a dashed vertical line between the raid days around it, with a short note ("Para I/II,
+Glaukopis strategy"; "changed" when a mechanic's rules change rather than start): `strategy_dates()`, passed on as
+`strategies` in the site data.
 
 | Mechanic | Entries |
 |---|---|
 | Paradeigma I, Paradeigma II, Glaukopis (both) | `AVOIDABLE_ONLY` until the group's strategies took effect on 2026-09-29 (Trinity of Souls and Ray of Light still blamed); their rules from then (the raid day of 2026-09-23 is before it). |
-| Superchain I, Dialogos | `AVOIDABLE_ONLY` until the group's strategy was introduced on 2026-10-06; its rules from then (the raid days of 2026-09-23, 09-30 and 10-04 are before it). |
+| Superchain I, Dialogos | `AVOIDABLE_ONLY` until the group's strategy was introduced on 2026-10-06; its rules from then (the raid days of 2026-09-23, 09-30 and 10-04 are before it; 10-04 had only two groups). |
 | Paradeigma III | `AVOIDABLE_ONLY` until the original strategy arrived on 2026-10-25. From then, when two bright Souls soak one middle tower, the day's rule says which of them belongs on the other platform, and only they are blamed: on 2026-10-25 by light party (LP1 the northern middle platform, LP2 the southern; both in one, the healer keeps theirs and the tank takes the other: `bright_seat_lp`), from 2026-10-26 by the priority H1 > T1 > T2 > H2, east to west. The seats come from the light parties learned in Paradeigma I (light party 1 is T1, H1, M1, R1). |
 | Palladion | `NOT_YET`. To start blaming it, add `("YYYY-MM-DD", GENERIC)` or a rule. |
 

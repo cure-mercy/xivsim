@@ -1,7 +1,9 @@
 # Rotation optimizer
 
 Searches for the highest-potency rotation of a job over P12S phase 1 (level 90), from the pull to the kill, against
-the fight's fixed timeline: when Athena can't be hit, and where our groups' strategy makes the player run.
+the fight's fixed timeline: when Athena can't be hit, and where our groups' strategy makes the player run. Phase 2
+(Pallas Athena) is a later effort. The target is the job's own potency: raid buffs are opt-in (`--party`), since party
+compositions vary.
 
 ```
 python tools/rotation/solve.py                                # Black Mage, R1, 2.32 s GCD, no raid buffs, 0:00 to the median kill (449 s)
@@ -15,7 +17,7 @@ python tools/rotation/calibrate.py [--job rpr] [--ours]       # replay the clear
 python tools/rotation/tune.py --job rpr                       # pick a job's heuristic settings
 python tools/rotation/solve.py --job nin --no-restarts        # polish without restarting the search along the rotation (faster)
 python tools/rotation/montecarlo.py --job dnc [--replan 20]   # the rotation under drawn procs, followed or re-planned
-python tools/rotation/patchnotes.py Reaper                    # the job's PvE changes in the official patch notes
+python tools/rotation/patchnotes.py Reaper [--since 7.2] [--grep Gibbet]   # the job's PvE changes in the official patch notes
 python tools/rotation/dps.py [--job rpr]                      # our players: ceiling in DPS next to their scorecard rDPS
 python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceilings and rotations for the scorecard site
 python tools/rotation/dps.py --job drg --site --offline       # ...from the scorecard's cached events, when FFLogs is down
@@ -40,7 +42,8 @@ python tools/rotation/dps.py --job nin --site --restarts      # ...with polish's
 
 Potency without raid buffs, over 0:00-449 s, as each job's section last recorded it. \* with sure critical (direct)
 hits at their expected worth, which is what the search ranks by (the melee jobs' second slot and standing still:
-2026-10-26, with restarts).
+2026-10-26, with restarts). The runs behind the table and the sections' costs log to
+`.cache/cost_runs/<job>_slot<R1|R2|M1|M2>.log` and `<job>_still.log` (git-ignored).
 
 | Option | Meaning |
 |---|---|
@@ -70,12 +73,24 @@ Dancer's sure critical direct hits).
 
 Each `jobs/<job>.py` starts from the official job guide and the patch notes since 7.0 (`patchnotes.py`). Both show
 level-100 values, and most jobs have a trait between 91 and 100 that raises their potencies, so the level-90 values
-are measured from logs: per player and action, the plain-hit cluster (no crit, no direct hit, own and others' damage
-buffs divided out), scaled to a reference action that no trait or patch touches; FFLogs' `bonusPercent` (a hit's share
-of potency from its combo or positional) confirms each split. Two sources: the full FFLogs logs (`logs.py`, cached in
-`.cache/`: crit flags, multipliers, buffs on each hit, positions) and the scorecard's acts caches
-(`tools/scorecard/.cache/acts_*`: every pull of ours and the benchmark kills, pet hits, no crit flags). The measuring
+are measured from logs: per player and action, the plain-hit cluster (no crit, no direct hit, own damage buffs divided
+out, others' divided out or, where a log can't, hits under others' raid buffs left out, `acts.buff_uses`; the median
+of the hits within 13% of the lowest tenth), scaled to a reference action that no trait or patch touches; FFLogs'
+`bonusPercent` (a hit's share of potency from its combo or positional) confirms each split. Two sources: the full
+FFLogs logs (`logs.py`, cached in `.cache/`: crit flags, multipliers, buffs on each hit, positions, MP, but only the
+player's own hits, no pets) and the scorecard's acts caches (`tools/scorecard/.cache/acts_*` and
+`tools/scorecard/.cache/benchmark/acts_*`, format in `tools/scorecard/acts.py`: every pull of ours and the benchmark
+kills, every player's casts, begun casts, hits with
+`bonusPercent`, pet hits under their owner and self-applied statuses; no crit or direct-hit flags, multipliers, others'
+buffs on a hit, positions or MP). A log built from the acts caches (`logs.from_acts`, for `calibrate.replay` or
+`dps.py --offline`) stays in memory: written to `.cache/`, `player_log` would take it for a full log. The measuring
 scripts live in the repo's git-ignored `scratch/<job>/`.
+
+7.0's notes list no action changes (they point to the job guide), so the notes are deltas on the 7.0 kit; their index
+gives no release dates. Each job's `LOGS_SINCE` is the first day of logs on its current level-90 kit, and only clears
+from then are used by `calibrate.py` (`--since` overrides it), `solve.py --compare` and `dps.py` (`CONVERT_SINCE`
+where it differs). Patch dates: 7.0 2024-07-02, 7.05 2024-08-06, 7.1 2024-11-12, 7.3 2025-08-05, 7.5 2026-04-28;
+Black Mage takes 7.2 from 2025-04-01, Monk and Reaper start at 2025-01-01.
 
 `calibrate.py` then replays every logged cast through the model at its logged time, over the whole pull up to the
 player's first death (`report_<code>.json` deaths for our pulls): every cast should be legal, cast times should match
@@ -90,7 +105,12 @@ Viper's Honed and Venom statuses: they then run 0.5-1.6 s past their tooltip in 
 raid buffs, Brotherhood, Lucid Dreaming: on 0.53-0.76 s after the cast, then their exact length); either way a status
 ends about cast + landing + tooltip, and each model times it so (`scratch/timing/status_len.py` and `granted_end.py`
 measure a job's). Since a damage buff never makes a cast illegal, calibrate also checks each job's `STATUSES` (its
-view of the player's own statuses) against the log just before every cast, both ways.
+view of the player's own statuses) against the log just before every cast, both ways. Every job defines `STATUSES`,
+and a new job should pass the check clean but for the noise its section names. The usual miss is a buff timed from its
+cast instead of its landing, and a resource gain that fits the logs only when larger than the guide's can be covering
+for one: Samurai's Gekko and Kasha fitted 15 Kenki until Tengentsu (a 4.0 s hit window against its ~4.6 s status) and
+Meikyo Shisui (20 s against ~20.8 s) were timed from their landing; since, the guide's 10 replays every pull with no
+cast short of Kenki. So check a job's status timings before fitting a larger gain.
 
 ## Black Mage
 
@@ -131,7 +151,8 @@ enhanced), Lemure's Slice 240, Unveiled 400, Harvest Moon 600, Gluttony 560 (7.5
 
 Every cast in the 15 benchmark logs and our 79 clean pulls replays legal. The search needs width 3,000 (at 1,000 the
 settings spread 3%); its ranking gives no credit for running banked toward a run (`move_credit`), which made it burn
-Enshroud early. Over the phase 132,687 in M1 and M2 (2026-10-25); standing still 133,165 (-0.4%): five True Norths for
+Enshroud early. Under raid buffs (`--party`) the settings still spread 3.4% at that width (2026-10-22), so a buffed
+Reaper result needs the whole `HEURISTICS` portfolio. Over the phase 132,687 in M1 and M2 (2026-10-25); standing still 133,165 (-0.4%): five True Norths for
 the fixed spots, ranged GCDs in the stretches out of reach. Over 0:00-380 s standing still the clears' own rotations replay at
 79-93% of the best (they hold Soul Slice and Enshroud for raid buffs, lose uptime, some die).
 
@@ -175,9 +196,12 @@ Radiant Finale's damage status is 2964.
   Ballad, 4% haste under the Paeon plus Army's Muse after it), also while Athena is away. The clock is
   xivintheshell's (songTick); in our logs Army's
   Paeon stacks are gained on it (a tick in 86% of the GCD pairs that gained one, 62-69% of those that didn't; the song
-  status's own refresh clock shows no such contrast), and a Pitch Perfect went off with no DoT up. In every P12S kill
-  with a Bard (FFLogs, 8 pulls) the first Apex Arrow after Palladion was at 80+ Soul Voice, which only ticks during it
-  can pay (`scratch/brd`). Repertoire isn't logged, so the ~73 illegal casts left in
+  status's own refresh clock shows no such contrast), and a Pitch Perfect went off with no DoT up. (A histogram of
+  Pitch Perfects or Bloodletters by their phase on a 3 s clock is no evidence: Sidewinder, which no song touches, shows
+  the same shape, six 2.5 s GCDs making 15 s.) In every P12S kill with a Bard (FFLogs, 9 kills in 10 logs, one pull
+  uploaded twice; three players at levels 90 and 100) the first Apex Arrow after Palladion was at 80+ Soul Voice;
+  targetable ticks and Empyreal Arrow could have paid only 45-75 by then, so the song ticks count while she is away
+  (`scratch/brd`). Repertoire isn't logged, so the ~73 illegal casts left in
   replays (Bloodletters under the Ballad, Blast Arrows under 80 Soul Voice) are that expectation; on the server tick
   76, or 48 with calibrate.py fitting the tick's phase to each log (a free parameter the song clock doesn't need).
 - Hawk's Eye (35% from Burst Shot, the bites and Iron Jaws) counts at its expected 0.35 x 60 / 1.35 per GCD; the search
@@ -190,6 +214,9 @@ Radiant Finale's damage status is 2964.
 Over the phase 84,780 (2026-10-25; 84,504 without the downtime ticks, 84,651 on the server tick: within the
 search's noise of each other): Raging Strikes and Battle Voice on the Minuet, Ballad and Paeon in either order,
 Blast Arrow after every Apex Arrow at 80+; Radiant Finale goes anywhere, since its worth to the party isn't counted.
+These are near-ties at personal potency: the searches at 2.45, 2.49 and 2.50 s each pick a different song order and
+Radiant Finale spot, so the site's Bard notes (`ROT_CHALLENGES` in `tools/scorecard/site/app.js`) say so and put
+Radiant Finale with Battle Voice in a party; no single GCD's order is presented as the Bard rotation.
 
 ## Dragoon
 
@@ -211,7 +238,7 @@ Every cast in our pulls replays legal, and in the clears all but second tincture
 - Life Surge and Battle Litany count at their expected worth for `--crit`; `dps.py` leaves Life Surge hits out of a
   player's crit gain (`sure_crits`).
 - The DoT counts when applied, so an early refresh looks good for a while and a narrow beam dropped the Vorpal chain
-  for it: Disembowel is offered only when the DoT would be nearly out by its Chaotic Spring, or Power Surge is low.
+  for it (-1.3% over the phase): Disembowel is offered only when the DoT would be nearly out by its Chaotic Spring, or Power Surge is low.
 - Out of reach, Elusive Jump buys an Enhanced Piercing Talon (350).
 
 Over the phase 127,315 in M1 and M2 (2026-10-25); standing still 127,909: six True Norths, three Piercing Talons.
@@ -266,7 +293,8 @@ Auto-attacks 80 potency.
 - Recasts: Vicewinder and the Coils 3.0 s, Uncoiled Fury 3.5 s, Reawaken 2.2 s, the Generations 2.0 s, the rest 2.5 s,
   all by skill speed and Swiftscaled's 15% (the GCD granting it isn't hasted); Vicewinder's 40 s and Serpent's Ire's
   120 s are flat;
-- statuses come after their hit; Hunter's Instinct and Swiftscaled refresh to 40 s, so both lapse over Palladion;
+- statuses come after their hit (Honed Steel ends 61.27 s after Reaving Fangs: its 1.29 s hit delay plus the 60 s
+  tooltip); Hunter's Instinct and Swiftscaled refresh to 40 s, so both lapse over Palladion;
 - the Coils, Uncoiled Fury and the Generations don't break the dual-wield combo; Death Rattle and the bites are lost
   with the next weaponskill; Reawaken grants four Tributes at 90; Rattling Coils start at none.
 - the Coils follow Vicewinder as the next weaponskills: any other but Uncoiled Fury or Writhing Snap ends the twinblade
@@ -298,13 +326,15 @@ the full logs. Way of the Samurai III (94) raises most potencies in the guide; a
 
 From the logs:
 
-- Gekko and Kasha give the guide's 10 Kenki (replays fell short only through the two status timings below);
+- Gekko and Kasha give the guide's 10 Kenki (positionals give none; replays fell short only through the two status
+  timings below);
 - statuses logged at the cast run ~0.6 s past their tooltip: True North 10.5 s, Tengentsu 4.65 (its hits come up to
   4.60 s after the cast), Meikyo Shisui 20.7 (one expired at 20.76, spent up to 20.62), Ogi Namikiri Ready and
   Tsubame-gaeshi 30.6; Fugetsu and Fuka, applied with the hit, last their 40;
 - Iaijutsu and Ogi Namikiri cast in 1.3 s flat; Fuka shortens the recast (2.40 -> 2.09 s) and autos, not the cast;
   Iaijutsu, Kaeshis, Ogi and Enpi don't break the combo; Kaeshis give no Meditation;
-- every opener has a pre-pull Meikyo Shisui ~13 s ahead (a replay reads it from the log);
+- every opener has a pre-pull Meikyo Shisui ~13 s ahead, often a pre-pull True North too (a replay reads both from
+  their statuses coming off);
 - Tengentsu's 10 Kenki needs a hit while it is up: 18 fight hits (`HITS`) where it paid off; a replay takes the log's own;
 - the clears Meditate at Palladion's end until Athena returns, a Meditation stack per 3 s tick (its 10 Kenki a tick is
   the in-game value, not testable in logs).
@@ -312,7 +342,9 @@ From the logs:
 Every cast in our pulls replays legal, and in the clears all but a second tincture.
 
 - Sure crits (Midare, Kaeshis, Ogi) are weighed by a sure crit's gain over an average hit (`SURE_W`, x1.60 at 25%
-  crit); the printed potency stays plain, `dps.py` converts them at each player's own (`AUTO_CRIT`).
+  crit); the printed potency stays plain, `dps.py` converts them at each player's own (`AUTO_CRIT`). The weight isn't
+  named `CRIT`: for a job with `CRIT`, `dps.py` searches each player at their own crit rate, which only Monk's chakra
+  needs.
 - While Athena is away the search takes one step: Tengentsu on the hits it catches, then a 0-5 tick Meditate ending
   at her return (separate steps made short Meditates look better under the rate).
 - Held Tsubame-gaeshi Ready is valued at its Kaeshi less a 2.09 s GCD (valued whole, the beam held it 16 s and
@@ -343,7 +375,8 @@ Every cast replays legal (a replay has no movement, so the 8 early GCDs all foll
 - Hammers count plain in the printed potency and are weighed at `SURE_W` (x1.62), converted by `dps.py` per player.
 - A canvas or the Moogle Portrait counts only if what renders it is back before the window ends, and a cooldown sitting
   at full charges is charged twice its share a second (`CAPPED`); each fixed a 0.2-1.5% loss.
-- Smudge dashes 15 y along an open run (job-local, banking the running); it ties with no Smudge.
+- Smudge dashes 15 y along an open run, the way the player faces; `smudge_gain` banks the running it saves into the
+  state's `acc` from inside the job, with no change to `engine.py`. It ties with no Smudge.
 
 Over the phase 93,782 in R1 (103,194 weighted) and 93,146 in R2; standing still 94,243, about half the gap
 Inspiration lost in Superchain I. Living Muse renders 13 times; Palladion repaints the canvases. Settings from
@@ -361,6 +394,8 @@ auto-attacks 60 every 2.67 s.
   a battery point 6.4-12.6 s after the deploy, Pile Bunker 6.15 at 14.7 s, Crowned Collider 7.0 at 17.4 s, so ~24
   potency a battery point; deploys are at least 21.8 s apart.
 - Wildfire detonates 10.6 s after its cast for 240 a weaponskill landed under it (six at most), logged as a tick.
+  Whether it can direct hit is untested in game; the model, and `tools/gear/ceiling.py`'s luck spread, give it
+  neither crit nor direct hit.
 - The tools recast on skill speed (Drill 19.3 s at 2.41 s); Blazing Shot's 1.5 s doesn't, and takes 15 s off Gauss
   Round and Ricochet; nothing breaks the combo; Barrel Stabilizer gives only Hypercharged at 90.
 - 37 of 45 logs open with a pre-pull Reassemble whose cast isn't logged: a replay reads it from the status falling off,
@@ -368,7 +403,9 @@ auto-attacks 60 every 2.67 s.
   `SURE_W` (x1.62) and converted per player (`AUTO_CRIT` names the tools).
 
 Every cast in the clears since 7.3 replays legal, and in our pulls all but four Drills of one player (a GCD that reads
-2.50 s to the hundredth). The queen and Wildfire are booked when deployed or cast. A battery point is valued at two
+2.50 s to the hundredth). The queen and Wildfire are booked when deployed or cast. Whether the queen can be deployed
+while Athena is away (her first hit comes 6.4 s later) isn't in the logs: the model says no, which scores the same. A
+battery point is valued at two
 thirds of what the queen makes of it: at the full 24, any VALUE scale above 1 held battery (-3.5%).
 
 Every action is instant and reaches 25 y, so R1, R2 and standing still play the same. Over the phase 107,858 (111,688
@@ -431,7 +468,9 @@ values x1.0 tie, x0.5 is 0.4% lower); the sweep holds within 0.5% from width 1,0
 clears' Ninjas' GCDs since 7.3 (`CONVERT_SINCE`), converted to DPS at those four players (damage per potency: three
 within 2%, one 13% lower, likely gear: the benchmark checks only the logging player's); no player page links there.
 `logs.clears` divides an Echo kill's damage by 1.2: one of the four played with The Echo, which had shown as a 40% spread
-and put the site's ceiling band for Ninja far above every other job's.
+and put the site's ceiling band for Ninja far above every other job's. `rotations.json` marks such a job
+`converted_from: "clears"` with its `converted_since`, which the site's pages quote. If one of our players takes up
+Ninja, `calibrate.py --job nin --ours` and `dps.py --job nin --site` make it a job of ours like the others.
 
 ## Summoner
 
@@ -469,7 +508,8 @@ Further Ruin, slower Rites or Slipstream) shows each as illegal or early casts (
   needs melee reach (`FAR`).
 - Held values (each resource's conversion less Ruin III's rate over its GCDs) tie the filler exactly, so at their full
   scale the beam drifted holding Ruby stacks and Arcanum until the next demi-summon wiped them (-5.5%); `tune.py` puts
-  the scale at 0.10-0.15. The search opens on a pre-cast Ruin III, as every clear does.
+  the scale at 0.10-0.15. The search opens on a pre-cast Ruin III, as every clear does; this is set by policy, since
+  the rank's charge for time made an instant Summon Bahamut at the pull look just as good.
 
 Our runs cost a Summoner next to nothing: 94,559 potency over the phase in R1 and 94,556 in R2, against 94,602
 standing still (Ruin III slidecasts, and all but Ruby Rite and Slipstream is instant); keeping Crimson Cyclone out of the
@@ -478,7 +518,8 @@ Light with each Summon Bahamut, Swiftcast on Slipstream, a Ruby Rite or Ruin III
 spent but Garuda's before Palladion (the 27 s after the 4:00 trance fit Titan and Ifrit). The primals' order changes
 from cycle to cycle, a near-tie. Settings from `tune.py`; a search takes ~20 s and polish adds 0.2%. The clears'
 rotations, replayed standing still over 0:00-370 s, deal 95-98% of the best (one pull 89%); our pulls over 0:00-130 s,
-86-87%.
+86-87%. FFLogs' full logs hold the Summoner's own hits only, so `dps.py`'s 'logged' column misses the pets (~20%); the
+ceiling and the conversion count them.
 
 ## Dancer
 
@@ -526,7 +567,8 @@ Standard Step every ~32 s (13 finishes), seven Flourishes, 29 Saber Dances. Devi
 rather than after its finish, a near-tie for the Dancer's own damage (what it gives the partner isn't counted).
 Settings from `tune.py` (scales 0.25-0.35 tie, as Summoner's); a search takes ~40 s. The clears' rotations, replayed
 standing still over 0:00-370 s, deal 93-99% of the best (one pull 83%; two lucky ones just over 100%, as a replay takes
-the log's procs).
+the log's procs). Our Dancers' logged 0:00-2:00 sits at ~97% of the ceiling (the opener is scripted); the ceiling isn't
+under-searched: widths from 2,000 to 15,000 agree within 0.2%.
 
 ## The fight
 
@@ -540,17 +582,26 @@ the log's procs).
 - **Our plan**: Paradeigma I, II, III and Superchain Theory I follow our raidplan (Syncademy P12S P1), measured from
   Athena's centre. Paradeigma I depends on the slot; the others on a random assignment, where the default is the
   variant with the most running. Everything else takes its running from the benchmark clears' Black Mages (median path
-  per window), and from Palladion on that is provisional.
+  per window), and from Palladion on that is provisional. Our own pulls never set or check the runs (our groups prog
+  blind); the benchmark clears' are used freely.
 - **Melee**: melee actions need the player within ~14 y of Athena's centre (the clears' Reapers use them up to 13.5 y).
   Every spot of our plan is within that; where the clears' Reapers went longer than a GCD without a melee action, a
   melee is out of reach that long somewhere in the window (`away`: 13 s in five windows, all from 173 s on), with no
   melee actions or auto-attacks. While our plan fixes the spot (Paradeigma I-III, Superchain I: 77 s, `pinned`),
-  positionals need True North, and the search decides where to spend it. Runs only block hard casts.
+  positionals need True North, and the search decides where to spend it. Runs only block hard casts. The away windows
+  come from `p12s._melee`; every melee job (M1 and M2 alike) shares this model through `jobs/_common.py` (`reach`,
+  `flank_rear`, `away_soon`).
 - **Far spots**: a ranged player is within melee reach everywhere but Paradeigma I's wall end and Superchain I's
-  Heavensflame corner (`FAR`); a ranged job with melee actions is out of reach around those snapshots.
+  Heavensflame corner (`FAR`); a ranged job with melee actions is out of reach around those snapshots. A job opts in
+  with `FAR = True` (Red Mage, Summoner).
 - **Dashes**: where a run of our plan goes straight to or from Athena (`DASH`: Paradeigma I and II), a dash along that
   stretch saves its running (`engine.dash`): a gap closer down to her hitbox edge (`ATHENA_EDGE`, 10.5 y), a backstep
-  its length.
+  its length. Red Mage (Corps-a-corps, Displacement) and Summoner (Crimson Cyclone) go through `engine.dash`;
+  Pictomancer's Smudge banks its running job-locally. Other gap closers don't move the player: Reaper's Hell's Ingress
+  and Dragoon's Elusive Jump are only valued for the enhanced ranged GCD they grant, and Ninja's Forked Raiju is left
+  to replays. `pinned` is built for melee only, so a ranged job's gap closer finds the plan's fixed spots itself:
+  Summoner's Crimson Cyclone rebuilds them from the move windows labelled "; plan" (`smn.plan_spans`, as
+  `p12s.plan_spans`). Any other ranged gap closer needs the same, or it pulls the player off a spot.
 
 `python tools/rotation/p12s.py` lists every window with its source and compares our plan's distances with the clears'
 (within about ±30%: ours runs more in Paradeigma I-III, less in Superchain I).
@@ -559,12 +610,33 @@ the log's procs).
 
 A beam search, one GCD per step with the oGCDs woven before it. States compete with those at the same time
 (`engine.sweep`: 0.5 s layers, 0.25 s for Black Mage), ranked by damage so far plus what the resources they hold are
-worth, minus a rate per second of time (and, for Black Mage, minus the running ahead its instants won't cover). Over a
-whole phase the result moves by ~1% with these guesses, so `engine.search` runs several settings in parallel (the job's
-`HEURISTICS`, from `tune.py`) and keeps the best. `polish.py` then improves it by local search over the whole fight
-(another legal choice in one step's place, neighbouring GCDs swapped, an oGCD moved, a step dropped), on any job
-through its `expand`; it found 0-0.7% more. Differences between scenarios below ~0.4% are noise. `--layers gcd` (the
-beam by GCD count) and `--no-polish` bring back the earlier search.
+worth, minus a rate per second of time (and, for Black Mage, minus the running ahead its instants won't cover). From
+Viper on, each job values a held resource at what it converts into less `RATE` times the GCD time spending it takes
+(inflated values made the beam hoard Viper's Coils), and fades held values to nothing over the window's last
+`END_TAPER` seconds (15; 20 for Dancer and Machinist): without it a state that never spent its last 50 Offerings
+ranked well to the end. Cooldowns sitting at full charges are charged what a second of their recharge is worth
+(`CAPPED`, from the Pictomancer model, which charges twice its share; `jobs/_common.py`).
+
+Over a whole phase the result moves by ~1% with these guesses, so `engine.search` runs several settings in parallel
+(the job's `HEURISTICS`, from `tune.py`; a `multiprocessing.Pool`, one process per setting up to the core count) and
+keeps the best. Under Windows' spawn start method the workers re-import `__main__` and the job module afresh: a
+script that calls `engine.search` must be a file with an `if __name__ == "__main__":` guard (run from stdin or
+`python -c`, the workers crash and respawn without end and the run looks hung), and a job model edited while its
+searches run plays by the new rules in every pool started after the edit.
+
+`polish.py` then improves the best by local search over the whole fight (another legal choice in one step's place,
+neighbouring GCDs swapped, an oGCD moved, a step dropped), on any job through its `expand`; it found 0-0.7% more.
+Polish replays a rotation by choosing each step's child by its action names, so children that differ only in timing
+(waits while Athena is away) must log different names, as Ninja's `(boss away, until x s before)` do; otherwise the
+replay rebuilds the wrong child and polish keeps the beam's rotation ("replays at X, not Y; kept as it was").
+`--layers gcd` (the beam by GCD count) and `--no-polish` bring back the earlier search.
+
+Differences between scenarios below ~0.4% are noise. The search is deterministic (the same rotation, polish included,
+under any `PYTHONHASHSEED`) but chaotic in its inputs: a small change to a model or a setting moves the result by
+about that much, so scenarios are compared by the portfolio's best, not by one setting's beam. `engine.sweep` moves a
+child that gains no time on to the next layer; the beam by GCD count doesn't, so there a wait child of zero length
+keeps its rank forever and the search never ends. A search running far longer than usual is such a hang, not
+slowness: one worker's CPU time runs far ahead of the others'; run that setting alone to find the state.
 
 Restarts (2026-10-25; solve.py by default, `--no-restarts` skips them; dps.py with `--restarts`): when single edits find nothing, polish searches the rest of the fight afresh from
 the rotation's state every 15 s, at twice the job's width, and splices in what improves it. Over the whole phase in the
@@ -585,7 +657,9 @@ instead (Red Mage's Verfire / Verstone Ready, Bard's Repertoire and Hawk's Eye, 
 feathers and the party's Esprit, Monk's crits and party chakra). The party's Esprit is drawn as 10 or none on each
 member's GCD, on a fixed 2.5 s grid at the chance that gives the expected rate (`dnc.party_drawn`; the table below
 predates it; with it, a plan-following Dancer lost 2.21% on the current plan, 48 draws). `tools/gear/ceiling.py` uses the same replays
-(`montecarlo.draws`) for the site ceiling's proc luck. The site's whole-phase rotation, replayed
+(`montecarlo.draws`) for the site ceiling's proc luck. Draw modes leave a normal search identical, and a job that
+counts a new proc at its expectation needs a draw branch for it (`engine.drawn`), or `montecarlo.py` and the site's
+proc-luck band treat it as certain. The site's whole-phase rotation, replayed
 under drawn procs by a player who follows it (the planned step, else its oGCDs with another GCD in its place, a planned
 oGCD not up yet woven in the next four steps) and by one who re-plans 20 s ahead before every step:
 
@@ -619,6 +693,13 @@ scale continuously, exact at `SPEED` = GCD / 2.5. A job's own crit and direct-hi
 from its `CRIT_RATE` / `CRIT_DMG` / `DH_RATE` in `derive()`, which `engine.configure` reruns after `params` set them
 (the gear model passes each set's own: `tools/gear`).
 
+Speed: CPython 3.15 runs every search ~35% faster than 3.10, with identical rotations (`scratch/speed/`); PyPy 3.10
+was 15-25% faster on the long searches but slower on short ones (Dancer twice as slow) at 2-3x the memory, and wasn't
+adopted. cProfile overstates small functions: the gauge notes looked like 7% of a search, but formatting them lazily
+gained nothing and cost 15-30% more memory, so it was reverted; a candidate is checked with `timeit` and whole-sweep
+timings before anything is restructured for it. Cheaper rounding of the state keys would change which states dedupe,
+so it can't leave the results identical (see Checks).
+
 ## From potency to DPS
 
 `dps.py` converts per player, from their clean pulls (alive through 2:00) on the job:
@@ -642,7 +723,9 @@ their worst slot and variants (`p12s.worst_slot`), so it holds whichever they ar
 (Reaper's Arcane Circle) also gets credit for what it added to others: the site adds each pull's FFLogs
 totalRDPSGiven. `dps.py --job <job> --site` saves the ceilings (`.cache/ceilings.json`, git-ignored: it names players)
 and one rotation per GCD for the site's Rotations pages (`.cache/rotations.json`; `--gcds` adds GCDs): the whole-phase
-optimum, scored and shown until Palladion (`ROT_UNTIL`, 4:41), its runs placed in the longest stretches outside cast
+optimum, scored and shown until Palladion (`ROT_UNTIL`, 4:41; not a search for that window: a rotation that has to go
+on holds resources one ending there would spend, and as our progress moves on the site shows more of the same
+rotation, which players keep learning, rather than a new one), its runs placed in the longest stretches outside cast
 bars (`placed_runs`). A rotation's expected DPS is the median of our players' conversions (for a job none of them plays, the benchmark
 clears' players since the job's `CONVERT_SINCE`), each moved to its GCD first:
 the speed points a faster GCD takes come out of crit, direct hit or determination (`SPEED_PTS`, `STAT_PT`: ~0.40%
@@ -677,15 +760,73 @@ repository's `scratch/xits/`. Each refusal is settled from our logs or the guide
 win (Machinist's Drill recast shortens with skill speed, xivintheshell's is a fixed 20 s; Red Mage's Verthunder /
 Veraero III cost 300 MP, not its 400). The 2026-10-25 pass found the rules each job's section now states (Bard's song
 clock, Monk's forms after Perfect Balance, Viper's twinblade combo, Samurai's 10 Kenki, statuses timed from their
-landing).
+landing). Bard (after its song-clock and downtime fixes), Dancer, Ninja, Dragoon and Summoner replay clean. Two
+refusals are still unsettled: Samurai's Kaeshi: Namikiri after a combo weaponskill (the logs only show Higanbana
+between them) and Pictomancer's Striking Muse before combat starts (only possible solo). Rerun the replay after
+changing a job's rules.
 
 `calibrate.py`'s status check (each job's `STATUSES`, model against log just before every cast) catches what a legality
 replay can't: a damage buff that ends early or lands too soon. It found the status timings of the same pass (a status
 timed from the cast at its tooltip ran 0.5-0.8 s short, True North's 10.5 s in every melee job among them), three
 rules (Reaper's last reaping of an Enshroud grants no enhanced reaping, Monk's Form Shift takes the form, every
 Machinist weaponskill under Overheated takes a stack) and that Red Mage's Manafication was six GCD stacks before 7.5
-and a plain 30 s since. What it still shows is noted per job: pre-pull statuses a replay doesn't cast (Summoner's
+and a plain 30 s since (Red Mage's `LOGS_SINCE` reaches back to 7.05, so the older clears' Manafications show up as
+disagreements). What it still shows is noted per job: pre-pull statuses a replay doesn't cast (Summoner's
 Searing Light), Black Mages leaving their Ley Lines, Immortal Sacrifice coming with the party's hits.
+
+A refactor or speed-up must change no result: every job's score, step count and history hash stay identical
+(`scratch/speed/identity.py --save` / `--against`, all 13 jobs against a baseline of the old code;
+`scratch/review/snapshot.py`, one narrow sweep per job, `--diff`).
+
+## Adding a job
+
+A new job follows the method above, starting from the last job's measuring scripts (`scratch/<job>/`) and the full
+logs (`logs.clears(job)`, `logs.ours(job)`).
+
+- **Search hooks** in `jobs/<job>.py`: `State` (an `engine.SlotState` with `__slots__`, which generates its `copy`;
+  `initial`, `key` with the cooldowns through `engine.cd_key`, `log`, `history`), `expand`, `rank`, `final`, `VALUE`,
+  `RATE`, `MOVE_WEIGHT`, `HEURISTICS`, `WIDTH`, `SWEEP_WIDTH`; where they apply `CAPPED`, `END_TAPER`, `FAR`,
+  `MELEE`, `s.dashed` with `engine.dash`. A short GCD needs `WEAVE_SLACK` (a double weave in Monk's 1.94 s GCD clips
+  it by 0.01 s).
+- **Calibration and DPS hooks** (`calibrate.py`'s docstring has their contract): `LOG_NAME` (FFLogs' job name),
+  `LOGS_SINCE`, `OGCDS`, `REFERENCE`, `cast_time`, `at`, `status`, `force`, `label`, `cast_label`, `STATUSES`;
+  optional `cd_name`, `own_factor`, `prepare` / `unprepare` (what a replay reads from the log; `unprepare` must clear
+  it, or it leaks into `dps.upto`), `force_ogcd` (leaves multi-charge cooldowns recharging), `HASTE` / `HASTED` /
+  `GCD_BASE` / `HASTE_STATUSES` (`calibrate.gcd_of`), `AUTO_CRIT` with `s.critp` and `CRIT` (dps.py's sure crits),
+  `sure_crits(p)`, `CONVERT_SINCE`.
+- **Shared helpers** (`jobs/_common.py`): `wasted`, `cast_label`, `no_cast` (as `cast_time`), a melee's `reach`,
+  `out_of_reach`, `away_soon` and `flank_rear`, and `charges, use_cd, full_since, capped, ready, at =
+  cooldowns(__name__)` bound after `CDS` (and `recast_of`). A job writes its own only where it differs (Black Mage's
+  `at`, Red Mage's charges for Sprint).
+- **Tuning**: `SWEEP_WIDTH` is the width at which a sweep takes about as long as the beam at `WIDTH`; then
+  `HEURISTICS` from `tune.py --job <job>` (mostly the `VALUE` scale matters). A rank ends in `- RATE * s.t`.
+- **Registration**: `JOBS` in `jobs/__init__.py` (solve.py, dps.py and tune.py pick from it), `check.py` (`HARM`, the
+  job's cases and searches) and `calibrate.py`'s `--job` help. Every search worker imports every registered job, so a
+  job goes in only once `python -c "from jobs import <job>"` passes; until then `calibrate.py`, `engine.search` and
+  `polish.py` load it by name.
+- **On the site**: `dps.py --job <job> --site`, then the scorecard's `build_site.py --reanalyse`, and the job's notes
+  in `ROT_CHALLENGES` (`tools/scorecard/site/app.js`). A `--site` run replaces the job's rotations in
+  `rotations.json`, so extra GCDs are passed again with `--gcds` (a rotation with `players: 0` is an extra, e.g.
+  Summoner's 2.41 and 2.49, except in a job converted from the clears, Ninja, where every rotation shows 0). Runs for
+  different jobs may go in parallel: `rotations.json` is read only after the searches.
+
+Ranking lessons, each of which cost a job 1-5% before it was found:
+
+- held resources by the rules in The search (conversion less `RATE` times the GCD time, `END_TAPER`, `CAPPED`;
+  inflated values hoard), and a cooldown-gated resource counts only if its cooldown is back before the window ends;
+- a resource feeding delayed or pet damage is worth less than what it converts into (Machinist's battery);
+- held values priced at the filler's own rate tie it exactly, and the beam drifts holding them (Summoner);
+- an action that ties the filler, offered every step, floods the beam: offer it only where it matters (Monk's
+  Six-Sided Star, Viper's Uncoiled Fury);
+- a DoT counted when applied makes early refreshes look good: gate the refresh (Dragoon's Disembowel);
+- a multi-GCD action that pays only at its end must be one search step, or the states partway through lose to fillers
+  (Dancer's dances);
+- a zero-length wait child hangs the beam (see The search), and a state with no GCD landing before downtime needs a
+  wait child, or the beam (`--layers gcd`) dies at Palladion.
+
+Supports aren't modelled yet: `p12s.PLAN` is written for the DPS slots; a tank or healer needs its role's assignments
+from the raidplan's role slides, its own clears' runs, and room for healing and mitigation (the target stays personal
+potency).
 
 ## Files
 

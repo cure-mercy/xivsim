@@ -1,7 +1,9 @@
 # Gear model and best in slot
 
 Finds each DPS job's best gear, materia and food for P12S phase 1, together with the rotation optimizer
-(`tools/rotation`): a set is worth what the job's whole-phase rotation deals with it.
+(`tools/rotation`): a set is worth what the job's whole-phase rotation deals with it. It covers the 13 DPS jobs at
+level 90 in phase 1. Sets take food but no tincture, as the scorecard's rDPS leaves tinctures out. `bis.py` needs
+numpy, the only package any tool in the repository uses beyond the standard library.
 
 ```
 python tools/gear/fetch.py [--refresh]         # gear_db.json from xivgear.app's data API (downloads cached in .cache/)
@@ -30,6 +32,10 @@ never synced, so the level-90 665 weapons (savage, Criterion, Mandervillous) kee
 From data.xivgear.app: the DPS jobs' gear at item level 640-669 and 780 up, the Mandervillous weapons (665) and the
 newest Phantom weapons (Occultum, 795); the ItemLevel rows (stat values per item level) and BaseParams (each stat's
 share per slot and meld parameter) the caps come from; job stat multipliers; substat materia; food (HQ).
+
+The data API needs no key. `/Items?job=X` returns all of the job's items (~9 MB) and ignores item-level filters, so
+`fetch.py` keeps the bands itself (`BANDS`); `/ItemLevel`, `/BaseParams` and `/Materia` hold the rest.
+`api.xivgear.app/fulldata` answered HTTP 500 when tried (2026-10-23).
 
 ## The model (`gear.py`)
 
@@ -71,8 +77,9 @@ the potency over the grid (quadratic, as the search moves ~0.4% between runs, `t
 takes each tier's own) and interpolates the mix, finds each tier's set at its fitted mix, and searches the top three
 tiers again, and every grid tier whose own grid search came within 0.4% of them or above (`TIE`: a lucky grid point
 lifts the fit's peak, but it is a searched set and rotation: Monk's 1.94 s grid point beat the fit's best three by
-1.1%). The site's chart shows all three against the fit's peak, with the search's noise as a band around the fit. The
-grid covers the tiers that could still win (`span_of`): a set's multipliers times the most a faster GCD can add to the
+1.1%). A job's Gear page's "DPS by GCD tier" chart shows the fitted curve, the grid's one-round searches (hollow dots)
+and the tiers searched to the end, all against the fit's peak, with the search's noise (+-0.4%, `TIE`) as a band around
+the fit; "best" and the table compare against the best searched set. The grid covers the tiers that could still win (`span_of`): a set's multipliers times the most a faster GCD can add to the
 potency, the GCDs' ratio plus 2% (`SLACK`), at least the best set's. It stops once 0.05 s of it in a row stayed 1.5%
 under its best grid point (`STOP`, `STOP_SPAN`), each priced at its tier's set (a flat cut by the sets' multipliers
 alone stopped Black Mage at 2.31 s, while its 2.18-2.24 s rotations gain 8-9% potency over 2.38 s). Each search takes
@@ -86,6 +93,12 @@ the set's own:
   Devilment and Starfall, the sure-hit weights of Machinist, Pictomancer and Samurai.
 
 A tier's search repeats while its set's speed factor and rates move. Tiers closer than ~0.4% are ties.
+
+`bis.py` searches its own rotations rather than reusing `dps.py --site`'s: those save no whole-phase potency mix and
+run at the job's default rates. It caches them in `.cache/rot/<job>_<speed>_<rates>.json` (`_w120` for the 0:00-2:00
+window), keyed by speed factor and rates only, not by the job model: after a job model changes, move that job's files
+aside first, or the replay fails (`polish: can't replay the rotation at ...`). Black Mage's grid, every tier from
+2.50 s to 2.10 s without a stop, takes ~40 min.
 
 ## The site's ceilings (`ceiling.py`)
 
@@ -116,7 +129,7 @@ A tier's search repeats while its set's speed factor and rates move. Tiers close
   opens its chakra) is booked as a sure crit or a plain hit (`plainp`), so its crit luck and its chakra's go
   together. The band (`lo` / `hi`) is p16-p84 of the draws, each spread by its own crit and direct-hit SD: as many
   pulls as one SD either side, but lopsided like proc luck. Other jobs: ceiling ± spread. Draws cached in
-  `.cache/procs/` (delete after a job model changes).
+  `.cache/procs/` (delete after a job model changes; ~1.5 h for the four jobs at 400 draws).
 
 ## The site's sets (`sheets.py`)
 
@@ -154,6 +167,11 @@ relic is the synced Phantom Occultum. The site ceiling (`ceiling.py`) is in each
 | SAM | 2.50/2.17 | 2.49/2.16, 2.48/2.15 | Mandervillous Samurai Blade (crit/dh +det) | 2 synced (780, 780) | Caramel Popcorn | 14,374 +-306 (2.1%) |
 | SMN | 2.12 | 2.14, 2.11, 2.10 | Mandervillous Index (det/sps +dh) | 2 synced (780, 790) | Rroneek au Gratin | 12,837 +-217 (1.7%) |
 | VPR | 2.48/2.10 | 2.50/2.12, 2.47/2.09 | Phantom Twinfangs Occultum (crit/det +dh) | 3 synced (780, 780, 795) | Caramel Popcorn | 14,523 +-432 (3.0%) |
+
+Black Mage's fast sets carry no critical hit beyond the base 400 (direct hit, determination and Spell Speed instead):
+crit's gain is convex, so its first points are worth less than direct hit's. Summoner's best tiers are fast (2.10-2.14 s
+tie) because Spell Speed also shortens its demi-summons' recast (`tools/rotation/README.md`, Summoner); before the
+grid's current range and stop rules (`span_of`, `STOP`, 2026-10-24) its best was 2.42 s.
 
 Not modelled: cast and recast times other than the GCD in the continuously scaled job models (round to 0.01 s in
 game); pets use the owner's weapon-damage job modifier.
