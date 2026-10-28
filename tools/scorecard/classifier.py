@@ -945,13 +945,29 @@ def glaukopis(p, lo, hi):
     during the cast, the first provokes back as the second hit lands. Measured on our pulls: a provoke back up to 1.1 s
     after the first hit put the second hit on the same tank, from 1.2 s it did not; after the second hit, 494 provokes
     back by 1.2 s took the auto-attack, in every death to it the provoke came from 1.3 s or never. A tank who takes both
-    hits and lives meant to (invulnerability), so only a death is a mistake."""
+    hits and lives meant to (invulnerability), so only a death is a mistake.
+    Each hit is a line from Athena through its target, 5 y wide (the game's data, Action 33532-33533): a non-tank hit
+    with a tank stood in it (3 of 575 casts: one between Athena and the tank, one on top of Athena), their own mistake.
+    A non-tank hit with no tank beside them, every tank dead, took it because no one was left to hold Athena: whoever
+    caused the tanks' deaths."""
     out = []
     g = p.hits("Glaukopis", lo, hi)
-    h1 = g[0] if g else None
-    h2 = next((e for e in g if e["t"] > h1["t"] + 1.5), None) if g else None
-    if not h2 or p.job.get(h1["who"]) not in TANK_JOBS: return out   # a tank already dead: the fallout rules cover it
-    a, mech = h1["who"], mech_at(h1["t"])
+    if not g: return out
+    mech, is_tank = mech_at(g[0]["t"]), lambda w: p.job.get(w) in TANK_JOBS
+    th = [e for e in g if is_tank(e["who"])]
+    tanks = [w for w in p.job if is_tank(w)]
+    gone = sorted(w for w in tanks if w in p.dead_by(g[0]["t"] - 0.3))
+    for e in g:
+        if is_tank(e["who"]): continue
+        if any(abs(x["t"] - e["t"]) <= 0.3 for x in th):
+            out.append(fault(e["t"], mech, [e["who"]], [e["who"]], "stood in the Glaukopis line (a tankbuster from Athena through the tank)", "high", ability="Glaukopis"))
+        elif gone and len(gone) == len(tanks):
+            out.append(fault(e["t"], mech, gone, [e["who"]], f"Glaukopis hit {e['who']} because no tank was left to hold Athena ({', '.join(gone)} already dead)",
+                             "consequence", chain=gone, ability="Glaukopis"))
+    h1 = th[0] if th else None
+    h2 = next((e for e in th if e["t"] > h1["t"] + 1.5), None) if th else None
+    if not h2: return out
+    a = h1["who"]
     b = next((w for w, j in p.job.items() if j in TANK_JOBS and w != a), None)
     if b is None: return out
     lethal = lambda e: (e.get("targetResources") or {}).get("hitPoints") == 0

@@ -52,7 +52,7 @@ DD_PENALTY = 0.38
 CAUSES = [("held a Soul and a tether both", "Paradeigma II: a Soul and a tether on one player (party short)"),
           ("died holding the tether, so it went to", "Paradeigma II: a dead holder's tether went to another"),
           ("healing and mitigation fell short", "Healing / mitigation (everyone)"),
-          ("pulled Athena early", "Early pull"), ("broken gear", "Broken gear (low max HP)"), ("fell off the arena", "Fell off the arena"), ("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulnerability"), ("Glaukopis", "Glaukopis tank swap"), ("tanks' hit", "Tank share (Apo / Peridialogos)"),
+          ("pulled Athena early", "Early pull"), ("broken gear", "Broken gear (low max HP)"), ("fell off the arena", "Fell off the arena"), ("auto-attack after Paradeigma I", "Auto-attack through wave 2's vulnerability"), ("stood in the Glaukopis line", "Stood in the Glaukopis line"), ("no tank was left to hold Athena", "Glaukopis with the tanks dead"), ("Glaukopis", "Glaukopis tank swap"), ("tanks' hit", "Tank share (Apo / Peridialogos)"),
           ("the two tanks share", "Tank share (Apo / Peridialogos)"), ("Dialogos stack", "Dialogos stack"),
           ("could not be decided whether a full", "Superchain laser a sharer short, undecided"), ("who shared it,", "Superchain laser a sharer short (sharer dead)"),
           ("left the arena", "Left the arena"),
