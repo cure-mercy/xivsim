@@ -200,9 +200,10 @@ td.wrap{ white-space: normal; min-width: 260px; }
 .unlock button.primary:disabled{ opacity: 0.6; cursor: progress; }
 /* accounts and the admin page */
 .unlock.wide{ max-width: 560px; }
-.unlock input[type=text], .unlock input[type=email], .unlock input[type=number], table.admin input[type=text]{ font: inherit; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.unlock input[type=text], .unlock input[type=email], .unlock input[type=number], .unlock input[type=date], table.admin input[type=text]{ font: inherit; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .unlock input[type=number]{ width: 4.5em; padding: 4px 6px; }
 table.admin input[type=text]{ padding: 3px 6px; }
+table.admin .names{ min-width: 16em; max-width: 30em; }
 .actions{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .actions button, button.small{ font: inherit; font-size: 13px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
 .actions button:disabled, button.small:disabled{ opacity: 0.5; cursor: default; }
