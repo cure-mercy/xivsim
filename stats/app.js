@@ -55,14 +55,17 @@ function gradeChip(g) {
   return el("span", { class: `g ${g}`, title: word }, el("span", { class: "sr-only" }, word));
 }
 
-// what a mistake or wipe counts in the rates by the classifier's confidence in its culprit (scorecard.CONF_WEIGHT); data
-// built before the confidences were stored counts every mistake in full
-const confW = c => (DATA.benchmark.conf_weight || {})[c] ?? 1;
+// confidence: how sure the classifier's reading of the log is (shown, not discounted). share: how much of a mistake is a
+// culprit's (1/n when it cannot tell n players apart, a share of a shortfall spread over the party); the rates count it
 const CONF_LEVELS = ["high", "medium", "low"];
-const confCell = c => c ? el("span", { class: `conf ${c}`, title: `${c} confidence: counts ${confW(c)} in the rates` }, c) : "";
+const confCell = c => c ? el("span", { class: `conf ${c}`, title: `${c} confidence: how sure the classifier's reading of the log is` }, c) : "";
+const FRACTIONS = [[1 / 2, "½"], [1 / 3, "⅓"], [2 / 3, "⅔"], [1 / 4, "¼"], [3 / 4, "¾"], [1 / 5, "⅕"], [1 / 6, "⅙"], [1 / 7, "1/7"], [1 / 8, "⅛"]];
+const frac = x => (FRACTIONS.find(([v]) => Math.abs(v - x) < 0.005) || [0, x.toFixed(2)])[1];
+// " (½)" after a culprit whose share of the mistake is less than all of it
+const shareOf = (shares, c) => shares && shares[c] != null && shares[c] < 0.999 ? ` (${frac(shares[c])})` : "";
+const shareCell = x => x != null && x < 0.999 ? el("span", { class: "muted", title: "their share: the classifier could not tell the players named apart, or the shortfall was the party's" }, ` ${frac(x)} share`) : "";
 // "9 high, 3 medium" from {high: 9, medium: 3}
 const confText = counts => CONF_LEVELS.filter(c => (counts || {})[c]).map(c => `${counts[c]} ${c}`).join(", ");
-const confWeights = () => CONF_LEVELS.slice(1).map(c => `${c} counts ${confW(c)}`).join(", ");
 
 // ---------- data shaping ----------
 function reports() { return Object.values(DATA.reports); }
@@ -75,7 +78,7 @@ function days() {
 function stats(rs) {   // summary over one or more group reports
   const pulls = sum(rs.map(r => r.pulls_total));
   const playerPulls = sum(rs.map(r => sum(r.players.filter((p, i, a) => a.findIndex(q => q.name === p.name) === i).map(p => p.pulls))));
-  const mistakes = sum(rs.map(r => sum(r.pulls.map(p => sum(p.mistakes.map(m => confW(m.conf)))))));   // weighted, as the players' rates
+  const mistakes = sum(rs.map(r => sum(r.pulls.map(p => sum(p.mistakes.map(m => m.share ?? 1))))));   // each culprit's share, as the players' rates
   const wipeCauses = {};
   for (const r of rs) for (const [k, n] of Object.entries(r.wipe_causes)) wipeCauses[k] = (wipeCauses[k] || 0) + n;
   const withParty = rs.filter(r => r.party);
@@ -939,7 +942,7 @@ function groupPage(day, group) {
         p.uptime != null ? el("span", {}, `${p.uptime.toFixed(1)}%`, gradeChip(grade("uptime", p.uptime_diff))) : "–"], `#/day/${day}/${group}/${encodeURIComponent(p.name)}`, 2));
     }
   }
-  app.append(heading("h2", "Player scorecard", `Mistakes per pull counts every mistake until the pull was lost; Deaths/pull and DD/pull split it into mistakes that killed someone and those that only gave Damage Down (one that did neither, like both Superchain I lasers on a player who lived, counts only in the total). Wipes: share of pulls their mistake lost. Both count each mistake by how sure the classifier is of its culprit: high in full, ${confWeights()}. vs Clears: rDPS 0:00–2:00 (best quarter of clean pulls) against clearers on the same job (clears without The Echo; a job with fewer than three such players also counts its Echo clears, damage divided by 1.2); * = only 1–2 clearers. Uptime: GCD time vs clearers of the role.`), el("div", { class: "table-wrap" }, el("table", {},
+  app.append(heading("h2", "Player scorecard", `Mistakes per pull counts every mistake until the pull was lost; Deaths/pull and DD/pull split it into mistakes that killed someone and those that only gave Damage Down (one that did neither, like both Superchain I lasers on a player who lived, counts only in the total). Wipes: share of pulls their mistake lost. Both count each mistake in full, or the player's share of it where the classifier could not tell several players apart (½ between two) or the shortfall was the party's (healing / mitigation). vs Clears: rDPS 0:00–2:00 (best quarter of clean pulls) against clearers on the same job (clears without The Echo; a job with fewer than three such players also counts its Echo clears, damage divided by 1.2); * = only 1–2 clearers. Uptime: GCD time vs clearers of the role.`), el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: i >= 2 ? "num" : null }, h)))), el("tbody", {}, rows))));
   // rotation and ability usage, per player
   const rotPlayers = r.players.filter(p => p.rotation && !p.rotation.opener_only);   // opener_only: no clears on the job, only the opener is compared
@@ -1164,11 +1167,11 @@ function playerPage(day, group, name) {
   // side by side when both have something, else in the page's one column
   if (left.childNodes.length && right.childNodes.length) app.append(el("div", { class: "cols" }, left, right));
   else app.append(...left.childNodes, ...right.childNodes);
-  app.append(heading("h2", "Every mistake", `Confidence: how sure the classifier is that the mistake was theirs. Mistakes per pull and Wipes count a high one in full, ${confWeights()}.`),
+  app.append(heading("h2", "Every mistake", "Confidence: how sure the classifier's reading of the log is. Mistakes per pull and Wipes count each mistake in full, or their share of it where the classifier could not tell several players apart (shown as ½ share)."),
     el("div", { class: "table-wrap" }, mine.length ? el("table", {},
     el("thead", {}, el("tr", {}, ["Pull", "Time", "Mechanic", "What happened", "Confidence", "", "Practice"].map((h, i) => el("th", { class: i < 2 ? "num" : null }, h)))),
     el("tbody", {}, mine.map(m => el("tr", {}, el("td", { class: "num" }, el("a", { href: `#/day/${day}/${group}/pulls/${m.pull}` }, String(m.pull))), el("td", { class: "num" }, mmss(m.t)), el("td", {}, shortMech(m.mechanic || "")),
-      el("td", { class: "wrap" }, whatHappened(m, name)), el("td", {}, confCell(m.conf)), el("td", { class: "muted" }, wiped.some(q => q.n === m.pull && Math.abs(q.wipe.t - m.t) < 2.5) ? "lost the pull" : ""),
+      el("td", { class: "wrap" }, whatHappened(m, name)), el("td", {}, confCell(m.conf), shareCell(m.share)), el("td", { class: "muted" }, wiped.some(q => q.n === m.pull && Math.abs(q.wipe.t - m.t) < 2.5) ? "lost the pull" : ""),
       el("td", {}, drillLinks(m.mechanic) || "")))))
     : el("div", { class: "empty", style: "padding:14px" }, "No mistakes recorded.")));
   // every death of theirs: what killed them, why, and whose mistake it was
@@ -1177,7 +1180,7 @@ function playerPage(day, group, name) {
     others = before.filter(d => d.culprits.length && !d.culprits.includes(name)).length;
   const inGroup = new Set(r.players.map(q => q.name));
   const culprit = d => !d.culprits.length ? el("span", { class: "muted" }, "none found")
-    : names(d.culprits.map(c => c === name ? "self" : inGroup.has(c) ? el("a", { href: `#/day/${day}/${group}/${encodeURIComponent(c)}` }, c) : c));
+    : names(d.culprits.map(c => [c === name ? "self" : inGroup.has(c) ? el("a", { href: `#/day/${day}/${group}/${encodeURIComponent(c)}` }, c) : c, shareOf(d.shares, c)]));
   app.append(heading("h2", "Deaths", "Every death of theirs, pull by pull: the hit that killed them, what the classifier says happened, and whose mistake it was (self: their own; none found: no rule explains it, often healing or mitigation, or fallout of an earlier death), with how sure it is of the culprit. Decided the wipe: the death, or the mass death, that lost the pull. After the wipe: the collapse once the pull was already lost, where deaths are forced. Saved the pull: they died holding what would otherwise have lost it (a Superchain I tower held in its Strong Soul's place)."),
     el("p", { class: "lede" }, r.pulls.some(q => q.death_list) ? `${died.length} deaths in ${p.pulls} pulls; ${before.length} before the pull was lost: ${own} their own mistake, ${others} someone else's, ${before.length - own - others} no culprit found.`
       : "Not recorded for this report yet: rebuild the site (build_site.py --reanalyse)."),
@@ -1240,7 +1243,7 @@ function playerPage(day, group, name) {
 
 // one pull: every player's pull_detail entry for it
 const inPull = (r, n) => r.players.flatMap(p => (p.pull_detail || []).filter(x => x.n === n).map(x => ({ p, x })));
-const pullEnd = p => p.kill ? "Kill" : p.wipe ? `${p.wipe.label}${p.wipe.culprits.length ? ` (${p.wipe.culprits.join(", ")})` : ""}` : "–";
+const pullEnd = p => p.kill ? "Kill" : p.wipe ? `${p.wipe.label}${p.wipe.culprits.length ? ` (${p.wipe.culprits.map(c => c + shareOf(p.wipe.shares, c)).join(", ")})` : ""}` : "–";
 const pullHref = (day, group, n) => `#/day/${day}/${group}/pulls/${n}`;
 
 function pullsPage(day, group) {
@@ -1287,7 +1290,7 @@ function pullPage(day, group, n) {
   app.append(el("h1", {}, `Pull ${n} · ${group} · ${dayName(day)}`), nav);
   app.append(tiles([
     ["Length", mmss(p.dur), p.kill ? "kill" : `boss at ${p.boss != null ? p.boss.toFixed(1) : "–"}%`],
-    ["Ended", p.kill ? "Kill" : p.wipe ? mmss(p.wipe.t) : "–", p.wipe ? `${p.wipe.label}${p.wipe.culprits.length ? ` · ${p.wipe.culprits.join(", ")}` : ""}` : ""],
+    ["Ended", p.kill ? "Kill" : p.wipe ? mmss(p.wipe.t) : "–", p.wipe ? `${p.wipe.label}${p.wipe.culprits.length ? ` · ${p.wipe.culprits.map(c => c + shareOf(p.wipe.shares, c)).join(", ")}` : ""}` : ""],
     ["Mistakes", String(p.mistakes.length), "until the pull was lost"],
     ["Lost to deaths", p.lost != null ? hpfmt(p.lost) : "–", p.lost != null ? secs(p.lost) : ""],
   ]));
@@ -1310,7 +1313,7 @@ function pullPage(day, group, n) {
   // every death in the pull, as on the player page
   const died = [...(p.death_list || [])].sort((a, c) => a.t - c.t), inGroup = new Set(r.players.map(q => q.name));
   const link = c => inGroup.has(c) ? el("a", { href: `#/day/${day}/${group}/${encodeURIComponent(c)}` }, c) : c;
-  const culprit = d => !d.culprits.length ? el("span", { class: "muted" }, "none found") : names(d.culprits.map(c => c === d.who ? "self" : link(c)));
+  const culprit = d => !d.culprits.length ? el("span", { class: "muted" }, "none found") : names(d.culprits.map(c => [c === d.who ? "self" : link(c), shareOf(d.shares, c)]));
   app.append(heading("h2", "Deaths in order", "Every death in this pull: the hit that killed them, what the classifier says happened, and whose mistake it was (self: their own; none found: no rule explains it, often healing or mitigation, or fallout of an earlier death), with how sure it is of the culprit. Decided the wipe: the death, or the mass death, that lost the pull. After the wipe: the collapse once the pull was already lost, where deaths are forced. Saved the pull: they died holding what would otherwise have lost it (a Superchain I tower held in its Strong Soul's place)."),
     el("div", { class: "table-wrap" }, died.length ? el("table", {},
       el("thead", {}, el("tr", {}, ["Time", "Who", "Mechanic", "Killed by", "What happened", "Culprit", "Confidence", ""].map((h, i) => el("th", { class: i === 0 ? "num" : null }, h)))),

@@ -79,6 +79,7 @@ LABELS = {
     "sc1.laser.short_undecided": "Superchain laser a sharer short, undecided",
     "sc1.flame.spread": "Heavensflame spread", "sc1.flame.walked_in": "Walked into a Heavensflame", "sc1.flame.undecided": "Heavensflame undecided (both blamed)",
     "sc1.flame.bright_aoe": "Heavensflame in a bright Soul's AoE", "sc1.bright_aoe": "Bright Soul's AoE", "sc1.bright_together": "Bright Souls' towers dropped together",
+    "sc1.bright_together.undecided": "Bright Souls' towers dropped together, undecided (both blamed)",
     "sc1.glow.early": (TOWER, "stepped into the tower too early"), "sc1.glow.dropped_on": (TOWER, "bright tower dropped on its soaker"),
     "sc1.tower.soul_dead": (TOWER, "Soul died before dropping their tower"), "sc1.tower.wrong_side": (TOWER, "tower dropped on the wrong side"),
     "sc1.tower.wrong_player": (TOWER, "wrong player in a tower"), "sc1.tower.substitute": (TOWER, "tower held by a substitute, who died to it"),
