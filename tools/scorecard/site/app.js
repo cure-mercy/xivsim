@@ -833,7 +833,7 @@ function causeMatrix(title, caption, cols, getCounts) {   // causes x columns he
 
 // ---------- pages ----------
 function home() {
-  crumbs([["Raid days", null]]);
+  crumbs([]);   // the header link names the page
   const ds = days(), all = stats(reports());
   const app = document.getElementById("app");
   app.append(el("h1", {}, "Raid days"), el("p", { class: "lede" }, `${ds.length} raid days, ${reports().length} group reports. Pick a day to compare its groups, then a group to see its players.`));
@@ -1569,7 +1569,7 @@ function fightCard(f, rot, focus) {
 const parseClock = c => c.startsWith("−") ? -parseFloat(c.slice(1)) : +c.split(":")[0] * 60 + +c.split(":")[1];
 
 function rotationsPage() {
-  crumbs([["Raid days", "#/"], ["Rotations", null]]);
+  crumbs([]);   // the header link names the page
   const app = document.getElementById("app"), all = DATA.rotations || {};
   const best = j => bestRot(j).dps, rdps = {};
   const jobs = Object.keys(all).filter(j => Object.keys(rotsOf(j) || {}).length);
@@ -1749,7 +1749,7 @@ function jobsCard(jobs) {
 function rotationJobPage(code) {
   const job = jobOf(code), rs = rotsOf(job);
   if (!rs) return notFound();
-  crumbs([["Raid days", "#/"], ["Rotations", "#/rotations"], [code, null]]);
+  crumbs([["Rotations", "#/rotations"], [code, null]]);
   const app = document.getElementById("app"), keys = Object.keys(rs).sort((a, c) => rs[a].gcd - rs[c].gcd || (rs[a].crit || 0) - (rs[c].crit || 0));
   const full = x => x.dps_full != null ? x.dps_full : x.dps;   // (data written before dps_full: to Palladion)
   const best = Math.max(...keys.map(k => full(rs[k]))), crit = keys.some(k => rs[k].crit != null), n = rs[keys[0]].conv_players;
@@ -1776,7 +1776,7 @@ function rotationJobPage(code) {
 function rotationPage(code, key) {
   const job = jobOf(code), x = (rotsOf(job) || {})[key];
   if (!x) return notFound();
-  crumbs([["Raid days", "#/"], ["Rotations", "#/rotations"], [code, rotHref(job)], [rotLabel(x).replace(" GCD", ""), null]]);
+  crumbs([["Rotations", "#/rotations"], [code, rotHref(job)], [rotLabel(x).replace(" GCD", ""), null]]);
   const app = document.getElementById("app"), rot = x.rotation, rows = [];
   for (const [t, name, kind, cast, run] of rot) {   // one row per GCD at the time it starts, with the oGCDs woven after it
     if (kind === "g" || !rows.length) rows.push({ t, gcd: kind === "g" ? name : "", weaves: kind === "g" ? [] : [name], cast: cast || 0, run: kind === "g" ? run || 0 : 0 });
@@ -1977,7 +1977,7 @@ function tierCard(job) {
 }
 
 function gearPage() {
-  crumbs([["Raid days", "#/"], ["Gear", null]]);
+  crumbs([]);   // the header link names the page
   const app = document.getElementById("app"), all = (DATA.gear || {}).jobs || {};
   app.append(heading("h1", "Best-in-slot gear", GEAR_ABOUT),
     el("p", { class: "lede" }, "Each job's best gear, materia and food for P12S P1, found together with its rotation, grouped by role. Pick a job for its set."));
@@ -2000,7 +2000,7 @@ function gearPage() {
 function gearJobPage(code) {
   const job = jobOf(code), g = gearOf(job);
   if (!g) return notFound();
-  crumbs([["Raid days", "#/"], ["Gear", gearHref()], [code, null]]);
+  crumbs([["Gear", gearHref()], [code, null]]);
   const app = document.getElementById("app");
   app.append(heading("h1", [jobIcon(job, "job-icon big"), `${jobName(job)} best-in-slot gear`], GEAR_ABOUT),
     el("p", { class: "lede" }, `Best at ${tierLabel(g, g.sets[0].tier)} GCD${g.sets.length > 1 ? `, tied with ${g.sets.length - 1} more tier${g.sets.length > 2 ? "s" : ""}` : ""}. `,
@@ -2163,7 +2163,7 @@ const fflogsLink = code => el("a", { href: `https://www.fflogs.com/reports/${enc
 const localTime = s => s ? new Date(s).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "–";
 const REPORT_CODE = /^[A-Za-z0-9]{16}$/;
 async function adminPage() {
-  crumbs([["Admin", null]]);
+  crumbs([]);   // the header link names the page
   const app = document.getElementById("app");
   if (!ME || !ME.admin) { app.append(el("h1", {}, "Admin"), el("p", { class: "lede" }, "Only admins can open this page."), ME ? "" : loginBox()); return; }
   app.append(el("h1", {}, "Admin"));
@@ -2319,6 +2319,10 @@ function header() {   // the header's account button and admin link
   if (SB) { btn.hidden = false; btn.textContent = ME ? "Account" : "Log in"; }
   if (adm) adm.hidden = !(ME && ME.admin);
 }
+function navSection(first) {   // marks the header link of the section the page is in (raid days for day pages and home)
+  const s = !first || first === "day" ? "days" : first;
+  for (const a of document.querySelectorAll(".navlink")) a.toggleAttribute("aria-current", a.dataset.section === s);
+}
 
 // ---------- routing, theme, boot ----------
 function route(keepScroll = false) {   // keepScroll: redraw the same page in place (resize, theme), not a navigation
@@ -2327,6 +2331,7 @@ function route(keepScroll = false) {   // keepScroll: redraw the same page in pl
   const app = document.getElementById("app"); app.replaceChildren();
   const parts = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   const open = (parts[0] === "rotations" || parts[0] === "gear") && DATA && DATA.rotations;   // public.json is enough for these
+  navSection(parts[0]);
   if (SB && parts[0] === "account") { accountPage(); return; }
   if (SB && parts[0] === "admin") { adminPage(); return; }
   if (LOCKED && !open) { SB ? gatePage() : lockedPage(); return; }
