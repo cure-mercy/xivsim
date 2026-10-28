@@ -430,7 +430,8 @@ def mistakes_of(res):
     kind, confidence, tag, share): kind is "death" when any of the mistake's events killed someone, else "DD" when one gave
     Damage Down, else "hit" (neither: both Superchain lasers on someone who lived); confidence is the surest of its entries';
     tag the rule's (cause_label names it); share how much of it is theirs (the classifier's: 1/n for one of n candidates,
-    a party's share of a shortfall spread over it), the largest of its entries'.
+    a party's share of a shortfall spread over it), the largest of its entries'. An entry about several failures at once
+    (by_culprit) counts each culprit's as their own failure's cause and tag.
     Culprits an entry carries over from an earlier death are counted there."""
     out, rank = [], {"death": 0, "DD": 1, "hit": 2}
     for r in res:
@@ -440,7 +441,8 @@ def mistakes_of(res):
             if c in r.get("carried", ()): continue
             same = next((i for i, m in enumerate(out) if m[0] == c and abs(m[1] - r["t"]) <= 2), None)
             sh = r.get("shares", {}).get(c, 1.0)
-            if same is None: out.append((c, r["t"], r["cause"], r["mechanic"], kind, r["confidence"], r["tag"], sh))
+            cause, tag = r.get("by_culprit", {}).get(c, (r["cause"], r["tag"]))   # several failures at once: the culprit's own
+            if same is None: out.append((c, r["t"], cause, r["mechanic"], kind, r["confidence"], tag, sh))
             else:
                 m = out[same]
                 out[same] = m[:4] + (min(m[4], kind, key=rank.get), min(m[5], r["confidence"], key=lambda x: CONF_ORDER.get(x, 1)), m[6], max(m[7], sh))
