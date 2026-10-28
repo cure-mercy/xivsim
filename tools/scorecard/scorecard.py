@@ -97,6 +97,8 @@ LABELS = {
     "p3.wf.missed": "Missed White Flame bait", "p3.wf.line": "White Flame line", "p3.wf.baiter_dead": "White Flame line", "p3.wf.own": "White Flame line",
     "p3.tower.soul_dead": (TOWER, "Soul died before dropping their tower"), "p3.tower.wrong_player": (TOWER, "wrong player in a tower"),
     "p3.tower.unsoaked": (TOWER, "tower not soaked"), "p3.tower.misplaced": (TOWER, "bright tower placed wrong"),
+    "p3.tower.out_of_reach": (TOWER, "tower dropped out of its soaker's reach"), "p3.tower.undecided": (TOWER, "tower unsoaked, undecided (both blamed)"),
+    "p3.cross.off_spot": "+ / X dropped off its spot",
 }
 MECHS = {"Paradeigma II", "Superchain I", "Paradeigma III"}
 
