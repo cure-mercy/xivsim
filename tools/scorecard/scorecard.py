@@ -24,12 +24,10 @@ ROLE = gamedata.ROLE
 # grade thresholds: mistakes per pull, share of pulls whose wipe the player caused, damage vs clears, uptime points
 # vs clearers of the role. With eight players and one wipe a pull, a fair share of the wipes is 12.5%.
 G_MIST, G_WIPE, G_DMG, G_UP = (0.30, 0.60), (0.10, 0.20), (-0.05, -0.12), (-0.5, -1.5)
-# how much a mistake or a wipe counts in mistakes per pull and wipes, by the classifier's confidence in its culprit. On the
-# hand-checked pulls (tests/blame_cases.json) counted mistakes were right 83% of the time at high (all avoidable hits, 76%
-# of the rule-based ones), 77% at medium and in 2 of 3 at low; wipes 72% at high against 44-58% at medium (a wipe naming
-# part of its culprits counted as half). Low is blame a rule shares between players it cannot tell apart.
-# (Measured before the classifier's rules were fixed against those same pulls, 2026-10-26.)
-CONF_WEIGHT = {"high": 1.0, "medium": 0.75, "low": 0.5}
+# Mistakes per pull and wipes count each culprit's share of a mistake (the classifier's `shares`: 1 for their own, 1/n
+# for one of n players it cannot tell apart, a share of a shortfall spread over the party). Confidence, how sure the
+# reading of the log is, is shown but not discounted: on a held-out sample (2026-10-28, scratch/accuracy/) high, medium
+# and low verdicts were right about as often (92%, 88%, 94%), so a discount by it had no footing (the user's call).
 CASCADE_GAP = 15                 # deaths closer together than this (seconds) belong to the same collapse
 SIMULTANEOUS_S = 0.6             # deaths this close to the one that lost the pull lost it with it (one mechanic's step:
                                  # in the hand-checked pulls up to 0.53 s apart; its next step comes 0.8 s or more later)
@@ -428,9 +426,10 @@ def first_mistake(data, f):
 def mistakes_of(res):
     """Every distinct mistake in a pull: classifier entries with a culprit that are not just fallout of an earlier
     mistake, one per culprit per 2 s (a bait that kills four players is one mistake). Yields (culprit, t, cause, mechanic,
-    kind, confidence, tag): kind is "death" when any of the mistake's events killed someone, else "DD" when one gave Damage
-    Down, else "hit" (neither: both Superchain lasers on someone who lived); confidence is the surest of its entries'; tag
-    the rule's (cause_label names it).
+    kind, confidence, tag, share): kind is "death" when any of the mistake's events killed someone, else "DD" when one gave
+    Damage Down, else "hit" (neither: both Superchain lasers on someone who lived); confidence is the surest of its entries';
+    tag the rule's (cause_label names it); share how much of it is theirs (the classifier's: 1/n for one of n candidates,
+    a party's share of a shortfall spread over it), the largest of its entries'.
     Culprits an entry carries over from an earlier death are counted there."""
     out, rank = [], {"death": 0, "DD": 1, "hit": 2}
     for r in res:
@@ -439,10 +438,11 @@ def mistakes_of(res):
         for c in r["culprits"]:
             if c in r.get("carried", ()): continue
             same = next((i for i, m in enumerate(out) if m[0] == c and abs(m[1] - r["t"]) <= 2), None)
-            if same is None: out.append((c, r["t"], r["cause"], r["mechanic"], kind, r["confidence"], r["tag"]))
+            sh = r.get("shares", {}).get(c, 1.0)
+            if same is None: out.append((c, r["t"], r["cause"], r["mechanic"], kind, r["confidence"], r["tag"], sh))
             else:
                 m = out[same]
-                out[same] = m[:4] + (min(m[4], kind, key=rank.get), min(m[5], r["confidence"], key=lambda x: CONF_ORDER.get(x, 1)), m[6])
+                out[same] = m[:4] + (min(m[4], kind, key=rank.get), min(m[5], r["confidence"], key=lambda x: CONF_ORDER.get(x, 1)), m[6], max(m[7], sh))
     return out
 
 
@@ -501,6 +501,13 @@ def wipe_of(res):
     return list(dict.fromkeys(c for q in [trig] + together for c in q["culprits"])), trig
 
 
+
+def wipe_shares(res, cul, trig):
+    """{culprit: their share of the wipe}: the largest share the deciding entry, or another death of the same hit or step
+    (wipe_of's mass death and simultaneous deaths), gives them."""
+    near = [q for q in res if q["kind"] == "death" and (q is trig or abs(q["t"] - trig["t"]) <= 3)] if trig else []
+    return {c: max((q.get("shares", {}).get(c, 1.0) for q in near if c in q["culprits"]), default=1.0) for c in cul}
+
 def wipe_label(trig):
     """The site's name for what lost the pull."""
     if trig["culprits"]: return cause_label(trig["tag"], trig["mechanic"])
@@ -549,7 +556,8 @@ def analyse(group, data, bench):
     attended, nmist, mcauses = collections.Counter(), collections.Counter(), collections.defaultdict(collections.Counter)
     nkind = collections.Counter()               # (player, "death" / "DD" / "hit") -> mistakes
     nwipe, wcauses = collections.Counter(), collections.defaultdict(collections.Counter)
-    # the same weighted by the confidence in the culprit (CONF_WEIGHT), and the counts by confidence
+    # the same counting each culprit's share of the mistake (1/n of one the classifier cannot tell n players' apart), and
+    # the counts by confidence (how sure the reading of the log is: shown, not discounted)
     wmist, wkind, wwipe = collections.Counter(), collections.Counter(), collections.Counter()
     mconf, wconf = collections.defaultdict(collections.Counter), collections.defaultdict(collections.Counter)
     all_causes, wipe_causes, conf = collections.Counter(), collections.Counter(), collections.Counter()
@@ -572,17 +580,19 @@ def analyse(group, data, bench):
             conf.update(r["confidence"] for r in first)
         if not f.get("kill") and inc:
             wipe_causes[wipe_label(trig) if trig else "Unclear"] += 1
+            wsh = wipe_shares(res, cul, trig)
             for c in cul:
                 nwipe[c] += 1; wcauses[c][wipe_label(trig)] += 1
-                wwipe[c] += CONF_WEIGHT.get(trig["confidence"], 1.0); wconf[c][trig["confidence"]] += 1
+                wwipe[c] += wsh[c]; wconf[c][trig["confidence"]] += 1
             if trig: row["wipe"] = dict(culprits=cul, t=round(trig["t"], 1), mechanic=trig["mechanic"], label=wipe_label(trig), cause=trig["cause"],
-                                        confidence=trig["confidence"])
+                                        confidence=trig["confidence"], **({"shares": {c: round(x, 3) for c, x in wsh.items()}} if any(x < 1 for x in wsh.values()) else {}))
         # every death with what killed them and whose fault it was; when: "lost" for the deaths that decided the wipe
         # (the deciding death and the rest of its mass death), "after" for the collapse after it, None before; saved: their death
         # was the price of saving the pull (a Superchain I tower held in its Strong Soul's place)
         lost_at = trig["t"] - 1 if trig else dur
         row["death_list"] = [dict(who=r["victim"], t=round(r["t"], 1), ability=r["ability"], mechanic=r["mechanic"], cause=r["cause"],
                                   culprits=r["culprits"], confidence=r["confidence"], **({"trace": r["trace"]} if r.get("trace") else {}),
+                                  **({"shares": {c: round(x, 3) for c, x in r["shares"].items()}} if any(x < 1 for x in r.get("shares", {}).values()) else {}),
                                   **({"saved": True} if r.get("saved") else {}),   # died holding what would have lost the pull
                                   when="lost" if trig and (r is trig or r["ability"] == trig["ability"] and abs(r["t"] - trig["t"]) <= 3)
                                   else "after" if r["t"] >= lost_at else None)
@@ -590,12 +600,12 @@ def analyse(group, data, bench):
         # every mistake while the pull was still alive; what happens during the collapse is forced or noise
         cutoff = trig["t"] + MISTAKE_AFTER_WIPE if trig else dur
         traces = {r["cause"]: r["trace"] for r in res if r.get("trace")}   # the site shows a chained cause as a tree
-        for c, t, cause, mech, kind, cf, tag in mistakes_of(res):
+        for c, t, cause, mech, kind, cf, tag, sh in mistakes_of(res):
             if t <= cutoff:
                 lab = cause_label(tag, mech); nmist[c] += 1; mcauses[c][lab] += 1; all_causes[lab] += 1
                 nkind[(c, kind)] += 1
-                w = CONF_WEIGHT.get(cf, 1.0); wmist[c] += w; wkind[(c, kind)] += w; mconf[c][cf] += 1
-                row["mistakes"].append(dict(who=c, t=round(t, 1), mechanic=mech, label=lab, cause=cause, kind=kind, conf=cf,
+                wmist[c] += sh; wkind[(c, kind)] += sh; mconf[c][cf] += 1
+                row["mistakes"].append(dict(who=c, t=round(t, 1), mechanic=mech, label=lab, cause=cause, kind=kind, conf=cf, **({"share": round(sh, 3)} if sh < 1 else {}),
                                             **({"trace": traces[cause]} if cause in traces else {})))
         down = downtime(p, res, dur)
         lives.append((row, down, min(cutoff, dur)))
@@ -714,7 +724,7 @@ def analyse(group, data, bench):
                 phases.append(dict(window=wname, n=len(sm), ndps=nd, uptime=act, uptime_diff=act - rup if rup else None,
                                    vs=(nd / ref["ndps"] - 1, ref["players"], ref.get("echo_corrected", False)) if ref else None))
             players.append(dict(group=group, name=name, job=job, role=ROLE.get(job, "Melee"), pulls=attended[name],
-                                # mrate, wrate and the _w counts are weighted by confidence (CONF_WEIGHT); the plain counts are not
+                                # mrate, wrate and the _w counts count each culprit's share; the plain counts every mistake as 1
                                 mistakes=nmist[name], mistakes_w=wmist[name], mrate=wmist[name] / attended[name], mrate_raw=nmist[name] / attended[name],
                                 mdeath=nkind[(name, "death")], mdd=nkind[(name, "DD")], mdeath_w=wkind[(name, "death")], mdd_w=wkind[(name, "DD")],
                                 mhit=nkind[(name, "hit")],

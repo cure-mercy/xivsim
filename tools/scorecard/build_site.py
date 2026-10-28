@@ -84,7 +84,6 @@ def benchmark_summary(bench, codes=()):
                 pools={p: dict(kills=v["kills"], kill_median_s=v["kill_median_s"], party_dps_median=v["party_dps_median"], party_dps_min=v.get("party_dps_min"),
                                role_uptime=v["role_uptime"], jobs=v["jobs"]) for p, v in bench["pools"].items()},
                 grades=dict(mistakes=S.G_MIST, wipes=S.G_WIPE, damage=S.G_DMG, uptime=S.G_UP), window_s=S.WINDOW,
-                conf_weight=S.CONF_WEIGHT,   # what a mistake or wipe counts in the rates, by the classifier's confidence
                 windows=bench.get("windows", []),
                 # seconds of kill time per 1% of boss HP, at the pace of a clear
                 sec_per_hp=bench["pools"]["clears"]["kill_median_s"] / 100, raise_penalty=S.RAISE_PENALTY, raise_s=S.RAISE_S,
