@@ -299,7 +299,11 @@ def wf_closer(p, lo, hi, missing, exp, hs, seats=None, w=None):
     the laser cast (the one their seat draws, else the nearest), whose add's lasers also went through a baiter (the
     line-up was there; a whole light party missing is theirs) and an interloper closer to it than they were: a
     non-baiter, or a baiter of the other add over SEAT_OFF from their spot. The nearest such took the laser (the others
-    it hit stood behind them in its line), with whoever stood within WF_SURE[0] of them (low: either could have)."""
+    it hit stood behind them in its line), with whoever stood within WF_SURE[0] of them (low: either could have). An
+    interloper no nearer than the positions can tell (WF_SURE[0] plus how far both could have run since their positions
+    were read, WF_RUN) is a tie, the last field: "out" when every such interloper stood off their spot by more than that
+    too (a non-baiter past WF_STACK_R from the stack, the other add's baiter past SEAT_OFF), else "at"; None when one stood
+    clearly nearer."""
     wf, seats = p.white_flame(lo, hi), seats or {}
     if not wf or not wf[1]: return {}
     t1, adds, where, unsure = wf
@@ -315,11 +319,18 @@ def wf_closer(p, lo, hi, missing, exp, hs, seats=None, w=None):
         hit = {y for i, ys in aimed.items() if i in adds[add] for y in ys}
         if off is None and not hit & exp: continue   # no spot to check them against: the line-up must have drawn a laser
         stray = lambda y: y not in exp or (seat_add(wf, seats, w, y) not in (add, None) and (seat_off(wf, seats, w, y) or 0) > SEAT_OFF)
-        near = sorted((dy, y, py[1]) for y in hit if y != x and stray(y) and (py := where(y)) and (dy := math.dist(py[0], add)) < dx)
+        margin = lambda g: WF_SURE[0] + WF_RUN * (px[1] + g)   # what the positions, read g and px[1] s off, can tell apart
+        near = sorted((dy, y, py[1]) for y in hit if y != x and stray(y) and (py := where(y)) and (dy := math.dist(py[0], add)) < dx + margin(py[1]))
         if not near: continue
         near = [v for v in near if v[0] - near[0][0] <= WF_SURE[0]]
         sure = len(near) == 1 and dx - near[0][0] > WF_SURE[0] and max(near[0][2], px[1]) <= WF_SURE[1]
-        out[x] = [(y, dy, sure) for dy, y, _ in near], dx, sorted(hit), bool(adds[add] & unsure), thin
+        tie = None
+        if all(dx - dy <= margin(g) for dy, _, g in near):   # no interloper clearly nearer: who stood off their spot decides
+            a0 = next(iter(adds)); stack = (WF_STACK[0] * math.copysign(1, a0[0]), WF_STACK[1] * math.copysign(1, a0[1]))
+            # off their spot by more than the positions can tell (as for a baiter barely off theirs: rVkK pull 22)
+            away = lambda y: ((math.dist(where(y)[0], stack) - WF_STACK_R) if y not in exp else ((seat_off(wf, seats, w, y) or 0) - SEAT_OFF)) > WF_SURE[0] + WF_RUN * where(y)[1]
+            tie = "out" if all(away(y) for _, y, _ in near) else "at"
+        out[x] = [(y, dy, sure) for dy, y, _ in near], dx, sorted(hit), bool(adds[add] & unsure), thin, tie
     return out
 
 
@@ -397,7 +408,7 @@ def wf_replay(p, lo, hi, w, t, lp):
         return out
     n = counts(())
     victims = [x for x in alive if n[x] > (x in bait)]
-    movable, tried, blame, alone, undecided = [x for x in alive if off[x] > WF_SURE[0]], {}, {}, {}, set()
+    movable, tried, blame, alone, undecided, trimmed = [x for x in alive if off[x] > WF_SURE[0]], {}, {}, {}, set(), set()
     for v in victims:
         score = lambda c: sum(not out_of_place[x] for x in c)   # players inside their spot's tolerance
         for k in range(1, WF_FIX_MAX + 1):
@@ -407,8 +418,11 @@ def wf_replay(p, lo, hi, w, t, lp):
         best = min(map(score, ok))   # options all within tolerance: no telling them apart, so all of them, undecided
         opts = [c for c in ok if score(c) == best]
         blame[v] = tuple(sorted({x for c in opts for x in c}))
+        outs = [{x for x in c if out_of_place[x]} for c in opts]
+        if best and all(outs):   # every correction moves someone out of place: those, not the ones inside their tolerance
+            blame[v] = tuple(sorted(set().union(*outs))); trimmed.add(blame[v])
         alone[blame[v]] = k == 1
-        if best and len(opts) > 1: undecided.add(blame[v])
+        if best and len(opts) > 1 and not all(outs): undecided.add(blame[v])
     targets = {tg for _, tg, _ in real}
 
     def role(x):
@@ -425,7 +439,7 @@ def wf_replay(p, lo, hi, w, t, lp):
             math.dist(pos[b], a) - math.dist(pos[x], a) > WF_SURE[0] + WF_RUN * (q[x][1] + q[b][1])
             for a, x, _ in real if x in cul and role(x) == 1 for b in outstood)
         top = min(map(role, cul))
-        conf = ("high" if all(role(x) == 0 for x in cul) and pred == act else "medium") if sure else "low"
+        conf = ("high" if all(role(x) == 0 for x in cul) and pred == act and cul not in trimmed else "medium") if sure else "low"
         how = "; ".join(f"{x} {off[x]:.1f} y from their spot" + (f", {words[role(x)]}" if role(x) != top else "") for x in cul)
         if top == 0: rule = f"not in the White Flame line-up as wave {w} fired ({how})"
         elif top == 1:
@@ -437,6 +451,8 @@ def wf_replay(p, lo, hi, w, t, lp):
             how = "; ".join(f"{x} {off[x]:.1f} y from their spot" for x in cul)
             rule = (f"could not be decided who drew the White Flame laser as wave {w} fired ({how}; every correction moves someone within their spot's tolerance): "
                     + ("any one of them at their spot" if alone[cul] else "more than one correction") + f" would have spared {', '.join(vs)}")
+        elif cul in trimmed:   # the correction also nudged players inside their tolerance: not their mistake
+            rule += f"; {'at their spot' if len(cul) == 1 else 'at their spots'}, with others nudged inside their tolerance, {', '.join(vs)} would not have been hit"
         elif set(vs) != set(cul) or len(cul) > 1:
             rule += f"; {'at their spot' if len(cul) == 1 else 'with any one of them at their spot' if alone[cul] else 'at their spots'}, {', '.join(vs)} would not have been hit"
         out.append(fault(t, "Paradeigma I", list(cul), vs, rule, conf, tag="p1.wf.undecided" if cul in undecided else ("p1.wf.not_in_line_up", "p1.wf.too_close", "p1.wf.off_spot", "p1.wf.line")[top]))
@@ -510,6 +526,11 @@ def para1(p, lp):
                 lost = [v for v in took if v in hit and (not unsure or v not in exp and any(v in s and set(cul) & s for s in aimed.values()))]
                 took = [v for v in took if v not in lost]
                 dists = (f"{', '.join(f'{y} {dy:.1f} y' for y, dy, _ in ys)}, {', '.join(f'{x} {dx:.1f} y' for x, _, dx, *_ in xs)}")
+                if any(x_[6] == "at" for x_ in xs):   # as near as the baiter at their spot, and at their own: no telling
+                    out.append(fault(t, "Paradeigma I", list(cul) + [x for x, *_ in xs], lost, f"could not be decided who drew the White Flame laser as wave {w} "
+                                     f"fired: {', '.join(cul)} at their spot as near the add as the baiter{'s' if len(xs) > 1 else ''} {', '.join(x for x, *_ in xs)} "
+                                     f"at theirs ({dists})" + (f"; the laser went to {', '.join(lost)}" if lost else ""), "low", tag="p1.wf.undecided"))
+                    continue
                 if thin := [(x, x_[5]) for x_ in xs for x in [x_[0]] if x_[5]]:   # the baiter barely off their spot: no telling
                     out.append(fault(t, "Paradeigma I", list(cul) + [x for x, _ in thin], lost, f"could not be decided who drew the White Flame laser as wave {w} "
                                      f"fired: {', '.join(f'{x} {o:.1f} y from their spot (read {g:.2f} s from the cast)' for x, (o, g) in thin)}, "
@@ -517,7 +538,7 @@ def para1(p, lp):
                     continue
                 out.append(fault(t, "Paradeigma I", list(cul), lost, f"{', '.join(cul)}: closer to the White Flame add than its baiter{'s' if len(xs) > 1 else ''} "
                                  f"{', '.join(x for x, *_ in xs)} as wave {w} fired ({dists})" + (f"; the laser went to {', '.join(lost)}" if lost else ""),
-                                 "medium" if all(s for x in xs for *_, s in x[1]) else "low", tag="p1.wf.too_close"))
+                                 "medium" if all(s for x in xs for *_, s in x[1]) or all(x_[6] == "out" for x_ in xs) else "low", tag="p1.wf.too_close"))
             if missing:
                 out.append(fault(t, "Paradeigma I", missing, took, f"not in the White Flame line-up (wave {w}); the laser went to {', '.join(took) or 'someone else'}", "high" if took else "medium", tag="p1.wf.not_in_line_up"))
             else:   # every missing baiter's laser explained: anyone else it hit (a baiter twice) stood in a laser line
@@ -836,6 +857,11 @@ def para2(p):
     gone = sorted(w for w in tethered if w in p.dead_by(las[0]["t"] - 0.3)) if las else []
     unhit = [w for w in tethered if w not in gone and w not in {e["who"] for e in las}]
     P2 = p2_lasers(p)
+    # a Soul holder also holding a tether (the party short) cannot drop their Soul where the sweep says and stretch their
+    # tether too: their tower's failure is the deaths' that left the party short, as their laser's is (para2_tethers)
+    forced = {h for _, h, _ in P2.values() if h in souls} if P2 and all(h for _, h, _ in P2.values()) else set()
+    short = sorted(p.dead_by(min((tt for tt, *_ in p.p2["tethers"]), default=74)) | p.dead_by(min(t for *_, t in P2.values()))) if forced else []
+    forced = forced if short else set()
     if P2 and all(h for _, h, _ in P2.values()):   # the holders known: the lasers replayed
         out += para2_tethers(p, souls, by, P2, teth)
         by = {}
@@ -888,6 +914,9 @@ def para2(p):
     expl = p.hits("Unmitigated Explosion", 81, 86)
     used = set()
     boom = dict(ability="Unmitigated Explosion")
+    # whose tower each soak was in: the nearest Soul of its colour that dropped within a tower's radius
+    owner_of = {id(e): min(ws, key=lambda w: math.dist(e["pos"], sp[w])) for e in soaks if e["pos"]
+                for ws in [[w for w in sp if e["name"].startswith(souls[w]) and math.dist(e["pos"], sp[w]) < 3.6]] if ws}
     for w, asp in souls.items():
         if w not in sp:   # died holding the Soul: its tower dropped on someone else (see dead_soul), and nobody soaks it
             if expl and w in p.dead_by(77):
@@ -900,16 +929,27 @@ def para2(p):
             if s["who"] in souls:
                 out.append(fault(s["t"], "Paradeigma II", ([w] if w in wrong else []) + [s["who"]], [s["who"]],
                                  f"soaked {w}'s tower while holding a Soul" + (f" ({w} dropped it in the wrong quadrant)" if w in wrong else ""), "high", tag="p2.tower.wrong_quadrant" if w in wrong else "p2.tower.wrong_player"))
-            elif teth.get(s["who"], (None,))[0] == asp:
-                out.append(fault(s["t"], "Paradeigma II", [s["who"]], [s["who"]], f"soaked {w}'s {asp} tower with the same-colour Tilt", "high", tag="p2.tower.wrong_player"))
+            elif teth.get(s["who"], (None,))[0] == asp:   # it explodes (15 of 15): the explosion is theirs, and a misplaced dropper's
+                out.append(fault(s["t"], "Paradeigma II", ([w] if w in wrong else []) + [s["who"]], {s["who"]} | {e["who"] for e in expl},
+                                 f"soaked {w}'s {asp} tower with the same-colour Tilt" + (f" ({w} dropped it in {quad(sp[w])}, sweep says {expq[w]})" if w in wrong else ""),
+                                 "high", **(boom if expl else {}), tag="p2.tower.wrong_quadrant" if w in wrong else "p2.tower.wrong_player"))
             continue
         # unsoaked tower (timed at the soak moment so the soakers' own deaths link to it too)
         t = soaks[0]["t"] if soaks else 80.2
-        if w in wrong:
+        if w in forced:
+            out.append(fault(t, "Paradeigma II", short, {e["who"] for e in expl}, f"{w}'s tower unsoaked: {w} held a Soul and a tether both, the party short "
+                             f"({', '.join(short)} already dead)", "consequence", chain=short, **boom, tag="p2.soul_and_tether"))
+        elif w in wrong:
             out.append(fault(t, "Paradeigma II", [w], {e["who"] for e in expl} | {w}, f"{w}'s tower unsoaked: dropped in {quad(sp[w])}, sweep says {expq[w]}", "high", **boom, tag="p2.tower.wrong_quadrant"))
         elif expq.get(w) in tq:
             sk = tq[expq[w]][0]
+            # its soaker soaked a tower of the same colour that another Soul dropped in this quadrant, off the sweep: theirs
+            elsewhere = sorted({owner_of[id(e)] for e in soaks if e["who"] == sk and e["name"].startswith(asp) and owner_of.get(id(e)) in wrong and owner_of[id(e)] != w})
             if sk in p.dead_by(80): out.append(fault(t, "Paradeigma II", [sk], {e["who"] for e in expl}, f"tower unsoaked because {sk} was already dead", "consequence", chain=[sk], **boom, tag="p2.tower.unsoaked"))
+            elif elsewhere:
+                out.append(fault(t, "Paradeigma II", elsewhere, {e["who"] for e in expl} | set(elsewhere), f"{w}'s tower unsoaked: {' and '.join(elsewhere)} dropped "
+                                 f"{'theirs' if len(elsewhere) == 1 else 'their towers'} in {expq[w]} off the sweep (sweep says {', '.join(expq[x] for x in elsewhere)}), "
+                                 f"and {sk} soaked that one", "high", **boom, tag="p2.tower.wrong_quadrant"))
             else:
                 cul, conf, why, tg = p2_unsoaked(p, w, asp, sk, expq[w], sp[w]) or ([sk], "high", f"did not soak {w}'s tower in {expq[w]}", "p2.tower.unsoaked")
                 out.append(fault(t, "Paradeigma II", cul, {e["who"] for e in expl} | set(cul), why, conf, **boom, tag=tg))
@@ -1341,6 +1381,7 @@ def clip_geometry(p, lt, exp, S, w, clip):
 # laser's group clockwise of it): clean pulls' sharers stand a median 1.0 y from that spot, 95% within SC1_GROUP_TOL, in
 # every group. A position read more than SC1_GROUP_STALE s from a sample makes a verdict at most medium.
 SC1_LASER_HALF, SC1_GROUP_R, SC1_GROUP_ANG, SC1_GROUP_TOL, SC1_GROUP_STALE = 3.0, 11.3, 15, 2.6, 0.5
+SC1_EDGE = 0.5   # y either side of a laser's edge where a hit or a miss is as the log has it
 
 
 def sc1_laser_replay(p, exp, S):
@@ -1370,8 +1411,30 @@ def sc1_laser_replay(p, exp, S):
         n = math.hypot(*s) or 1e-9
         return {w for w, q in pp.items() if (q[0] * s[0] + q[1] * s[1]) / n > 0 and abs(q[0] * s[1] - q[1] * s[0]) / n <= SC1_LASER_HALF}
     got = {nm: {e["who"] for e in calc if e["name"] == nm} for nm in LASER_STRONG}
-    return dict(hits=hits, fits={nm: strong[nm] is not None and hits(nm) == got[nm] for nm in LASER_STRONG},
+    def fits(nm):
+        """The replay reproduces laser nm: everyone well inside it was hit, everyone well outside not (within SC1_EDGE of
+        its edge either way, as the log has it: the edge is soft, as Paradeigma I's and II's)."""
+        s = pos.get(strong[nm], (None,))[0]
+        if not s: return False
+        n = math.hypot(*s) or 1e-9
+        for w, (q, _) in pos.items():
+            d = abs(q[0] * s[1] - q[1] * s[0]) / n if (q[0] * s[0] + q[1] * s[1]) / n > 0 else 99
+            if d <= SC1_LASER_HALF - SC1_EDGE and w not in got[nm] or d > SC1_LASER_HALF + SC1_EDGE and w in got[nm]: return False
+        return True
+    return dict(hits=hits, fits={nm: fits(nm) for nm in LASER_STRONG},
                 off={w: math.dist(q[0], spot[group[w]]) for w, q in pos.items() if w in group}, gap={w: q[1] for w, q in pos.items()}, strong=strong)
+
+
+def sc1_misaim(R, nm, w):
+    """A laser the replay does not reproduce that hit w, who stood at their group's spot (within SC1_GROUP_TOL, read within
+    SC1_GROUP_STALE s): it was aimed where they were not, so not their mistake. (culprits, confidence, why): the laser's
+    Strong Soul when they stood off their spot (medium), else both, undecided (low). None when w was off their spot."""
+    s = R["strong"][nm] if R else None
+    if not (s and s != w and R["off"].get(w, 99) <= SC1_GROUP_TOL and R["gap"].get(w, 9) <= SC1_GROUP_STALE): return None
+    at = lambda x: f"{x} {R['off'].get(x, 0):.1f} y from their group's spot"
+    if R["off"].get(s, 0) > SC1_GROUP_TOL:
+        return [s], "medium", f"{s}, who aims it, stood {R['off'][s]:.1f} y from their group's spot ({at(w)}; the laser aimed where the positions do not put it)"
+    return [w, s], "low", f"the laser aimed where the positions do not put it, both at their spots ({at(w)}, {at(s)})"
 
 
 def sc1_laser_fix(R, nm, w, want):
@@ -1557,7 +1620,12 @@ def superchain1(p, lp):
                 out.append(fault(t, "Superchain I", cul, [w], rule, conf, ability=nm, hit=clip, tag="sc1.laser.undecided" if conf == "low" else "sc1.laser.both" if clip else "sc1.laser.group"))
             elif clip:
                 cul, why, conf, chain = clip_blame(p, lt, exp, S, w, nm, both)
-                out.append(fault(t, "Superchain I", cul, [w], why, conf, chain=chain, ability=nm, hit=True, tag="sc1.laser.both"))
+                if chain is None and len(both) < ON_ONE_SPOT and (ma := sc1_misaim(R, nm, w)):   # at their spot: the laser's aim
+                    cul, conf, why = ma[0], ma[1], (f"{undecided(w, nm)} (both lasers): " if ma[1] == "low" else f"took both lasers ({nm} too): ") + ma[2]
+                out.append(fault(t, "Superchain I", cul, [w], why, conf, chain=chain, ability=nm, hit=True, tag="sc1.laser.undecided" if conf == "low" else "sc1.laser.both"))
+            elif ma := sc1_misaim(R, nm, w):
+                out.append(fault(t, "Superchain I", ma[0], [w], (f"{undecided(w, nm)} (not their laser): " if ma[1] == "low" else f"took {nm}, not their laser group's: ") + ma[2],
+                                 ma[1], ability=nm, tag="sc1.laser.undecided" if ma[1] == "low" else "sc1.laser.group"))
             else: out.append(fault(t, "Superchain I", [w], [w], f"in the wrong laser group (took {nm})", "high", tag="sc1.laser.group"))
         # a laser a sharer short: whoever belonged in it and lived, but took the other or neither
         dead = p.dead_by(t - 0.3)
