@@ -12,9 +12,9 @@ Probe.run('panel-para1', 'p1-clock', async ({ P, log, head, click }) => {
     const snaps = [snap()], parts = [];
     let fbBad = 0, failed = false;
     for(let step = 1; step <= 3; step++){
-      const oks = [], titles = {};
+      // each click is taken back, so every one starts from the page as the step found it
+      const oks = [], titles = {}, before = snap();
       grid.forEach(g => {
-        const before = snap();
         click(g);
         const h = head(), t = h.replace(/^\S+ /, '');
         titles[t] = (titles[t] || 0) + 1;

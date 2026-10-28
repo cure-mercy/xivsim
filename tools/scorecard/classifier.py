@@ -66,6 +66,7 @@ class Pull:
         self.wf = (ev.get("wf") or {}).get(str(self.fid))   # White Flame's lasers and positions around them (scorecard.wf_compact)
         self.p3 = (ev.get("p3") or {}).get(str(self.fid))   # Paradeigma III's add tethers (scorecard.p3_compact)
         self.sc1 = (ev.get("sc1") or {}).get(str(self.fid))   # Superchain I's towers, last cluster and positions (scorecard.sc1_compact)
+        self.p2 = (ev.get("p2") or {}).get(str(self.fid))   # Paradeigma II's tethers, casts and positions (scorecard.p2_compact)
 
     # helpers
     def white_flame(self, lo, hi):
@@ -670,6 +671,152 @@ def dead_soul(p, souls, glow, t):
 
 
 # ---------- Paradeigma II: tethers, quadrant sweep, towers ----------
+# Replayed from Pull.p2 (scorecard.fetch_p2; scratch/para2audit, 2026-10-28). A tether laser's holder is its cast's
+# target, else its add's last tether (a laser through two players logs no target); the classifier's guess (the one
+# hit furthest out) was wrong 7 times and found none 31. The adds stand 3 y off each cardinal at the wall and their
+# holders stretch straight across: off that line past P2_LINE_TOL (90% of clean pulls within), and their own laser is
+# lethal nearer than P2_STRETCH y to the add's wall (no holder lived nearer, 2,689 lasers; the five who died further
+# out were low on HP). A laser hits within TETHER_HALF of the line from its add through its holder (2,650 of 2,711
+# reproduced from the positions at the calculated hits), past the holder too; its edge is soft over P2_EDGE (half of
+# those 2.5-3 y from it were hit). A Soul stands P2_SOUL_R out on their sweep quadrant's diagonal (the median), off
+# it past P2_SOUL_TOL as the lasers land (90%). Their tower drops there: off its spot past P2_OFF (90% of soaked towers
+# within), and soakers came from within P2_REACH of it as the lasers landed (99%). With the party short, the game gives
+# a Soul holder a tether too (never with all 8 alive, 764 pulls).
+P2_LINE_TOL, P2_STRETCH, P2_EDGE, P2_SOUL_R, P2_SOUL_TOL, P2_OFF, P2_REACH = 1.75, 34.5, 0.5, 13.24, 2.5, 2.6, 10.7
+P2_DIAG = {"NE": (1, -1), "SE": (1, 1), "SW": (-1, 1), "NW": (-1, -1)}
+
+
+def p2_spot(q):
+    """Where a Soul sent to quadrant q stands and drops their tower."""
+    return P2_DIAG[q][0] * P2_SOUL_R / 2 ** .5, P2_DIAG[q][1] * P2_SOUL_R / 2 ** .5
+
+
+def p2_frame(add, pos):
+    """(across, side) of pos from a tether add: y across the arena from its wall, and y off its straight line."""
+    ax, ay = add
+    if abs(ax) > abs(ay): return (pos[0] - ax) * -math.copysign(1, ax), pos[1] - ay
+    return (pos[1] - ay) * -math.copysign(1, ay), pos[0] - ax
+
+
+def p2_straight(add, across):
+    """The point straight across from an add, `across` y from its wall."""
+    ax, ay = add
+    return (ax - math.copysign(across, ax), ay) if abs(ax) > abs(ay) else (ax, ay - math.copysign(across, ay))
+
+
+def p2_ray(a, b, q):
+    """Distance from q to the laser from a through b (from a on, past b)."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    n = math.hypot(dx, dy) or 1
+    if (q[0] - a[0]) * dx + (q[1] - a[1]) * dy < 0: return math.dist(a, q)
+    return abs((q[0] - a[0]) * dy - (q[1] - a[1]) * dx) / n
+
+
+def p2_lasers(p):
+    """{(laser name, add instance): (add (x, y), holder or None, cast time)} from Pull.p2, or {} without it."""
+    out = {}
+    for t, nm, inst, tgt, x, y in (p.p2 or {}).get("casts", ()):
+        if nm not in ("Searing Radiance", "Shadowsear") or t < 74: continue
+        last = [pid for tt, i, pid in p.p2["tethers"] if i == inst and tt <= t]
+        out[(nm, inst)] = ((x, y), p.players.get(tgt) or (p.players.get(last[-1]) if last else None), t)
+    return out
+
+
+def p2_tether_fix(add, h, hq, v, vq, spot, tol):
+    """Whose move alone to their spot would have taken `v` (at vq) out of `h`'s tether laser: h's to their add's
+    straight line (as far across as they stood), or v's to `spot` (off it past `tol`). (culprits, confidence, why) as
+    for Superchain I's lasers: both would, the one off their spot; both when both are (medium); when neither is, or the
+    deciding move leaves them within P2_EDGE of the laser's edge, it cannot be decided (both, low). Neither alone: both."""
+    across, side = p2_frame(add, hq)
+    d = {h: p2_ray(add, p2_straight(add, across), vq), v: p2_ray(add, hq, spot) if spot else 0}
+    off = {h: abs(side), v: math.dist(vq, spot) if spot else 0}
+    far = lambda x: off[x] > (P2_LINE_TOL if x == h else tol)
+    at = lambda x: f"{x} {off[x]:.1f} y off {'their line' if x == h else 'their spot'}"
+    facts = f"{at(v)}, {at(h)}"
+    opts = [x for x in (v, h) if d[x] > TETHER_HALF]
+    if len(opts) == 2:
+        out = [x for x in opts if far(x)]
+        if not out: return [v, h], "low", f"could not be decided who stood in whose tether laser: either at their spot would have cleared it ({facts})"
+        if len(out) == 2: return [v, h], "medium", f"stood in {h}'s tether laser, both away from their spots: either back would have cleared it ({facts})"
+        opts = out
+    if len(opts) == 1:
+        x = opts[0]
+        if d[x] - TETHER_HALF <= P2_EDGE: return [v, h], "low", f"could not be decided who stood in whose tether laser: at its edge ({facts})"
+        conf = "high" if far(x) else "medium"
+        return ([v], conf, f"stood in {h}'s tether laser ({facts})") if x == v else ([h], conf, f"{h}: off their line, their tether laser hit {v} ({facts})")
+    return [v, h], "medium", f"stood in {h}'s tether laser, and neither alone at their spot would have cleared it ({facts})"
+
+
+def para2_tethers(p, souls, by, P2, teth):
+    """Paradeigma II's tether lasers with their holders known (p2_lasers): each holder's Tilt and place into `teth` for
+    the sweep; the faults. A holder killed by their own laser nearer than P2_STRETCH did not stretch it (further out,
+    their HP did not hold: no fault); one holding a Soul too was given both by the game, the party short (the deaths
+    that left it short are blamed for what their laser hit). Anyone else it hit: a holder dead by then is that death's;
+    otherwise p2_tether_fix (a Soul's spot by the sweep, a holder's
+    their own add's straight line)."""
+    out = []
+    t_l = min(t for _, _, t in P2.values())
+    dead = p.dead_by(t_l)
+    at = {h: q[0] for add, h, t in P2.values() if (q := track_at(p, p.p2["pos"], h, t))}
+    own = {h: add for add, h, _ in P2.values()}
+    for (nm, inst), (add, h, t) in P2.items():
+        if h not in dead and h in at: teth[h] = ("Umbral" if nm == "Searing Radiance" else "Astral", at[h])
+    tq = {quad(pos): tilt for w, (tilt, pos) in teth.items()}
+
+    def spot_of(v, vq):
+        if v in souls:
+            order = ["NE", "SE", "SW", "NW"] if p.job.get(v) in SUPPORT_JOBS else ["NW", "SW", "SE", "NE"]
+            q = next((q for q in order if tq.get(q) == OPP[souls[v]]), None)
+            return (p2_spot(q) if q else None), P2_SOUL_TOL
+        return (p2_straight(own[v], p2_frame(own[v], vq)[0]) if v in own else None), P2_LINE_TOL
+    # a Soul holder holds a tether only with the party short: dead as the game handed out four Souls and four tethers
+    # (raised by the lasers or not), or a tether's holder dead since (it goes to someone else: only Soul holders are left)
+    first = min((tt for tt, *_ in p.p2["tethers"]), default=t_l)
+    short = sorted(p.dead_by(first) | dead)
+    for (nm, inst), (add, h, t) in P2.items():
+        es = [e for e in by.get((nm, inst), ()) if e["pos"]]
+        if h in souls and short:   # the game gave a Soul holder a tether too: the party was short
+            out.append(fault(t, "Paradeigma II", short, [h], f"{h} held a Soul and a tether both: the party was short ({', '.join(short)} already dead)", "consequence", chain=short, ability=nm))
+        mine = next((e for e in es if e["who"] == h), None)
+        if mine and not (h in souls and short) and (mine.get("targetResources") or {}).get("hitPoints") == 0 and (h not in at or p2_frame(add, at[h])[0] < P2_STRETCH):
+            how = f" ({p2_frame(add, at[h])[0]:.1f} y across, lethal under {P2_STRETCH:g})" if h in at else ""
+            out.append(fault(mine["t"], "Paradeigma II", [h], [h], f"died to their own tether laser (not stretched far enough){how}", "high"))
+        for e in es:
+            v = e["who"]
+            if v == h: continue
+            if h in dead:
+                out.append(fault(e["t"], "Paradeigma II", [h], [v], f"a tether laser hit {v} because its holder was already dead ({h})", "consequence", chain=[h]))
+                continue
+            if h in souls and short:   # a holder with a Soul to drop too cannot be on both spots
+                out.append(fault(e["t"], "Paradeigma II", short, [v], f"{h} held a Soul and a tether both, the party short ({', '.join(short)} already dead); their laser hit {v}",
+                                 "consequence", chain=short, ability=nm))
+                continue
+            vq = track_at(p, p.p2["pos"], v, t)
+            spot, tol = spot_of(v, vq[0]) if vq else (None, 0)
+            r = p2_tether_fix(add, h, at[h], v, vq[0], spot, tol) if h in at and vq and spot else None
+            out.append(fault(e["t"], "Paradeigma II", r[0], [v], r[2], r[1]) if r else fault(e["t"], "Paradeigma II", [v], [v], f"stood in {h}'s tether laser", "medium"))
+    return out
+
+
+def p2_unsoaked(p, w, asp, sk, q, drop):
+    """Whose an unsoaked tower in its sweep quadrant was, by where it dropped (its Advance cast, Pull.p2) and where its
+    soaker stood as the lasers landed, as for Superchain I's: on its spot (within P2_OFF) the soaker's; off it but
+    within the soaker's reach (P2_REACH), it cannot be pinned on either alone (both, low); out of their reach with its
+    spot in it, the dropper's; neither in reach, both (medium). (culprits, confidence, why), or None without positions."""
+    tws = [(x, y) for t, nm, inst, tgt, x, y in (p.p2 or {}).get("casts", ()) if nm == f"{asp} Advance" and t >= 78]
+    L = p2_lasers(p)
+    sq = track_at(p, p.p2["pos"], sk, min(t for *_, t in L.values())) if tws and L else None
+    if not sq: return None
+    tw = min(tws, key=lambda z: math.dist(z, drop))
+    want = p2_spot(q)
+    off, d, dp = math.dist(tw, want), math.dist(sq[0], tw), math.dist(sq[0], want)
+    facts = f"it dropped {off:.1f} y from its spot, {sk} {d:.1f} y from it and {dp:.1f} from the spot as the lasers landed"
+    if off <= P2_OFF: return [sk], "high", f"did not soak {w}'s tower in {q} ({facts})"
+    if d <= P2_REACH: return [sk, w], "low", f"{w}'s tower unsoaked, undecided: {w} dropped it off its spot, but {sk} could still reach it ({facts})"
+    if dp <= P2_REACH: return [w], "high", f"{w}'s tower unsoaked: {w} dropped it out of {sk}'s reach ({facts})"
+    return [sk, w], "medium", f"{w}'s tower unsoaked, both away from it ({facts})"
+
+
 def para2(p):
     out = []
     souls = {}
@@ -685,6 +832,10 @@ def para2(p):
     tethered = [w for w in p.job if w not in souls]
     gone = sorted(w for w in tethered if w in p.dead_by(las[0]["t"] - 0.3)) if las else []
     unhit = [w for w in tethered if w not in gone and w not in {e["who"] for e in las}]
+    P2 = p2_lasers(p)
+    if P2 and all(h for _, h, _ in P2.values()):   # the holders known: the lasers replayed
+        out += para2_tethers(p, souls, by, P2, teth)
+        by = {}
     for (nm, inst), es in by.items():
         es = [e for e in es if e["pos"]]
         if not es: continue
@@ -756,7 +907,9 @@ def para2(p):
         elif expq.get(w) in tq:
             sk = tq[expq[w]][0]
             if sk in p.dead_by(80): out.append(fault(t, "Paradeigma II", [sk], {e["who"] for e in expl}, f"tower unsoaked because {sk} was already dead", "consequence", chain=[sk], **boom))
-            else: out.append(fault(t, "Paradeigma II", [sk], {e["who"] for e in expl} | {sk}, f"did not soak {w}'s tower in {expq[w]}", "high", **boom))
+            else:
+                cul, conf, why = p2_unsoaked(p, w, asp, sk, expq[w], sp[w]) or ([sk], "high", f"did not soak {w}'s tower in {expq[w]}")
+                out.append(fault(t, "Paradeigma II", cul, {e["who"] for e in expl} | set(cul), why, conf, **boom))
         else:
             out.append(fault(t, "Paradeigma II", [], {e["who"] for e in expl}, f"{w}'s tower unsoaked; soaker could not be determined", "low", **boom))
     # one player soaking two towers: the towers were dropped on top of each other
@@ -1238,7 +1391,13 @@ SC1_FLAME, SC1_FLAME_WINDOW, SC1_FLAME_EDGE = 6.0, 1.5, 0.5
 
 def sc1_where(p, w, at):
     """(position, seconds to the nearest sample it is read from) of player `w` at `at` (Pull.sc1), or None."""
-    s = sorted((t, (x, y)) for t, pid, x, y in (p.sc1 or {}).get("pos", ()) if p.players.get(pid) == w)
+    return track_at(p, (p.sc1 or {}).get("pos", ()), w, at)
+
+
+def track_at(p, samples, w, at):
+    """(position, seconds to the nearest sample it is read from) of player `w` at `at` from position samples [[t, player
+    id, x, y]] (Pull.sc1's or Pull.p2's), between the samples either side, or None."""
+    s = sorted((t, (x, y)) for t, pid, x, y in samples if p.players.get(pid) == w)
     if not s: return None
     before, after = [v for v in s if v[0] <= at], [v for v in s if v[0] > at]
     if not before: return after[0][1], after[0][0] - at
@@ -1695,6 +1854,9 @@ def rules_on(day):
 EARLY_PULL_S = 15     # before the first mechanic: Athena's first auto-attack on a non-tank means she was pulled early,
                       # and the non-tanks her autos kill before one reaches a tank are its fallout
 BROKEN_GEAR = 0.5     # max HP under this share of the other non-tanks' median: broken gear (one player, at 5%, in the caches)
+RAIDWIDES = {"On the Soul", "Ultima Blade"}   # hit every living player (On the Soul 1,591 of 1,683 casts; Ultima Blade 14
+                              # of 14) and are survived with healing and mitigation; Unmitigated Explosion (a tower failure),
+                              # Superchain Radiation (a cone at each player) and Theos's Ultima (shared damage) are not
 FELL_GAP, FELL_HP, FELL_LEFT = 1.0, 0.25, 6   # a death with no hit, the last at least FELL_GAP s before with FELL_HP of
                                               # their HP left, and the pull going on FELL_LEFT s more: fell off the arena?
 
@@ -1783,6 +1945,7 @@ def classify(p, lp, day=None):
             r = dict(r, culprits=[], confidence="not blamed", cause=f"{r['cause']} (not blamed: {why})")
         res.append(r)
     incs, gear, (puller, untanked) = p.incidents(), broken_gear(p), early_puller(p)
+    called = min((i["t"] for i in incs if i.get("jump")), default=float("inf"))   # the first jump: the wipe was called
     for i in incs:
         mech = mech_at(i["t"])
         if i.get("jump"):
@@ -1855,6 +2018,16 @@ def classify(p, lp, day=None):
             add(dict(i, mechanic=mech, cause="died without taking a hit while the pull went on (fell off the arena?)", culprits=[i["victim"]], confidence="low", own_hit=True))
         elif i["ability"] == "Shockwave":
             add(dict(i, mechanic=mech, cause="stood in Athena's dash line (Palladion Shockwave)", culprits=[i["victim"]], confidence="medium"))
+        elif i["kind"] == "death" and i["ability"] in RAIDWIDES and i["t"] < called:
+            # a raidwide no rule explains, before the wipe was called (no one heals after the first jump): healing and
+            # mitigation fell short, and in this game's design shields,
+            # mitigation and HP restoration come from every role, so no one's part can be told: everyone alive shares
+            # it (low), and the dead are passed to whoever caused their deaths (the user's rule, 2026-10-28)
+            dead = sorted(p.dead_by(i["t"] - 0.3) - {i["victim"]})
+            alive = sorted(w for w in p.job if w not in dead)
+            f = dict(fault(i["t"], mech, alive, [i["victim"]], f"{i['ability']}: healing and mitigation fell short, everyone shares it (no one's part can be told)" +
+                           (f"; {', '.join(dead)} already dead" if dead else ""), "low", chain=dead), direct=alive, direct_conf="low")
+            add(from_chain(i, f))
         elif i["ability"] == "attack" and p.job.get(i["victim"]) in TANK_JOBS:
             add(dict(i, mechanic=mech, cause="tank died to auto-attacks (mitigation / tank swap)", culprits=[], confidence="unattributed"))
         else:
