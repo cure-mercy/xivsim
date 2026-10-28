@@ -1748,6 +1748,27 @@ def sc1_tower(p, asp, soaker, owner):
     return [soaker, owner], least_sure([certainty(d - SC1_REACH, us), certainty(dp - SC1_REACH, us)]), f"both away from it ({facts})", off, "sc1.tower.unsoaked"
 
 
+def sc1_together(p, S):
+    """Whose tower was off its spot when the two bright Souls dropped theirs on one spot: (culprits, confidence, facts,
+    tag) or None without the positions (or with both towers on their spots). The spots are opposite cardinals ~15 y apart,
+    so one tower at least is off its own: the Soul's whose tower dropped past SC1_OFF from its spot, both when both did.
+    A tower nearer SC1_OFF than the log's error either way may have been either: its Soul is blamed too (low), and with
+    no tower surely off, it cannot be decided (both, low; as the user's rule for the towers, 2026-10-27). In all 7 cached
+    pulls that dropped together (2026-10-28), one tower landed on its spot and only one off it."""
+    offs = {}
+    for asp in ("Astral", "Umbral"):
+        sp = sc1_spot(p, asp)
+        if not sp or not S[f"{asp}bright"]: return None
+        offs[S[f"{asp}bright"][0]] = (asp, math.dist((sp[0][1], sp[0][2]), sp[1]))
+    u = unc(0)   # the towers' positions and their spots are the game's own
+    sure = {w: certainty(abs(d - SC1_OFF), u) for w, (_, d) in offs.items()}
+    off = [w for w, (_, d) in offs.items() if d > SC1_OFF and sure[w] != "low"]
+    edge = [w for w in offs if sure[w] == "low"]
+    facts = "; ".join(f"{w}'s {asp} tower {d:.1f} y from its spot" for w, (asp, d) in offs.items())
+    if not off: return (list(offs), "low", f"could not be decided whose was off its spot ({facts})", "sc1.bright_together.undecided") if edge else None
+    return off + edge, least_sure(list(sure.values())), f"{' and '.join(w + chr(39) + 's' for w in off)} off {'its spot' if len(off) == 1 else 'their spots'} ({facts})", "sc1.bright_together"
+
+
 def superchain1(p, lp):
     out = []
     S = {k: p.holders(f"{k} Soul", 120, 130) for k in ("Astralstrong", "Umbralstrong", "Astralbright", "Umbralbright", "Heavensflame")}
@@ -1923,7 +1944,7 @@ def superchain1(p, lp):
     glow = p.hits(("Astral Glow", "Umbral Glow"), 144, 147.5)
     gi = collections.defaultdict(list)
     for e in glow: gi[(e["name"], e.get("sourceInstance"))].append(e["who"])
-    together = set()            # the bright Souls who dropped their towers on one spot
+    together, tblame = set(), None   # the bright Souls who dropped their towers on one spot; (culprits, confidence, tag) for it
     for e in glow:
         v, owner = e["who"], next((w for w in gi[(e["name"], e.get("sourceInstance"))] if w in bright), None)
         if v == owner: continue
@@ -1937,9 +1958,12 @@ def superchain1(p, lp):
         elif owner in wrong_group:   # the laser side decides the tower side
             out.append(fault(e["t"], "Superchain I", [owner], [v], f"took the wrong laser, so their tower dropped on the wrong side; its AoE hit {v}", "high", tag="sc1.tower.wrong_side"))
         elif v in bright:   # the owner is in it too: two bright Souls' AoEs together can kill either
-            if v not in wrong_group and owner: together = {owner, v}
-            out.append(fault(e["t"], "Superchain I", [v] if v in wrong_group else [owner, v] if owner else [v], [v] + ([owner] if owner else []),
-                             f"the bright Souls dropped their towers together ({owner or 'a bright Soul'}'s AoE hit {v}); they go on opposite cardinals", "high" if v in wrong_group else "medium", tag="sc1.bright_together"))
+            cul, conf, facts, ttag = ([v], "high", None, "sc1.bright_together") if v in wrong_group else \
+                sc1_together(p, S) or ([owner, v] if owner else [v], "medium", None, "sc1.bright_together")   # whose tower was off its spot
+            if v not in wrong_group and owner: together, tblame = {owner, v}, (cul, conf, ttag)
+            out.append(fault(e["t"], "Superchain I", cul, [v] + ([owner] if owner else []),
+                             f"the bright Souls dropped their towers together ({owner or 'a bright Soul'}'s AoE hit {v}); they go on opposite cardinals"
+                             + (f": {facts}" if facts else ""), conf, tag=ttag))
         elif v in hf:
             out.append(fault(e["t"], "Superchain I", [v], [v], f"Heavensflame not spread away: stood in {owner + chr(39) + 's' if owner else 'a'} bright Soul's AoE as the tower dropped", "high", tag="sc1.flame.bright_aoe"))
         else:
@@ -1957,8 +1981,8 @@ def superchain1(p, lp):
         for e in got:
             if e["who"] in soaker or e["who"] in cover and not holder: continue   # covering for its Strong Soul: judged below
             if together and e["who"] not in together:   # both towers on one spot: soaking one meant soaking both
-                out.append(fault(e["t"], "Superchain I", sorted(together), [e["who"]], f"in the {asp} tower too, as the bright Souls dropped their towers together",
-                                 "medium", fallout=True, tag="sc1.bright_together"))
+                out.append(fault(e["t"], "Superchain I", tblame[0], [e["who"]], f"in the {asp} tower too, as the bright Souls dropped their towers together",
+                                 tblame[1], fallout=True, tag=tblame[2]))
             else: out.append(fault(e["t"], "Superchain I", [e["who"]], [e["who"]], f"soaked the {asp} tower (meant for {', '.join(soaker)})", "high", tag="sc1.tower.wrong_player"))
         # unsoaked, or soaked only by others with the wrong Tilt: it explodes. Held by others in its Strong Soul's place,
         # it does not, but it kills them (39 of 39 Heavensflame players, 23 of 32 others; its Strong Soul lives 9 times in
