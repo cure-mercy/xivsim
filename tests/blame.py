@@ -159,7 +159,7 @@ def show(code, fight, own_day=False):
               f"{', fallout' if r.get('derived') else ''}{', saved the pull' if r.get('saved') else ''}] {r['cause']}")
     cul, trig = j["wipe"]
     print(f"wipe: {', '.join(cul) or 'no one'}" + (f" ({D.wipe_label(S, trig)} at {D.mmss(trig['t'])})" if trig else ""))
-    print("counted: " + "; ".join(f"{c} {D.mmss(t)} {S.cause_label(cause, mech)}" for c, t, cause, mech, *_ in j["counted"]))
+    print("counted: " + "; ".join(f"{c} {D.mmss(t)} {D.label(S, cause, mech, tag)}" for c, t, cause, mech, kind, conf, tag in j["counted"]))
     # every hit on a player around the incidents (the windows merged)
     spans = []
     for r in j["res"]:
