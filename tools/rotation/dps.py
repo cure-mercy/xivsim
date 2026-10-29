@@ -65,6 +65,8 @@ STAT_PT = 0.000068                                  # damage per point of the su
 # raid buffs that raise crit or direct-hit rate (status ids as they appear on hits): Battle Voice, Battle Litany, Chain
 # Stratagem, Devilment, the Wanderer's Minuet, Army's Paeon
 CRIT_BUFFS = {"1000141", "1000786", "1001221", "1001825", "1002216", "1002218"}
+# ...the others' (crit rate, direct-hit rate), for a job whose sure hits all come under them (SURE_BUFFED: sure_gain)
+CRIT_RATES = {"1000141": (0, 0.20), "1000786": (0.10, 0), "1001221": (0.10, 0), "1002216": (0.02, 0), "1002218": (0, 0.03)}
 
 
 PLAIN, DH, CRIT = 1.12, 1.37, 1.73     # flag_hits: a hit over its plain level is plain below 1.12, then direct hit, crit, both
@@ -171,13 +173,45 @@ def tick_gain(pulls, unbuffed=False):
     return num / den if den else None
 
 
-def sure_gain(job, pulls, k, unbuffed=False):
+def crit_damage(pulls, skip=(), fallback=1.6):
+    """The player's critical-hit damage: their crit-only hits over their plain hits, per action (5 or more of each) and
+    weighted by crits, under no crit or direct-hit raid buff in 0:00-2:00; `fallback` without such an action."""
+    cr, plain = collections.defaultdict(list), collections.defaultdict(list)
+    for p in pulls:
+        for x in p["hits"]:
+            if x["type"] != "damage" or x.get("tick") or not 0 <= x["t"] < WINDOW or x.get("amount", 0) <= 0: continue
+            if CRIT_BUFFS & set((x.get("buffs") or "").strip(".").split(".")): continue
+            a, v = p["names"][str(x["abilityGameID"])], x["amount"] / x.get("multiplier", 1)
+            if a in skip or x.get("directHit"): continue
+            if x.get("hitType") == 2: cr[a].append(v)
+            elif x.get("hitType") == 1: plain[a].append(v)
+    use = [a for a in cr if len(cr[a]) >= 5 and len(plain[a]) >= 5]
+    if not use: return fallback
+    return sum(sum(cr[a]) for a in use) / sum(len(cr[a]) * st.mean(plain[a]) for a in use)
+
+
+def sure_gain(job, pulls, k, unbuffed=False, more=()):
     """Hits that always crit: their average logged damage (others' buffs divided out) over k times the model potency.
     `unbuffed`: only hits under no crit or direct-hit raid buff (a crit buff raises a sure crit's damage instead) but
-    the job's own (OWN_CRIT_BUFFS: Dancer's Starfall Dance always comes under their Devilment)."""
+    the job's own (OWN_CRIT_BUFFS: Dancer's Starfall Dance always comes under their Devilment). A job whose sure hits
+    nearly all come under others' buffs (SURE_BUFFED: Starfall Dance, cast in the burst, 100 of our 102 under Battle
+    Litany or Chain Stratagem) keeps them all, each divided by what those buffs add to a sure critical direct hit,
+    (1 + crit rate x (crit damage - 1)) x (1 + direct-hit rate x 0.25), at the player's crit damage (crit_damage, over
+    `pulls` and `more`): without, most nights had none and the ceiling's Starfall fell back to the ordinary gain."""
     names = getattr(job, "AUTO_CRIT", ())
     if not names: return None
-    crit = CRIT_BUFFS - set(getattr(job, "OWN_CRIT_BUFFS", ()))
+    own = set(getattr(job, "OWN_CRIT_BUFFS", ()))
+    if unbuffed and getattr(job, "SURE_BUFFED", False):
+        cd = crit_damage(list(pulls) + list(more), names, job.CRIT_DMG)
+        def worth(x):
+            f = 1.0
+            for b in set((x.get("buffs") or "").strip(".").split(".")) - own:
+                c, d = CRIT_RATES.get(b, (0, 0)); f *= (1 + c * (cd - 1)) * (1 + d * 0.25)
+            return f
+        v = [d / m / worth(h) for p in pulls for a, lab, d, m, h in calibrate.model_hits(p, WINDOW, lambda x: True, hit=True)
+             if a in names and "sure crit" in lab and m]
+        return st.mean(v) / k if v else None
+    crit = CRIT_BUFFS - own
     keep = (lambda x: not crit & set((x.get("buffs") or "").strip(".").split("."))) if unbuffed else (lambda x: True)
     v = [d / m for p in pulls for a, lab, d, m in calibrate.model_hits(p, WINDOW, keep)
          if a in names and "sure crit" in lab and m]
@@ -290,7 +324,7 @@ def player_rows(job, pulls, width, more=()):
         skip, sure = getattr(job, "AUTO_CRIT", ()), no_sure(job)
         e, e0 = crit_gain(ps, skip=skip, sure=sure), crit_gain(ps + extra[name], unbuffed=True, skip=skip, sure=sure)
         et, et0 = tick_gain(ps) or e, tick_gain(ps, unbuffed=True) or e0        # offline logs: the hits' gain
-        ec, ec0 = sure_gain(job, ps, k), sure_gain(job, ps, k, unbuffed=True)
+        ec, ec0 = sure_gain(job, ps, k), sure_gain(job, ps, k, unbuffed=True, more=extra[name])
         own = natural_crit(ps, skip, sure) if hasattr(job, "CRIT") else None
         speed = player_speed(job, ps)
         gcd, job.SPEED = calibrate.gcd_at(job, speed), speed
@@ -327,7 +361,7 @@ def night_rows(job, pulls, width, more=()):
         if len(ps) < NIGHT_PULLS or len(hits) < 10: continue
         k = st.median(v / m for _, _, v, m in hits)
         e0 = crit_gain(ps + extra[name, code], unbuffed=True, skip=skip, sure=sure)
-        et0, ec0 = tick_gain(ps, unbuffed=True) or e0, sure_gain(job, ps, k, unbuffed=True)
+        et0, ec0 = tick_gain(ps, unbuffed=True) or e0, sure_gain(job, ps, k, unbuffed=True, more=extra[name, code])
         own = natural_crit(ps, skip, sure) if hasattr(job, "CRIT") else None
         speed = player_speed(job, ps)
         gcd = calibrate.gcd_at(job, speed)

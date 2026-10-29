@@ -94,6 +94,7 @@ GCDS = ["Cascade", "Fountain", "Reverse Cascade", "Fountainfall", "Saber Dance",
 OGCD_ORDER = ["Tincture", "Devilment", "Flourish", "Fan Dance IV", "Fan Dance III", "Fan Dance"]
 AUTO_CRIT = {"Starfall Dance"}
 OWN_CRIT_BUFFS = {"1001825"}                    # Devilment: dps.py measures Starfall's sure gain under it (it always is)
+SURE_BUFFED = True                              # ...and under others' crit buffs divided out (it nearly always is)
 CRIT_RATE, CRIT_DMG, DH_RATE, DH_DMG = 0.25, 1.60, 0.36, 1.25
 
 
