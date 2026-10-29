@@ -148,7 +148,7 @@ the browser and never reaches the server.
 
 ### The admin page and the worker
 
-`#/admin` (the Admin link in the header, shown to admins) has:
+`#/admin` (the Admin link in the header, shown to admins) has a note at the top while logins wait for approval, and:
 
 - **Find a raid day's reports on FFLogs.** Pick the day, and optionally characters to look for (`First Last`, or
   `First Last@World`, comma-separated). The worker lists that day's public P12S Savage reports, each with its pulls,
@@ -160,7 +160,9 @@ the browser and never reaches the server.
 - **Reports.** Add a report by its FFLogs link or code, with its group name (G1, G2, …; empty takes the day's next
   free one). For each report there are buttons to rename its group, rebuild it from a fresh download, watch it live,
   or remove it. Each row shows the state the worker reports: queued, building, ok, or error with FFLogs' message.
-  The list refreshes every 15 seconds, except while a field is being edited.
+  The list refreshes every 15 seconds, except while a field is being edited. It sits beside the search on wide screens,
+  shows the two newest raid days (and anything queued, building or failed), older ones behind a button, and links each
+  built report to its page on the site.
 - **Accounts.** Logins waiting for approval (approve as staff, or remove), and staff and admins (make or remove admin,
   revoke staff access, remove the account).
 - **Audit log.** The newest hundred entries, with older ones a button away.
@@ -261,11 +263,21 @@ passphrase (it only asks when `data.json` is missing).
 
 ## What the site shows
 
-The header links the three sections side by side, Raid days, Rotations and Gear (plus Admin for admins), and marks
-the one the page is in; the breadcrumbs below start from that section.
+The header links the sections side by side, Raid days, Players, Rotations and Gear (plus Admin for admins, with the
+number of logins waiting for approval), and marks the one the page is in; the breadcrumbs below start from that section.
+Day, group, player and pull pages link to their neighbours (the day before and after, the day's other groups, the
+player's other raid days, the pull before and after), group and player pages list their sections under the title
+("On this page"), and group and pull pages link to the report and the pull on FFLogs.
+
+Mechanics and phases no pull of ours has reached yet (Superchain II so far) are left out of the charts and tables that
+list them, until a pull gets there (`seenCps`, `seenWindows` in `site/app.js`). The mistake and wipe heatmaps show the
+15 most frequent causes, the rest behind a button (`CAUSE_ROWS`). "Top wipe cause" in the Days and Groups tables is the
+most frequent blamed cause, with the wipes nobody is blamed for yet (no rules for the mechanic, no culprit found, the
+wipe called) counted after it when there are more of them; Raid leader focus leaves those out.
 
 | Page | What it shows |
 |---|---|
+| Players | Every player across the raid days, the most recent first, with a search box: jobs, nights, pulls, mistakes and wipes per pull over all of them, mistakes per pull on their latest night, which links to their page there. On the hosted site it reads each report's `people` (`build_site.progress_of`), so it needs no full records |
 | Raid days | Tiles: pulls, best pull, furthest seen (the longest pull, the mechanic it reached, its day, group and pull), latest day, mistakes per pull; the burndown; trends across days (how far pulls got, pulls clean through each mechanic, mistakes per pull and per minute, damage lost to mistakes, party DPS against the clears) and a table of days |
 | Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group (rows named by mechanic, see below) |
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |

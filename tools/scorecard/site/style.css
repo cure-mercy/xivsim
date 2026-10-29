@@ -153,7 +153,7 @@ figcaption{ color: var(--muted); font-size: 13px; margin: 2px 0 8px; }
 .empty{ color: var(--muted); padding: 18px 0; }
 
 /* tables */
-.table-wrap{ overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.table-wrap{ position: relative; overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
 figure .table-wrap{ border: 0; background: transparent; }
 table{ border-collapse: collapse; width: 100%; font-size: 14px; }
 th, td{ padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--grid); white-space: nowrap; }
@@ -204,6 +204,9 @@ td.wrap{ white-space: normal; min-width: 260px; }
 .unlock input[type=text], .unlock input[type=email], .unlock input[type=number], .unlock input[type=date], table.admin input[type=text]{ font: inherit; color: var(--ink); background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
 .unlock input[type=number]{ width: 4.5em; padding: 4px 6px; }
 table.admin input[type=text]{ padding: 3px 6px; }
+table.admin td.wrap{ white-space: normal; min-width: 8em; }
+table.admin div.actions{ display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.col form.unlock{ margin-bottom: 12px; }
 table.admin .names{ min-width: 16em; max-width: 30em; }
 .actions{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .actions button, button.small{ font: inherit; font-size: 13px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
@@ -230,6 +233,11 @@ h3 .help{ width: 16px; height: 16px; margin-left: 6px; font-size: 10px; }
 .warn{ border-left: 3px solid var(--div-neg); padding: 8px 12px; background: var(--surface); border-radius: 6px; color: var(--ink); max-width: 90ch; }
 
 /* focus lists: what to work on */
+/* "On this page" links under a long page's title */
+.sections{ display: flex; flex-wrap: wrap; gap: 4px 14px; margin: -6px 0 16px; font-size: 14px; }
+/* "Show N more causes" under a cut-short heatmap */
+.card p.more{ margin: 8px 0 0; }
+input.filter{ font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; width: min(100%, 280px); }
 .focus-card{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; max-width: 90ch; }
 ol.focus{ margin: 0; padding-left: 22px; display: grid; gap: 10px; }
 ol.focus li::marker{ color: var(--ink-2); font-weight: 600; }
