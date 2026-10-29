@@ -711,6 +711,13 @@ def analyse(group, data, bench):
                             dmg=round(sum(v * sec for v, sec in ph) / sum(sec for _, sec in ph), 3) if ph else None, phases=len(ph),
                             loss=r.get("loss"), top=r.get("top"), dps=r.get("dps")))
         return out
+    def job_in_pulls(data, name):   # the jobs of their actors in the pulls, else any known one, else "Unknown"
+        actors = [a for a in data["masterData"]["actors"] if a["name"] == name]
+        inpulls = {i for f in data["fights"] for i in f.get("friendlyPlayers") or []}
+        for ok in (lambda a: a["id"] in inpulls and a["subType"] in ROLE, lambda a: a["subType"] in ROLE):
+            jobs = list(dict.fromkeys(a["subType"] for a in actors if ok(a)))
+            if jobs: return jobs
+        return [actors[0]["subType"] if actors else "Unknown"]
     segs = [first_mistake(data, f)[0] for f in data["fights"]]
     samples = collections.defaultdict(list)
     for rows in data["tables"].values():
@@ -719,7 +726,9 @@ def analyse(group, data, bench):
     bwin = {w["name"]: w for w in bench.get("windows", [])}
     players = []
     for name in attended:
-        jobs = [j for (n, j) in samples if n == name] or [next(a["subType"] for a in data["masterData"]["actors"] if a["name"] == name)]
+        # without a clean 0:00-2:00 sample, the job of their actor in the P12S pulls: FFLogs makes an actor per job a
+        # character plays in the report (the first often "Unknown", from before its job was known), so not the first
+        jobs = [j for (n, j) in samples if n == name] or job_in_pulls(data, name)
         for job in jobs:
             v = samples.get((name, job), [])
             xs = sorted((y["rdps"] for y in v), reverse=True)
