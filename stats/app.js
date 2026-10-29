@@ -2401,7 +2401,7 @@ function playerDps(by) {
 const dpsCell = list => !list || !list.length ? "–" : el("span", { class: "marks jvs" }, ...list.map(x => x.v == null
   ? el("span", { class: "jv", title: `${jobName(x.job)}: no clean 0:00–2:00 pull on the job` }, jobMark(x.job), el("span", { class: "muted" }, " –")) :
   el("span", { class: "jv", title: `${jobName(x.job)}: ${signed(x.v)} against ${x.kind === "ours" ? `our other ${x.n} player${x.n > 1 ? "s" : ""} on the job` : `${x.n} clearer${x.n > 1 ? "s" : ""} on the job`}, ${nightLabel(x.night)}` },
-    jobMark(x.job), ` ${signed(x.v)}${x.n < 3 ? "*" : ""}${x.kind === "ours" ? "†" : ""}`, gradeChip(grade("damage", x.v)))));
+    jobMark(x.job), ` ${signed(x.v)}${x.n < 3 ? "*" : ""}`, gradeChip(grade("damage", x.v)))));
 // their latest night against their earlier ones, after the Mistakes/pull dot: ▲ more mistakes per pull, ▼ fewer,
 // when 20% or more apart (as the trends elsewhere); nothing for a single night
 const trendText = x => x.lastMr == null || x.earlierMr == null ? null
@@ -2421,7 +2421,7 @@ function playersPage() {
     .sort((a, c) => c.last.r.day.localeCompare(a.last.r.day) || a.name.localeCompare(c.name));
   const app = document.getElementById("app");
   const find = el("input", { type: "search", class: "filter", placeholder: "Find a player", "aria-label": "Find a player", autocomplete: "off" });
-  app.append(heading("h1", "Players", "Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard. The arrow after the mistakes' dot compares their latest night with their earlier ones: ▲ more, ▼ fewer (20% and 0.05 per pull or more apart), ▸ about the same. Jobs · vs Clears: every job they played, most played first, with its rDPS over 0:00–2:00 (the best quarter of their clean pulls) against clearers on the job, from the latest night they played it with a clean pull; † a job without clears (Bard), against our other players on it; * one or two to compare with; – no clean pull on the job. The column sorts by their most played job with a value. Every header sorts its column."),
+  app.append(heading("h1", "Players", "Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard. The arrow after the mistakes' dot compares their latest night with their earlier ones: ▲ more, ▼ fewer (20% and 0.05 per pull or more apart), ▸ about the same. Jobs · vs Clears: every job they played, most played first, with its rDPS over 0:00–2:00 (the best quarter of their clean pulls) against clearers on the job, from the latest night they played it with a clean pull; a job without clears (Bard) against our other players on it instead (its entry says so on hover); * one or two to compare with; – no clean pull on the job. The column sorts by their most played job with a value. Every header sorts its column."),
     el("p", { class: "lede" }, `${rows.length} players over ${days().length} raid days, the most recent first. Pick one for their summary over all raid days.`),
     el("p", {}, find));
   const trs = rows.map(x => { const tr = linkRow([x.name, dpsCell(x.dps), String(x.ns.length), x.pulls ? num(x.pulls) : "–",
