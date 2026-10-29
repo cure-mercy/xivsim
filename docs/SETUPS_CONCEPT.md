@@ -679,8 +679,9 @@ that is undone.
 ## MVP (started 2026-10-29)
 
 While the server owner considers the site, the first build covers what needs neither the bot nor the server:
-**bookkeeping and setups**, on the local Supabase stack in WSL only. Real member data stays local until the site is
-approved: nothing of it goes to the cloud project, `stats/`, or git.
+**bookkeeping and setups**, on the local Supabase stack in WSL. Real member data stays in our own databases: since
+2026-10-29 that includes the Strato server the whole site moves to (decision 6), and it never goes to the cloud
+project, `stats/`, or git.
 
 1. **Schema**: a migration in `tools/scorecard/supabase/migrations/` for the tables of this concept that the MVP uses
    (members, characters, duties, clears, progress marks, tiers, badges, participations, participation_before, strikes,
