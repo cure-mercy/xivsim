@@ -2397,16 +2397,18 @@ function playerDps(by) {
   }
   return out;
 }
-const dpsCell = list => !list || !list.length ? "–" : el("span", { class: "marks" }, ...list.flatMap((x, i) => [i ? "  " : "", x.v == null
-  ? el("span", { title: `${jobName(x.job)}: no clean 0:00–2:00 pull on the job` }, jobMark(x.job), el("span", { class: "muted" }, " –")) :
-  el("span", { title: `${jobName(x.job)}: ${signed(x.v)} against ${x.kind === "ours" ? `our other ${x.n} player${x.n > 1 ? "s" : ""} on the job` : `${x.n} clearer${x.n > 1 ? "s" : ""} on the job`}, ${nightLabel(x.night)}` },
-    jobMark(x.job), ` ${signed(x.v)}${x.n < 3 ? "*" : ""}`, x.kind === "ours" ? el("span", { class: "muted" }, " ours") : "", gradeChip(grade("damage", x.v)))]));
+// one equal-width entry per job (class jv), so the icons line up from row to row
+const dpsCell = list => !list || !list.length ? "–" : el("span", { class: "marks jvs" }, ...list.map(x => x.v == null
+  ? el("span", { class: "jv", title: `${jobName(x.job)}: no clean 0:00–2:00 pull on the job` }, jobMark(x.job), el("span", { class: "muted" }, " –")) :
+  el("span", { class: "jv", title: `${jobName(x.job)}: ${signed(x.v)} against ${x.kind === "ours" ? `our other ${x.n} player${x.n > 1 ? "s" : ""} on the job` : `${x.n} clearer${x.n > 1 ? "s" : ""} on the job`}, ${nightLabel(x.night)}` },
+    jobMark(x.job), ` ${signed(x.v)}${x.n < 3 ? "*" : ""}${x.kind === "ours" ? "†" : ""}`, gradeChip(grade("damage", x.v)))));
 // their latest night against their earlier ones, after the Mistakes/pull dot: ▲ more mistakes per pull, ▼ fewer,
 // when 20% or more apart (as the trends elsewhere); nothing for a single night
-const mistakeTrend = x => { if (x.lastMr == null || x.earlierMr == null) return "";
+const trendText = x => x.lastMr == null || x.earlierMr == null ? null
+  : `Latest night (${nightLabel(x.last.r)}): ${x.lastMr.toFixed(2)} per pull, against ${x.earlierMr.toFixed(2)} on their earlier nights`;
+const mistakeTrend = x => { if (!trendText(x)) return "";
   const worse = x.lastMr >= x.earlierMr * 1.2 && x.lastMr - x.earlierMr >= 0.05, better = x.lastMr <= x.earlierMr * 0.8 && x.earlierMr - x.lastMr >= 0.05;
-  const text = `Latest night (${nightLabel(x.last.r)}): ${x.lastMr.toFixed(2)} per pull, against ${x.earlierMr.toFixed(2)} on their earlier nights`;
-  return el("span", { class: `trend ${worse ? "bad" : better ? "good" : "flat"}`, title: text, "aria-label": text }, worse ? "▲" : better ? "▼" : "▸"); };
+  return el("span", { class: `trend ${worse ? "bad" : better ? "good" : "flat"}`, "aria-label": trendText(x) }, worse ? "▲" : better ? "▼" : "▸"); };
 function playersPage() {
   crumbs([]);   // the header link names the page
   const by = {};
@@ -2419,12 +2421,15 @@ function playersPage() {
     .sort((a, c) => c.last.r.day.localeCompare(a.last.r.day) || a.name.localeCompare(c.name));
   const app = document.getElementById("app");
   const find = el("input", { type: "search", class: "filter", placeholder: "Find a player", "aria-label": "Find a player", autocomplete: "off" });
-  app.append(el("h1", {}, "Players"), el("p", { class: "lede" }, `${rows.length} players over ${days().length} raid days, the most recent first. Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard; the arrow after the mistakes compares their latest night with their earlier ones (▲ more, ▼ fewer, by 20% or more; ▸ about the same; hover for both). Jobs · vs Clears: every job they played, most played first, each with its rDPS over 0:00–2:00 (the best quarter of their clean pulls) against clearers on the job, from the latest night they played it with a clean pull; a job without clears (Bard) against our other players on it ("ours"); * = one or two to compare with; the column sorts by their most played job with a value. Pick a player for their summary over all raid days; a column's header sorts by it.`),
+  app.append(heading("h1", "Players", "Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard. The arrow after the mistakes' dot compares their latest night with their earlier ones: ▲ more, ▼ fewer (20% and 0.05 per pull or more apart), ▸ about the same. Jobs · vs Clears: every job they played, most played first, with its rDPS over 0:00–2:00 (the best quarter of their clean pulls) against clearers on the job, from the latest night they played it with a clean pull; † a job without clears (Bard), against our other players on it; * one or two to compare with; – no clean pull on the job. The column sorts by their most played job with a value. Every header sorts its column."),
+    el("p", { class: "lede" }, `${rows.length} players over ${days().length} raid days, the most recent first. Pick one for their summary over all raid days.`),
     el("p", {}, find));
   const trs = rows.map(x => { const tr = linkRow([x.name, dpsCell(x.dps), String(x.ns.length), x.pulls ? num(x.pulls) : "–",
       x.mr != null ? el("span", {}, x.mr.toFixed(2), gradeChip(grade("mistakes", x.mr)), mistakeTrend(x)) : "–", x.wr != null ? el("span", {}, pct(x.wr), gradeChip(grade("wipes", x.wr))) : "–",
       `${dayName(x.last.r.day)} · ${x.last.r.group}`],
-    playerHref(x.name), 2); tr.dataset.name = x.name.toLowerCase(); tr.lastChild.className = ""; return tr; });
+    playerHref(x.name), 2); tr.dataset.name = x.name.toLowerCase(); tr.lastChild.className = "";
+    if (trendText(x)) tr.children[4].title = trendText(x);   // hovering anywhere on the mistakes cell explains the arrow
+    return tr; });
   const body = el("tbody", {}, trs);
   find.addEventListener("input", () => { const q = find.value.trim().toLowerCase(); for (const tr of body.children) tr.hidden = !!q && !tr.dataset.name.includes(q); });
   const night = x => `${x.last.r.day} ${x.last.r.group}`;
