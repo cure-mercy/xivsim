@@ -32,6 +32,7 @@ const signed = (v, d = 0) => v == null ? "–" : `${v >= 0 ? "+" : "−"}${Math.
 const kfmt = v => v == null ? "–" : `${(v / 1000).toFixed(1)}k`;
 const hpfmt = v => v == null ? "–" : `${v.toFixed(v < 1 ? 2 : 1)}% HP`;
 const secs = hp => hp == null ? "–" : `≈${(hp * DATA.benchmark.sec_per_hp).toFixed(1)} s of kill time`;
+const times = n => n === 1 ? "once" : n === 2 ? "twice" : `${n} times`;
 const num = (v, d = 0) => v == null ? "–" : v.toLocaleString("en-GB", { minimumFractionDigits: d, maximumFractionDigits: d });
 const dayName = d => new Date(d + "T12:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 const sum = xs => xs.reduce((a, b) => a + b, 0);
@@ -75,6 +76,17 @@ function days() {
   for (const d in by) by[d].sort((a, b) => a.group.localeCompare(b.group, "en", { numeric: true }));
   return Object.keys(by).sort().map(d => ({ day: d, groups: by[d] }));
 }
+// the most frequent blamed cause of the wipes (named with its mechanic), and how many wipes nobody is blamed for yet:
+// a mechanic without rules, no culprit found, or the wipe called
+const UNBLAMED = /^(Not blamed yet|No culprit found|Wipe called|Unclear)/;
+function topWipe(rs) {
+  const c = {}; let unblamed = 0;
+  for (const r of rs) for (const q of r.pulls) if (q.wipe && q.wipe.label) {
+    if (UNBLAMED.test(q.wipe.label)) unblamed++; else { const k = causeName(q.wipe.mechanic, q.wipe.label); c[k] = (c[k] || 0) + 1; } }
+  return { topWipe: Object.entries(c).sort((a, b) => b[1] - a[1])[0], unblamed };
+}
+const topWipeCell = s => el("span", {}, s.topWipe ? `${s.topWipe[0]} (${s.topWipe[1]})` : "–",
+  s.unblamed > (s.topWipe ? s.topWipe[1] : 0) ? el("span", { class: "muted" }, ` · ${s.unblamed} not blamed yet`) : "");
 function stats(rs) {   // summary over one or more group reports
   const pulls = sum(rs.map(r => r.pulls_total));
   // a report seen as progress only has no players: build_site.progress_of counts them without names (player_pulls, m, np)
@@ -84,13 +96,14 @@ function stats(rs) {   // summary over one or more group reports
   for (const r of rs) for (const [k, n] of Object.entries(r.wipe_causes || {})) wipeCauses[k] = (wipeCauses[k] || 0) + n;
   const withParty = rs.filter(r => r.party);
   return {
-    pulls, kills: sum(rs.map(r => r.kills)), best: Math.min(...rs.map(r => r.best)), longest: Math.max(...rs.map(r => r.longest)),
+    // longest from the pulls' own lengths where there are some, so it reads the same as the pull it was (r.longest is unrounded)
+    pulls, kills: sum(rs.map(r => r.kills)), best: Math.min(...rs.map(r => r.best)), longest: Math.max(...rs.map(r => r.pulls.length ? Math.max(...r.pulls.map(p => p.dur)) : r.longest)),
     clean2: sum(rs.map(r => r.clean2)), mistakesPerPull: playerPulls ? mistakes / playerPulls : null,
     // per player and minute of pull, up to where each pull was lost (as the mistakes are counted)
     mistakesPerMin: (() => { const m = sum(rs.map(r => sum(r.pulls.map(p => (p.players ? p.players.length : p.np || 0) * Math.min(p.dur, p.wipe ? p.wipe.t + 2 : p.dur) / 60))));
       return m ? mistakes / m : null; })(),
     party: withParty.length ? sum(withParty.map(r => r.party * r.clean2)) / sum(withParty.map(r => r.clean2)) : null,
-    topWipe: Object.entries(wipeCauses).sort((a, b) => b[1] - a[1])[0], wipeCauses,
+    wipeCauses, ...topWipe(rs),
     lostPerPull: (() => { const ok = rs.filter(r => !r.echo); const n = sum(ok.map(r => r.pulls_total));   // Echo reports have nothing to value mistakes at
       return n ? sum(ok.map(r => r.lost_total || 0)) / n : null; })(),
     lostDDPerPull: (() => { const ok = rs.filter(r => !r.echo); const n = sum(ok.map(r => r.pulls_total));
@@ -172,7 +185,14 @@ const info = text => ({ info: text });     // a card caption that goes behind th
 
 // ---------- progress: burndown, where pulls end, issues over time ----------
 // the mechanics a pull can reach, from the benchmark's checkpoints (name, start s)
-const reachMechs = () => DATA.benchmark.hp_checkpoints.mechanics.map(m => ({ name: m.mechanic, t: m.start_s }));
+// mechanics and phase windows no pull of ours has reached yet are left out of the charts until one does
+const FURTHEST = new WeakMap();
+const furthest = () => { const rs = DATA.reports || {};
+  if (!FURTHEST.has(rs)) FURTHEST.set(rs, Math.max(0, ...Object.values(rs).flatMap(r => r.pulls.map(p => p.kill ? Infinity : p.dur))));
+  return FURTHEST.get(rs); };
+const seenCps = () => DATA.benchmark.hp_checkpoints.mechanics.filter(m => m.start_s <= furthest());
+const seenWindows = () => DATA.benchmark.windows.filter(w => w.start <= furthest());
+const reachMechs = () => seenCps().map(m => ({ name: m.mechanic, t: m.start_s }));
 // every pull of every group, in the order they were played (groups mix players, so there is one burndown)
 const allPulls = () => reports().flatMap(r => r.pulls.map(p => ({ ...p, day: r.day, group: r.group })))
   .sort((a, c) => (a.at || 0) - (c.at || 0) || a.day.localeCompare(c.day) || a.n - c.n);
@@ -243,7 +263,7 @@ function seqHeatmap(rowLabels, colLabels, cell) {
 const shortWin = n => n.replace("Opener & ", "").replace(" & Dialogos", "").replace(" & Ultima Blade", "").replace(" & Theos's Ultima", "")
   .replace("Paradeigma ", "Para ").replace("Superchain ", "SC ");
 function cleanThrough(pulls) {
-  return DATA.benchmark.windows.map(w => {
+  return seenWindows().map(w => {
     const entered = pulls.filter(p => p.first >= w.start && (p.dur >= w.start || p.kill));
     const left = entered.filter(p => p.first >= w.end && (p.dur >= w.end || p.kill));
     return { name: w.name, entered: entered.length, left: left.length, share: entered.length ? left.length / entered.length : null };
@@ -299,8 +319,11 @@ function playerFocus(r, entries, name) {
   const p = entries[0], info = causeInfo(r), items = [], mech = c => (info[c] || {}).mech;
   const counts = mistakeCounts(r, name);
   const wipes = Object.entries(wipeCounts(r, name)).sort((a, c) => c[1] - a[1]);
+  // a wipe can be put on them without a recorded mistake of theirs (their tower went unsoaked), so k can be below n
+  const withK = (n, k) => k >= n ? `; ${times(k)} in all.` : k ? `; ${times(k)} as a recorded mistake of theirs, the other ${n - k} put on them without one (an unsoaked tower, say).`
+    : `, each put on them without a recorded mistake of theirs (an unsoaked tower, say).`;
   for (const [cause, n] of wipes.slice(0, 2)) if (n >= 2 || n / p.pulls >= 0.1)
-    items.push({ title: cause, detail: `Lost ${n} pull${n > 1 ? "s" : ""} (${pct(n / p.pulls)} of theirs); ${counts[cause] || n} times in all.`,
+    items.push({ title: cause, detail: `Lost ${n} pull${n > 1 ? "s" : ""} (${pct(n / p.pulls)} of theirs)${withK(n, counts[cause] || 0)}`,
       links: [drillLinks(mech(cause)), jumpTo("Every mistake", "See their mistakes")] });
   const listed = new Set(items.map(x => x.title));
   const other = Object.entries(counts).filter(([l]) => !listed.has(l)).sort((a, c) => c[1] - a[1])[0];
@@ -332,7 +355,9 @@ function groupFocus(r) {
   const info = causeInfo(r), items = [], names = [...new Set(r.players.map(p => p.name))];
   const pw = Object.fromEntries(names.map(n => [n, wipeCounts(r, n)])), pm = Object.fromEntries(names.map(n => [n, mistakeCounts(r, n)]));
   const by = (counts, cause) => names.map(n => [n, counts[n][cause] || 0]).filter(x => x[1]).sort((a, c) => c[1] - a[1]);
-  for (const [cause, n] of Object.entries(wipeCounts(r)).sort((a, c) => c[1] - a[1]).slice(0, 2)) {
+  // wipes nobody is blamed for yet give a raid leader nothing to act on: the two most frequent blamed causes
+  const blamed = ([cause]) => !UNBLAMED.test(((info[cause] || {}).label) || cause);
+  for (const [cause, n] of Object.entries(wipeCounts(r)).filter(blamed).sort((a, c) => c[1] - a[1]).slice(0, 2)) {
     const w = by(pw, cause);
     items.push({ title: cause, detail: `Ended ${n} of ${r.pulls_total} pulls${w.length ? `: ${w.slice(0, 3).map(([n2, k]) => `${n2} ${k}`).join(", ")}` : ""}.`, links: drillLinks((info[cause] || {}).mech) });
   }
@@ -731,7 +756,7 @@ const shortPhase = w => w.replace("Opener & Paradeigma I", "Opener & Para I").re
 // boss HP at each checkpoint, drawn as points ahead of (left) or behind (right) the Clear pace: the targets run from
 // 84% to 10% HP while what matters is a point or two either side of them, so every row shares the Clear line at 0
 function checkpointChart(hp) {
-  const cps = DATA.benchmark.hp_checkpoints.mechanics;
+  const cps = seenCps();
   return width => {
     const lab = width < 420 ? 118 : 150, valW = width < 420 ? 70 : 88, rh = 30, head = 8, H = head + cps.length * rh + 34, w = width - lab - valW;
     const diffs = cps.flatMap(c => (hp[c.mechanic] || []).length ? [hp[c.mechanic][0] - c.breakeven, median(hp[c.mechanic]) - c.breakeven] : []);
@@ -779,7 +804,7 @@ const checkpointLegend = () => [
 ];
 function checkpointTable(hp) {
   return tableOf(["Mechanic", "Starts", "Clear", "Comfy", "Best", "Median", "Pulls"],
-    DATA.benchmark.hp_checkpoints.mechanics.map(c => { const v = hp[c.mechanic] || []; return [c.mechanic, mmss(c.start_s), `${c.breakeven}%`, `${c.comfortable}%`,
+    seenCps().map(c => { const v = hp[c.mechanic] || []; return [c.mechanic, mmss(c.start_s), `${c.breakeven}%`, `${c.comfortable}%`,
       v.length ? `${v[0].toFixed(1)}%` : "–", v.length ? `${median(v).toFixed(1)}%` : "–", String(v.length)]; }));
 }
 
@@ -827,9 +852,20 @@ function causeMatrix(title, caption, cols, getCounts) {   // causes x columns he
   counts.forEach(c => Object.entries(c).forEach(([k, n]) => (totals[k] = (totals[k] || 0) + n)));
   const rowsAll = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
   if (!rowsAll.length) return el("figure", { class: "card" }, el("div", { class: "card-head" }, el("h3", {}, title)), el("div", { class: "empty" }, "Nothing recorded."));
-  return card(title, caption, heatmap(rowsAll, cols.map(c => c.label), (r, c) => counts[c][rowsAll[r]] || 0),
+  // the most frequent causes first; a long tail of ones and twos waits behind a button (the table view has them all)
+  let rows = rowsAll.length > CAUSE_ROWS + 3 ? rowsAll.slice(0, CAUSE_ROWS) : rowsAll;
+  const draw = width => heatmap(rows, cols.map(c => c.label), (r, c) => counts[c][rows[r]] || 0)(width);
+  const f = card(title, caption, draw,
     () => tableOf(["Cause", ...cols.map(c => c.label), "Total"], rowsAll.map(k => [k, ...counts.map(c => String(c[k] || 0)), String(totals[k])])));
+  if (rows.length < rowsAll.length) {
+    const more = el("button", { type: "button", class: "small", on: { click: () => { const body = f.querySelector(".chart");
+      rows = rowsAll; body.replaceChildren(draw(Math.max(260, body.clientWidth || 360))); more.remove(); } } },
+      `Show ${rowsAll.length - rows.length} more causes (${sum(rowsAll.slice(rows.length).map(k => totals[k]))} mistakes)`);
+    f.querySelector(".chart").after(el("p", { class: "more" }, more));
+  }
+  return f;
 }
+const CAUSE_ROWS = 15;
 
 // ---------- pages ----------
 function home() {
@@ -867,7 +903,7 @@ function home() {
         shareBars(now.map((x, i) => ({ label: shortWin(x.name), name: x.name, v: x.share, ref: before[i].share,
           tip: [[x.share != null ? pct(x.share) : "–", `${x.left} of ${x.entered} pulls, ${dayName(latest.day)}`, true],
             [before[i].share != null ? pct(before[i].share) : "–", `${before[i].left} of ${before[i].entered}, earlier days`]] })), { barName: dayName(latest.day), refName: "earlier days" }),
-        () => tableOf(["Mechanic", ...ds.map(d => dayName(d.day))], DATA.benchmark.windows.map((w, i) => [w.name, ...ds.map(d => { const x = cleanThrough(pullsOf(d))[i];
+        () => tableOf(["Mechanic", ...ds.map(d => dayName(d.day))], seenWindows().map((w, i) => [w.name, ...ds.map(d => { const x = cleanThrough(pullsOf(d))[i];
           return x.share != null ? `${pct(x.share)} (${x.left}/${x.entered})` : "–"; })])));
     })(),
     card("Mistakes per pull", info("Per player, counted until each pull was lost. The dashed line divides the same mistakes by the minutes players spent in pulls (up to where each pull was lost), so longer pulls as the groups progress do not read as more mistakes." + STRATEGY_NOTE),
@@ -886,25 +922,32 @@ function home() {
   app.append(el("h2", {}, "Days"), el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, ["Day", "Groups", "Pulls", "Best HP", "Longest", "Clean ≤2:00", "Party DPS", "Mistakes/pull", "Top wipe cause"].map((h, i) => el("th", { class: i && i < 8 ? "num" : null }, h)))),
     el("tbody", {}, [...ds].reverse().map(d => { const s = stats(d.groups); const tr = linkRow([dayName(d.day), String(d.groups.length), String(s.pulls), `${s.best.toFixed(1)}%`, mmss(s.longest),
-      pct(s.clean2 / s.pulls), kfmt(s.party), s.mistakesPerPull.toFixed(2), s.topWipe ? `${s.topWipe[0]} (${s.topWipe[1]})` : "–"], `#/day/${d.day}`); tr.lastChild.className = ""; return tr; })))));
+      pct(s.clean2 / s.pulls), kfmt(s.party), s.mistakesPerPull.toFixed(2), topWipeCell(s)], `#/day/${d.day}`); tr.lastChild.className = ""; return tr; })))));
 }
 
+// "← Pull 10 · Pull 12 →": links to the neighbours that exist ([label, href] or null)
+const pager = (prev, next) => el("p", { class: "lede" },
+  ...(prev ? [el("a", { href: prev[1] }, `← ${prev[0]}`)] : []), ...(prev && next ? [el("span", { class: "muted" }, "  ·  ")] : []),
+  ...(next ? [el("a", { href: next[1] }, `${next[0]} →`)] : []));
 function dayPage(day) {
-  const d = days().find(x => x.day === day);
+  const ds = days(), k = ds.findIndex(x => x.day === day), d = ds[k];
   if (!d) return notFound();
   crumbs([["Raid days", "#/"], [dayName(day), null]]);
-  const s = stats(d.groups), app = document.getElementById("app");
-  app.append(el("h1", {}, dayName(day)), el("p", { class: "lede" }, `${d.groups.length} group${d.groups.length > 1 ? "s" : ""}. Pick a group for its player scorecard and pulls.`));
+  const s = stats(d.groups), app = document.getElementById("app"), prev = ds[k - 1], next = ds[k + 1];
+  const ps = prev ? stats(prev.groups) : null, was = (v, f) => ps && v != null ? ` · ${f(v)} on ${dayName(prev.day)}` : "";
+  app.append(el("h1", {}, dayName(day)), pager(prev && [dayName(prev.day), `#/day/${prev.day}`], next && [dayName(next.day), `#/day/${next.day}`]),
+    el("p", { class: "lede" }, `${d.groups.length} group${d.groups.length > 1 ? "s" : ""}. Pick a group for its player scorecard and pulls.`));
   app.append(tiles([
-    ["Pulls", num(s.pulls), `${s.kills} kills`], ["Best pull", `${s.best.toFixed(1)}% HP`, `longest ${mmss(s.longest)}`],
-    ["Mistakes per pull", s.mistakesPerPull.toFixed(2), "per player", grade("mistakes", s.mistakesPerPull)],
-    ["Party DPS 0:00–2:00", kfmt(s.party), `clears ~${kfmt(DATA.benchmark.pools.clears.party_dps_median)} · min to clear ~${kfmt(DATA.benchmark.pools.clears.party_dps_min)}`],
+    ["Pulls", num(s.pulls), s.kills ? `${s.kills} kills` : `${(sum(d.groups.flatMap(r => r.pulls.map(p => p.dur))) / 3600).toFixed(1)} hours in combat`],
+    ["Best pull", `${s.best.toFixed(1)}% HP`, `longest ${mmss(s.longest)}${was(ps && ps.best, v => `${v.toFixed(1)}%`)}`],
+    ["Mistakes per pull", s.mistakesPerPull.toFixed(2), `per player${was(ps && ps.mistakesPerPull, v => v.toFixed(2))}`, grade("mistakes", s.mistakesPerPull)],
+    ["Party DPS 0:00–2:00", kfmt(s.party), `clears ~${kfmt(DATA.benchmark.pools.clears.party_dps_median)} · min to clear ~${kfmt(DATA.benchmark.pools.clears.party_dps_min)}${was(ps && ps.party, kfmt)}`],
     budgetTile(d.groups),
   ]));
   app.append(el("h2", {}, "Groups"), el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, ["Group", "Pulls", "Best HP", "Longest", "Clean ≤2:00", "Party DPS", "Mistakes/pull", "Lost to deaths/pull", "Top wipe cause"].map((h, i) => el("th", { class: i && i < 8 ? "num" : null }, h)))),
-    el("tbody", {}, d.groups.map(r => { const g = stats([r]); const tr = linkRow([r.echo ? `${r.group} (Echo)` : r.group, String(r.pulls_total), `${r.best.toFixed(1)}%`, mmss(r.longest), pct(r.clean2 / r.pulls_total),
-      kfmt(r.party), g.mistakesPerPull.toFixed(2), hpfmt(g.lostPerPull), g.topWipe ? `${g.topWipe[0]} (${g.topWipe[1]})` : "–"], `#/day/${day}/${r.group}`); tr.lastChild.className = ""; return tr; })))));
+    el("tbody", {}, d.groups.map(r => { const g = stats([r]); const tr = linkRow([r.echo ? `${r.group} (Echo)` : r.group, String(r.pulls_total), `${r.best.toFixed(1)}%`, mmss(stats([r]).longest), pct(r.clean2 / r.pulls_total),
+      kfmt(r.party), g.mistakesPerPull.toFixed(2), hpfmt(g.lostPerPull), topWipeCell(g)], `#/day/${day}/${r.group}`); tr.lastChild.className = ""; return tr; })))));
   app.append(heading("h2", "Boss HP checkpoints", "Boss HP when each mechanic begins, as points ahead of or behind the pace for a kill at enrage (Clear). Hover a row for the exact HP."),
     el("div", { class: "grid wide" }, d.groups.map(r => card(r.group, `${r.pulls_total} pulls`, checkpointChart(r.hp), () => checkpointTable(r.hp), checkpointLegend()))));
   const cols = d.groups.map(r => ({ label: r.group, r }));
@@ -918,9 +961,13 @@ function groupPage(day, group) {
   if (!r) return notFound();
   crumbs([["Raid days", "#/"], [dayName(day), `#/day/${day}`], [group, null]]);
   const s = stats([r]), app = document.getElementById("app"), b = DATA.benchmark;
-  app.append(el("h1", {}, `${group} · ${dayName(day)}`), el("p", { class: "lede" }, `Report ${r.code}. Pick a player for their mistakes, damage and trend.`), echoNote(r));
+  const others = days().find(x => x.day === day).groups.filter(g => g !== r);
+  app.append(el("h1", {}, `${group} · ${dayName(day)}`),
+    el("p", { class: "lede" }, "Report ", el("a", { href: `https://www.fflogs.com/reports/${encodeURIComponent(r.code)}`, target: "_blank", rel: "noopener" }, `${r.code} ↗`),
+      ". Pick a player for their mistakes, damage and trend.", others.length ? [" Other groups this day: ", ...others.flatMap((g, i) => [i ? " · " : "", el("a", { href: `#/day/${day}/${encodeURIComponent(g.group)}` }, g.group)])] : ""),
+    echoNote(r));
   app.append(tiles([
-    ["Pulls", String(r.pulls_total), `${r.kills} kills`], ["Best pull", `${r.best.toFixed(1)}% HP`, `longest ${mmss(r.longest)}`],
+    ["Pulls", String(r.pulls_total), `${r.kills} kills`], ["Best pull", `${r.best.toFixed(1)}% HP`, `longest ${mmss(stats([r]).longest)}`],
     ["Mistakes per pull", s.mistakesPerPull.toFixed(2), "per player", grade("mistakes", s.mistakesPerPull)],
     ["Party DPS 0:00–2:00", kfmt(r.party), `clears ~${kfmt(b.pools.clears.party_dps_median)} · min ~${kfmt(b.pools.clears.party_dps_min)}`],
     ["Lost to mistakes", hpfmt(s.lostPerPull), s.lostPerPull != null ? `per pull: deaths ${hpfmt(s.lostPerPull - (s.lostDDPerPull || 0))} · Damage Down ${hpfmt(s.lostDDPerPull)}` : "per pull"],
@@ -1022,7 +1069,7 @@ function groupPage(day, group) {
       causeCost.length ? card("What the losses came from", info("Boss HP per pull, by the mistake behind each death."), hbarChart(causeCost, { fmt: v => `${v.toFixed(2)}%` }),
         () => tableOf(["Cause", "Per pull", "Total"], causeAll.map(x => [x.label, `${x.value.toFixed(2)}%`, `${(x.value * r.pulls_total).toFixed(1)}%`]))) : null));
   // damage per phase
-  const W = b.windows.map(w => w.name);
+  const W = seenWindows().map(w => w.name);
   const allPh = r.players.map(p => ({ p, ph: Object.fromEntries((p.phases || []).map(x => [x.window, x])) }));
   app.append(heading("h2", "Damage by phase", "nDPS in each phase against clearers on the same job (pots removed), from pulls where the player was alive and unweakened through that phase; a phase needs two such pulls. Late phases rarely have them." + stratNote()),
     card("Players against clearers, by phase", null,
@@ -1047,7 +1094,11 @@ function playerPage(day, group, name) {
   if (!entries.length) return notFound();
   crumbs([["Raid days", "#/"], [dayName(day), `#/day/${day}`], [group, `#/day/${day}/${group}`], [name, null]]);
   const app = document.getElementById("app"), b = DATA.benchmark, p = entries[0];
-  app.append(el("h1", {}, name), el("p", { class: "lede" }, `${entries.map(e => JOB[e.job] || e.job).join(" / ")} · ${group} · ${dayName(day)} · ${p.pulls} pulls`), echoNote(r));
+  // their other raid days, in order: the same page on the day before and after
+  const nights = reports().filter(x => (x.names || (x.players || []).map(q => q.name)).includes(name)).sort((a, c) => a.day.localeCompare(c.day) || a.group.localeCompare(c.group));
+  const at = nights.findIndex(x => x.code === r.code), night = x => x && [`${dayName(x.day)} (${x.group})`, `#/day/${x.day}/${encodeURIComponent(x.group)}/${encodeURIComponent(name)}`];
+  app.append(el("h1", {}, name), el("p", { class: "lede" }, `${entries.map(e => JOB[e.job] || e.job).join(" / ")} · ${group} · ${dayName(day)} · ${p.pulls} pulls`),
+    nights.length > 1 ? pager(night(nights[at - 1]), night(nights[at + 1])) : "", echoNote(r));
   app.append(tiles([
     ["Mistakes per pull", p.mrate.toFixed(2), `${p.mdeath || 0} deaths · ${p.mdd || 0} Damage Downs${p.mhit ? ` · ${p.mhit} survived` : ""} in ${p.pulls} pulls` +
       (p.mconf && p.mistakes ? `; by confidence: ${confText(p.mconf)}` : ""), grade("mistakes", p.mrate)],
@@ -1093,7 +1144,8 @@ function playerPage(day, group, name) {
   const costBy = Object.entries(p.lost_caused_by || {}).sort((a, c) => c[1] - a[1]).map(([label, value]) => ({ label, value }));
   app.append(el("h2", {}, "Damage"), el("div", { class: "grid wide" },
     ...entries.map(e => {
-      const rows = (e.phases || []).map(ph => ({ label: ph.window, v: ph.n >= MIN_PHASE && ph.vs ? ph.vs[0] : null, thin: ph.vs && ph.vs[1] < 3,
+      const seen = new Set(seenWindows().map(w => w.name));
+      const rows = (e.phases || []).filter(ph => seen.has(ph.window)).map(ph => ({ label: ph.window, v: ph.n >= MIN_PHASE && ph.vs ? ph.vs[0] : null, thin: ph.vs && ph.vs[1] < 3,
         empty: ph.n >= MIN_PHASE ? `no ${JOB[e.job] || e.job} clearers` : ph.n ? "1 clean sample" : "no clean sample", tip: ph.n >= MIN_PHASE && ph.vs ? phaseTip(ph) : null }));
       return card(`${JOB[e.job] || e.job} damage by phase`, info("nDPS against clearers on the job, from pulls where they were alive through the phase. The first phase is compared with clears that move through Paradeigma I."),
         divergingBars(rows), () => tableOf(["Phase", "Samples", "nDPS", "vs clearers", "Uptime", "Uptime vs clearers"],
@@ -1287,9 +1339,8 @@ function pullPage(day, group, n) {
   if (!p) return notFound();
   crumbs([["Raid days", "#/"], [dayName(day), `#/day/${day}`], [group, `#/day/${day}/${group}`], ["Pulls", `#/day/${day}/${group}/pulls`], [`Pull ${n}`, null]]);
   const app = document.getElementById("app"), ps = inPull(r, n);
-  const nav = el("p", { class: "lede" },
-    ...(r.pulls.some(q => q.n === n - 1) ? [el("a", { href: pullHref(day, group, n - 1) }, `← Pull ${n - 1}`), el("span", { class: "muted" }, "  ·  ")] : []),
-    ...(r.pulls.some(q => q.n === n + 1) ? [el("a", { href: pullHref(day, group, n + 1) }, `Pull ${n + 1} →`)] : []));
+  const nav = pager(r.pulls.some(q => q.n === n - 1) && [`Pull ${n - 1}`, pullHref(day, group, n - 1)], r.pulls.some(q => q.n === n + 1) && [`Pull ${n + 1}`, pullHref(day, group, n + 1)]);
+  if (p.id != null) nav.append(el("span", { class: "muted" }, "  ·  "), el("a", { href: `https://www.fflogs.com/reports/${encodeURIComponent(r.code)}?fight=${p.id}`, target: "_blank", rel: "noopener" }, "This pull on FFLogs ↗"));
   app.append(el("h1", {}, `Pull ${n} · ${group} · ${dayName(day)}`), nav);
   app.append(tiles([
     ["Length", mmss(p.dur), p.kill ? "kill" : `boss at ${p.boss != null ? p.boss.toFixed(1) : "–"}%`],
@@ -2006,6 +2057,34 @@ function gearJobPage(code) {
     gearCard(job), el("div", { class: "grid wide" }, tierCard(job)));
 }
 
+// every player across the raid days: their jobs, nights and pulls, mistakes and wipes per pull (their shares, as the
+// scorecard counts them), overall and on their latest night, which links to their page there
+function peopleOf(r) {   // a full record's players, else the progress fragment's summary (build_site.progress_of)
+  if (r.players) return [...new Set(r.players.map(p => p.name))].map(n => { const es = r.players.filter(p => p.name === n);
+    return { name: n, jobs: es.map(e => e.job), pulls: es[0].pulls, m: es[0].mistakes_w ?? es[0].mistakes, w: es[0].wipes_w ?? es[0].wipes }; });
+  return r.people || (r.names || []).map(n => ({ name: n, jobs: [], pulls: null, m: null, w: null }));
+}
+function playersPage() {
+  crumbs([]);   // the header link names the page
+  const by = {};
+  for (const r of [...reports()].sort((a, c) => a.day.localeCompare(c.day) || a.group.localeCompare(c.group)))
+    for (const x of peopleOf(r)) (by[x.name] = by[x.name] || []).push({ ...x, r });
+  const rate = (ns, k) => { const ok = ns.filter(n => n.pulls && n[k] != null), P = sum(ok.map(n => n.pulls)); return P ? sum(ok.map(n => n[k])) / P : null; };
+  const rows = Object.entries(by).map(([name, ns]) => { const last = ns[ns.length - 1];
+    return { name, ns, last, jobs: [...new Set(ns.flatMap(n => n.jobs))], pulls: sum(ns.map(n => n.pulls || 0)), mr: rate(ns, "m"), wr: rate(ns, "w"), lastMr: rate([last], "m") }; })
+    .sort((a, c) => c.last.r.day.localeCompare(a.last.r.day) || a.name.localeCompare(c.name));
+  const app = document.getElementById("app");
+  const find = el("input", { type: "search", class: "filter", placeholder: "Find a player", "aria-label": "Find a player", autocomplete: "off" });
+  app.append(el("h1", {}, "Players"), el("p", { class: "lede" }, `${rows.length} players over ${days().length} raid days, the most recent first. Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard; their latest night links to their page, which follows them across raid days.`),
+    el("p", {}, find));
+  const body = el("tbody", {}, rows.map(x => { const tr = linkRow([x.name, x.jobs.map(j => JOB[j] || j).join(" / ") || "–", String(x.ns.length), x.pulls ? num(x.pulls) : "–",
+      x.mr != null ? el("span", {}, x.mr.toFixed(2), gradeChip(grade("mistakes", x.mr))) : "–", x.wr != null ? el("span", {}, pct(x.wr), gradeChip(grade("wipes", x.wr))) : "–",
+      x.lastMr != null ? x.lastMr.toFixed(2) : "–", `${dayName(x.last.r.day)} · ${x.last.r.group}`],
+    `#/day/${x.last.r.day}/${encodeURIComponent(x.last.r.group)}/${encodeURIComponent(x.name)}`, 2); tr.dataset.name = x.name.toLowerCase(); tr.lastChild.className = ""; return tr; }));
+  find.addEventListener("input", () => { const q = find.value.trim().toLowerCase(); for (const tr of body.children) tr.hidden = !!q && !tr.dataset.name.includes(q); });
+  app.append(el("div", { class: "table-wrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, ["Player", "Jobs", "Nights", "Pulls", "Mistakes/pull", "Wipes", "Latest night: mistakes/pull", "Latest night"].map((h, i) => el("th", { class: i >= 2 && i < 7 ? "num" : null }, h)))), body)));
+}
 function notFound() {
   crumbs([["Raid days", "#/"], ["Not found", null]]);
   document.getElementById("app").append(el("h1", {}, "Not found"), el("p", { class: "lede" }, "That day, group, player or rotation is not in the data."), el("a", { href: "#/" }, "Back to the raid days"));
@@ -2137,9 +2216,11 @@ async function adminPage() {
   const busy = box => box.contains(document.activeElement) && document.activeElement.tagName === "INPUT"
     || [...box.querySelectorAll("input[type=text], input[type=number]")].some(i => i.value !== i.defaultValue) || box.querySelector("input[type=checkbox]:checked");
   const act = fn => async () => { try { await fn(); } catch (e) { alert(e.message); return; } reportsBox.replaceChildren(); draw(); };
-  app.append(el("h2", {}, "Reports"), el("p", { class: "lede" }, "The reports on the site. The worker builds what this list asks for within a minute; a live report is checked for new pulls every 3 minutes until its watch ends (12 hours at most)."),
-    el("h3", {}, "Find a raid day's reports on FFLogs"), findBox(act), el("h3", {}, "The list"), reportsBox,
-    el("h2", {}, "Accounts"), people, el("h2", {}, "Audit log"), auditBox());
+  const waitingNote = el("div");   // logins waiting for approval, at the top where they are seen
+  app.append(waitingNote, el("h2", {}, "Reports"), el("p", { class: "lede" }, "The reports on the site. The worker builds what this list asks for within a minute; a live report is checked for new pulls every 3 minutes until its watch ends (12 hours at most)."),
+    el("div", { class: "cols" }, el("div", { class: "col" }, el("h3", {}, "Find a raid day's reports on FFLogs"), findBox(act)),
+      el("div", { class: "col" }, el("h3", {}, "The list"), reportsBox)),
+    el("h2", { id: "accounts" }, "Accounts"), people, el("h2", {}, "Audit log"), auditBox());
   let lastBuilt = null;
   async function draw() {
     if (location.hash !== "#/admin") return;
@@ -2153,6 +2234,10 @@ async function adminPage() {
     lastBuilt = built;
     if (!busy(reportsBox)) reportsBox.replaceChildren(addReportForm(act), reportTable(src, act));
     people.replaceChildren(...peopleTables(profs, act));
+    const waiting = profs.filter(p => p.role === "pending").length;
+    waitingNote.replaceChildren(waiting ? el("p", { class: "warn" }, `${waiting} login${waiting > 1 ? "s" : ""} waiting for approval. `,
+      el("button", { type: "button", class: "linklike", on: { click: () => document.getElementById("accounts").scrollIntoView({ behavior: "smooth" }) } }, "Go to Accounts")) : "");
+    pendingBadge(waiting);
     clearTimeout(adminTimer); adminTimer = setTimeout(draw, 15000);
   }
   draw();
@@ -2241,24 +2326,40 @@ function foundReports(q, act) {
   }
   return out;
 }
+// the list's older raid days stay folded across the 15-second redraws until opened
+const RECENT_DAYS = 2;
+let olderOpen = false;
 function reportTable(src, act) {
   const upd = (code, cols) => act(async () => sbCheck(await SB.from("report_sources").update(cols).eq("code", code)))();
   const now = Date.now();
-  return el("div", { class: "table-wrap" }, el("table", { class: "admin" },
-    el("thead", {}, el("tr", {}, ["Day", "Group", "Report", "Pulls", "State", "Live", ""].map((h, i) => el("th", { class: i === 3 ? "num" : null }, h)))),
-    el("tbody", {}, src.map(r => {
+  // the newest raid days (and reports without a day yet, still being built) show; older ones behind a button
+  const recent = [...new Set(src.map(r => r.day).filter(Boolean))].sort().reverse().slice(0, RECENT_DAYS);
+  const isRecent = r => !r.day || recent.includes(r.day) || r.state !== "ok";   // queued, building or failed: always in view
+  const older = src.filter(r => !isRecent(r));
+  const shown = olderOpen ? src : src.filter(isRecent);
+  const table = el("div", { class: "table-wrap" }, el("table", { class: "admin" },
+    el("thead", {}, el("tr", {}, ["Report", "Pulls", "State"].map((h, i) => el("th", { class: i === 1 ? "num" : null }, h)))),
+    el("tbody", {}, shown.map(r => {
       const live = r.live_until && new Date(r.live_until) > now, gone = r.want === "absent";
       const g = el("input", { type: "text", value: r.group_name || "", maxlength: 24, size: 6, "aria-label": `Group name of ${r.code}`, disabled: gone });
       const save = el("button", { type: "button", class: "small", disabled: gone, on: { click: () => upd(r.code, { group_name: g.value.trim() || null }) } }, "Rename");
+      const onSite = !gone && r.state === "ok" && r.day && findGroup(r.day, r.group_name);
+      // narrow enough for half the page: the report, its links and its buttons in one cell, the state's notes wrap
       return el("tr", { class: gone ? "muted" : null },
-        el("td", {}, r.day ? dayName(r.day) : "–"), el("td", {}, g, " ", save), el("td", {}, fflogsLink(r.code)), el("td", { class: "num" }, r.pulls != null ? String(r.pulls) : "–"),
-        el("td", { class: r.state === "error" ? "bad" : r.state === "ok" ? null : "muted", title: r.message || "" }, gone ? "removing" : r.state, r.message ? el("div", { class: "note" }, r.message) : ""),
-        el("td", {}, live ? `until ${localTime(r.live_until)}${r.checked_at ? `, checked ${localTime(r.checked_at)}` : ""}` : "–"),
-        el("td", { class: "actions" },
+        el("td", {}, el("div", {}, r.day ? dayName(r.day) : "–", " ", g, " ", save),
+          el("div", { class: "note" }, fflogsLink(r.code), onSite ? [" · ", el("a", { href: `#/day/${r.day}/${encodeURIComponent(r.group_name)}` }, "on the site")] : ""),
+          el("div", { class: "actions" },
           el("button", { type: "button", class: "small", disabled: gone, on: { click: () => upd(r.code, { live_until: live ? new Date().toISOString() : new Date(now + 6 * 3600e3).toISOString() }) } }, live ? "Stop watching" : "Watch 6 h"),
           el("button", { type: "button", class: "small", disabled: gone, on: { click: () => upd(r.code, { rebuild_at: new Date().toISOString() }) } }, "Rebuild"),
-          el("button", { type: "button", class: "small danger", disabled: gone, on: { click: () => { if (confirm(`Remove ${r.group_name || r.code}${r.day ? ` of ${dayName(r.day)}` : ""} from the site?`)) upd(r.code, { want: "absent" }); } } }, "Remove")));
+          el("button", { type: "button", class: "small danger", disabled: gone, on: { click: () => { if (confirm(`Remove ${r.group_name || r.code}${r.day ? ` of ${dayName(r.day)}` : ""} from the site?`)) upd(r.code, { want: "absent" }); } } }, "Remove"))),
+        el("td", { class: "num" }, r.pulls != null ? String(r.pulls) : "–"),
+        el("td", { class: `wrap${r.state === "error" ? " bad" : r.state === "ok" ? "" : " muted"}`, title: r.message || "" }, gone ? "removing" : r.state, r.message ? el("div", { class: "note" }, r.message) : "",
+          live ? el("div", { class: "note" }, `live until ${localTime(r.live_until)}${r.checked_at ? `, checked ${localTime(r.checked_at)}` : ""}`) : ""));
     }))));
+  if (!older.length) return table;
+  const toggle = el("button", { type: "button", class: "small", on: { click: () => { olderOpen = !olderOpen; act(async () => {})(); } } },
+    olderOpen ? "Hide older raid days" : `Show ${older.length} older report${older.length > 1 ? "s" : ""}`);
+  return el("div", {}, table, el("p", {}, toggle));
 }
 function peopleTables(profs, act) {
   const name = p => p.display_name || p.user_id.slice(0, 8);
@@ -2312,6 +2413,12 @@ function header() {   // the header's account button and admin link
   const btn = document.getElementById("lock"), adm = document.getElementById("nav-admin");
   if (SB) { btn.hidden = false; btn.textContent = ME ? "Account" : BY_PASSPHRASE ? "Lock" : "Log in"; }
   if (adm) adm.hidden = !(ME && ME.admin);
+  if (ME && ME.admin) SB.from("profiles").select("user_id", { count: "exact", head: true }).eq("role", "pending")
+    .then(({ count }) => pendingBadge(count || 0)).catch(() => {});
+}
+function pendingBadge(n) {   // the Admin link counts the logins waiting for approval
+  const adm = document.getElementById("nav-admin");
+  if (adm) { adm.textContent = n ? `Admin (${n})` : "Admin"; adm.title = n ? `${n} login${n > 1 ? "s" : ""} waiting for approval` : ""; }
 }
 function navSection(first) {   // marks the header link of the section the page is in (raid days for day pages and home)
   const s = !first || first === "day" ? "days" : first;
@@ -2357,7 +2464,19 @@ function draw() {   // the page the hash names, from what DATA holds
   else if (parts[0] === "day" && parts.length === 4 && parts[3] === "pulls") pullsPage(parts[1], parts[2]);
   else if (parts[0] === "day" && parts.length === 5 && parts[3] === "pulls") pullPage(parts[1], parts[2], +parts[4]);
   else if (parts[0] === "day" && parts.length === 4) playerPage(parts[1], parts[2], parts[3]);
+  else if (parts[0] === "players" && parts.length === 1) playersPage();
   else home();
+  if (parts[0] === "day" && (parts.length === 3 || parts.length === 4 && parts[3] !== "pulls")) sectionLinks(app);
+}
+// "On this page": links to a long page's sections (its h2s), between its title and its tiles
+function sectionLinks(app) {
+  const hs = [...app.querySelectorAll("h2")];
+  if (hs.length < 4) return;
+  const links = hs.map((h, i) => { h.id = h.id || `s-${i}`;
+    return el("a", { href: `#${h.id}`, on: { click: e => { e.preventDefault(); h.scrollIntoView({ behavior: "smooth" }); } } }, h.firstChild.textContent.trim()); });
+  const nav = el("nav", { class: "sections", "aria-label": "On this page" }, el("span", { class: "muted" }, "On this page:"), ...links);
+  const at = app.querySelector(".kpis");
+  if (at) at.before(nav); else app.querySelector("h1").after(nav);
 }
 function setupTheme() {
   const btn = document.getElementById("theme"), root = document.documentElement;

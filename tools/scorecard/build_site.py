@@ -161,7 +161,11 @@ def progress_of(r):
     PROGRESS_PULL_KEYS, how many players were in it, its mistakes and their shares added up, and how it ended."""
     out = {k: r.get(k) for k in PROGRESS_KEYS}
     out["names"] = sorted({p["name"] for p in r["players"]})
-    out["player_pulls"] = sum(p["pulls"] for p in {p["name"]: p for p in reversed(r["players"])}.values())   # as app.js stats(): each name once, its first entry
+    first = {p["name"]: p for p in reversed(r["players"])}   # as app.js stats(): each name once, its first entry
+    out["player_pulls"] = sum(p["pulls"] for p in first.values())
+    # the players index (#/players): per player their jobs, pulls, and mistakes and wipes as their shares added up
+    out["people"] = [dict(name=n, jobs=[q["job"] for q in r["players"] if q["name"] == n], pulls=p["pulls"],
+                          m=p.get("mistakes_w", p.get("mistakes", 0)), w=p.get("wipes_w", p.get("wipes", 0))) for n, p in sorted(first.items())]
     out["pulls"] = []
     for q in r["pulls"]:
         x = {k: q.get(k) for k in PROGRESS_PULL_KEYS}
