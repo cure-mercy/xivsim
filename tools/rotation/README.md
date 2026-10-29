@@ -22,6 +22,7 @@ python tools/rotation/dps.py [--job rpr]                      # our players: cei
 python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceilings and rotations for the scorecard site
 python tools/rotation/dps.py --job drg --site --offline       # ...from the scorecard's cached events, when FFLogs is down
 python tools/rotation/dps.py --job nin --site --restarts      # ...with polish's restarts (~0-1% more, minutes a search)
+python tools/rotation/dps.py --job smn --ceilings-only        # ...only the players' ceilings (pooled and per night), rotations kept
 ```
 
 | `--job` | Job | Default GCD | Slot | Best over the phase | Standing still | Search |
@@ -721,7 +722,12 @@ Black Mages and Machinists, -2% to +4% for Reapers (the replay takes every posit
 The ceiling is the best rotation without raid buffs at the player's GCD over 0:00-2:00 (the scorecard's window), at
 their worst slot and variants (`p12s.worst_slot`), so it holds whichever they are given. A job with a raid buff
 (Reaper's Arcane Circle) also gets credit for what it added to others: the site adds each pull's FFLogs
-totalRDPSGiven. `dps.py --job <job> --site` saves the ceilings (`.cache/ceilings.json`, git-ignored: it names players)
+totalRDPSGiven. The conversion is the player's own, and gear changes over the season (on 2026-10-28 a Summoner's
+pooled ceiling, from one early night's pulls, sat 5% under their median pull): so each night with `NIGHT_PULLS` (3)
+clean pulls or more gets its own ceiling, from that night's damage per potency, crit / direct-hit gain and GCD
+(`night_rows`), and the site uses it for that night; the pooled one stands in for nights with fewer.
+`dps.py --job <job> --site` saves the ceilings (`.cache/ceilings.json`, git-ignored: it names players; per player, the
+pooled one and `nights` by report code; `--ceilings-only` saves just these, without searching the rotations again)
 and one rotation per GCD for the site's Rotations pages (`.cache/rotations.json`; `--gcds` adds GCDs): the whole-phase
 optimum, scored and shown until Palladion (`ROT_UNTIL`, 4:41; not a search for that window: a rotation that has to go
 on holds resources one ending there would spend, and as our progress moves on the site shows more of the same

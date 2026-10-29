@@ -389,8 +389,9 @@ at the group's average player DPS (party DPS / 8). The scorecard also splits eac
 For every DPS job the rotation optimizer covers (`tools/rotation`), the player page's rDPS-on-clean-pulls chart marks
 each pull with a ceiling: the best rotation without raid buffs at the player's GCD over 0:00-2:00, with the runs our
 strategy needs at their worst for the role (the Paradeigma I slot with the most running, R1 or M2, and each mechanic's
-variant with the most), converted to their DPS (their damage per potency and crit / direct-hit gain from their own hits,
-the same for every pull), plus what that pull's raid buffs added to the other players' damage (FFLogs' rDPS given: a
+variant with the most), converted to their DPS (their damage per potency and crit / direct-hit gain from their own hits
+that night, the same for every pull of it: gear changes between nights; a night with fewer than three clean pulls takes
+the conversion over all their nights, `night_rows` in `tools/rotation/dps.py`), plus what that pull's raid buffs added to the other players' damage (FFLogs' rDPS given: a
 Reaper's Arcane Circle), which rDPS credits to them. The table view splits the two. The player page's "vs optimized
 rotation" card, under Damage, gives their median clean pull's share of the ceiling (and the gap in DPS), their best
 pull's and the ceiling itself (in rDPS, the median over their pulls, split into its nDPS and the buffs' credit), and
@@ -459,7 +460,7 @@ formulas; our Black Mages' gear falls 0.38% per 0.01 s). The range is the same o
 players plays (Ninja) gets its rotations too, at the GCDs of the benchmark clears' players on it since the job's
 `CONVERT_SINCE`, and expected DPS converts at theirs; the pages say so, and no player page links there.
 
-**Refreshing them**: `python tools/rotation/dps.py --job blm --site` (and `--job rpr`, `--job drg`, ...; `--offline`
+**Refreshing them**: after a raid day, `python tools/rotation/dps.py --job blm --ceilings-only` for each job gives its players' ceilings for the new nights (seconds a job); `python tools/rotation/dps.py --job blm --site` (and `--job rpr`, `--job drg`, ...; `--offline`
 converts from the acts caches when FFLogs is down, and the pages say so; `--gcds 2.30,2.40` adds GCDs none of our
 players has; `2.48/2.15` names the hasted GCD where a tier holds two, as Samurai's, Viper's and Black Mage's can, and
 `-cNN` the crit rate in percent it is searched at, `2.45-c28`, for Monk, whose chakra comes from crits), then

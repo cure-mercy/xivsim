@@ -156,7 +156,8 @@ def fetch_tables(data, fights):
 
 
 def ceilings():
-    """Our players' rotation ceilings (unbuffed DPS over 0:00-2:00), {job: {name: {ceiling, gcd, pulls, rotation_key}}},
+    """Our players' rotation ceilings (unbuffed DPS over 0:00-2:00), {job: {name: {ceiling, gcd, pulls, rotation_key,
+    nights: {report code: the same, from that night's pulls}}}},
     as tools/rotation/dps.py --site saved them; empty when it hasn't been run."""
     f = HERE.parent / "rotation" / ".cache" / "ceilings.json"
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
@@ -667,6 +668,10 @@ def analyse(group, data, bench):
     import checks                               # rotation checks against the clears (imported here: it imports this module)
     rotation = checks.report(data, lives)
     ceil = ceilings()
+    # the night's own ceiling (its conversion and GCD, dps.py night_rows), else the player's pooled over their nights
+    def night_ceil(job, name):
+        c = ceil.get(job, {}).get(name, {})
+        return c.get("nights", {}).get(data["code"]) or c
     # opener damage (first OPENER_S seconds, alive throughout) against the clears' median on the job, or our other
     # players' when a kit change leaves too few clears (checks.KIT_CHANGES)
     odps, oref = collections.defaultdict(list), checks.clear_opener_dps()
@@ -759,9 +764,8 @@ def analyse(group, data, bench):
                                 clean_pulls=[dict(n=next(r["n"] for r in pull_rows if str(r["id"]) == fid), rdps=round(y["rdps"]), uptime=round(y["active"], 1),
                                                   given=round(y.get("given", 0)))
                                              for fid, rows in data["tables"].items() for y in rows if y["name"] == name and y["job"] == job],
-                                ceiling=ceil.get(job, {}).get(name, {}).get("ceiling"),
-                                ceiling_gcd=ceil.get(job, {}).get(name, {}).get("gcd"),
-                                ceiling_key=ceil.get(job, {}).get(name, {}).get("rotation_key"),
+                                ceiling=night_ceil(job, name).get("ceiling"), ceiling_gcd=night_ceil(job, name).get("gcd"),
+                                ceiling_key=night_ceil(job, name).get("rotation_key"),
                                 dead_s=dead_s[name], lost_suffered=suffered[name], lost_caused=caused[name],
                                 lost_caused_by=dict(caused_by[name]), phases=phases, rotation=rotation.get((name, job)),
                                 pull_detail=pull_detail(name, job)))
