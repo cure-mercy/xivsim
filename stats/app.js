@@ -979,10 +979,13 @@ function home() {
         () => tableOf(["Part of the night", "Pulls", "Average pull", "Mistakes per player per pull", "Per minute"], th.map(x => [x.name, String(x.n), x.dur != null ? mmss(x.dur) : "–",
           x.perPull != null ? x.perPull.toFixed(2) : "–", x.perMin != null ? x.perMin.toFixed(3) : "–"]))); })(),
   ));
+  const dayRows = ds.map(d => { const s = stats(d.groups); const tr = linkRow([dayName(d.day), String(d.groups.length), String(s.pulls), `${s.best.toFixed(1)}%`, mmss(s.longest),
+    pct(s.clean2 / s.pulls), kfmt(s.party), s.mistakesPerPull.toFixed(2), topWipeCell(s)], `#/day/${d.day}`); tr.lastChild.className = ""; return { x: { d, s }, tr }; });
+  const dayBody = el("tbody");
   app.append(el("h2", {}, "Days"), el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, ["Day", "Groups", "Pulls", "Best HP", "Longest", "Clean ≤2:00", "Party DPS", "Mistakes/pull", "Top wipe cause"].map((h, i) => el("th", { class: i && i < 8 ? "num" : null }, h)))),
-    el("tbody", {}, [...ds].reverse().map(d => { const s = stats(d.groups); const tr = linkRow([dayName(d.day), String(d.groups.length), String(s.pulls), `${s.best.toFixed(1)}%`, mmss(s.longest),
-      pct(s.clean2 / s.pulls), kfmt(s.party), s.mistakesPerPull.toFixed(2), topWipeCell(s)], `#/day/${d.day}`); tr.lastChild.className = ""; return tr; })))));
+    sortHead([["Day", x => x.d.day, false, true], ["Groups", x => x.d.groups.length, true], ["Pulls", x => x.s.pulls, true], ["Best HP", x => x.s.best, true, false],
+      ["Longest", x => x.s.longest, true], ["Clean ≤2:00", x => x.s.clean2 / x.s.pulls, true], ["Party DPS", x => x.s.party, true], ["Mistakes/pull", x => x.s.mistakesPerPull, true],
+      ["Top wipe cause", x => x.s.topWipe ? x.s.topWipe[0] : null]], dayRows, dayBody, DAYS_SORT), dayBody)));
 }
 
 // "← Pull 10 · Pull 12 →": links to the neighbours that exist ([label, href] or null)
@@ -1038,23 +1041,23 @@ function groupPage(day, group) {
     el("div", { class: "focus-card" }, focusList(groupFocus(r), "Nothing stands out against the clears.")));
   // scorecard
   const head = ["Player", "Job", "Pulls", "Mistakes/pull", "Deaths/pull", "DD/pull", "Wipes", "vs Clears", "Uptime"];
-  const rows = [];
-  for (const role of ROLES) {
-    const ps = r.players.filter(p => p.role === role).sort((a, c) => a.wrate - c.wrate || a.mrate - c.mrate);
-    if (!ps.length) continue;
-    rows.push(el("tr", { class: "role" }, el("td", { colspan: head.length }, role)));
-    for (const p of ps) {
+  const rows = r.players.map(p => {
       const vsG = p.vs ? grade("damage", p.vs[0]) : null;
-      rows.push(linkRow([p.name, jobMark(p.job), pullsCell(p, r.players),
+      return { x: p, tr: linkRow([p.name, jobMark(p.job), pullsCell(p, r.players),
         el("span", {}, p.mrate.toFixed(2), gradeChip(grade("mistakes", p.mrate))),
         ((p.mdeath_w ?? p.mdeath ?? 0) / p.pulls).toFixed(2), ((p.mdd_w ?? p.mdd ?? 0) / p.pulls).toFixed(2),
         el("span", {}, pct(p.wrate), gradeChip(grade("wipes", p.wrate))),
         p.vs ? el("span", {}, `${signed(p.vs[0])}${p.vs[1] < 3 ? "*" : ""}`, gradeChip(vsG)) : (p.samples ? `no ${JOB[p.job] || p.job} clears` : "no clean 2:00 pull"),
-        p.uptime != null ? el("span", {}, `${p.uptime.toFixed(1)}%`, gradeChip(grade("uptime", p.uptime_diff))) : "–"], `#/day/${day}/${group}/${encodeURIComponent(p.name)}`, 2));
-    }
-  }
+        p.uptime != null ? el("span", {}, `${p.uptime.toFixed(1)}%`, gradeChip(grade("uptime", p.uptime_diff))) : "–"], `#/day/${day}/${group}/${encodeURIComponent(p.name)}`, 2) };
+  });
+  const scoreBody = el("tbody");
+  const jobPulls = p => p.pull_detail ? p.pull_detail.length : p.pulls;
+  const scoreHead = sortHead([["Player", p => p.name], ["Job", p => [ROLES.indexOf(p.role), p.wrate, p.mrate]], ["Pulls", jobPulls, true],
+    ["Mistakes/pull", p => p.mrate, true], ["Deaths/pull", p => (p.mdeath_w ?? p.mdeath ?? 0) / p.pulls, true], ["DD/pull", p => (p.mdd_w ?? p.mdd ?? 0) / p.pulls, true],
+    ["Wipes", p => p.wrate, true], ["vs Clears", p => p.vs ? p.vs[0] : null, true], ["Uptime", p => p.uptime, true]], rows, scoreBody, SCORE_SORT,
+    { col: 1, of: p => p.role, row: role => el("tr", { class: "role" }, el("td", { colspan: head.length }, role)) });
   app.append(heading("h2", "Player scorecard", `Pulls: a player who changed jobs during the night has a row per job, with the pulls on that job of the night's ("28 of 47"); their mistakes and wipes count over the whole night, vs Clears and uptime per job. Mistakes per pull counts every mistake until the pull was lost; Deaths/pull and DD/pull split it into mistakes that killed someone and those that only gave Damage Down (one that did neither, like both Superchain I lasers on a player who lived, counts only in the total). Wipes: share of pulls their mistake lost. Both count each mistake in full, or the player's share of it where the classifier could not tell several players apart (½ between two) or the shortfall was the party's (healing / mitigation). vs Clears: rDPS 0:00–2:00 (best quarter of clean pulls) against clearers on the same job (clears without The Echo; a job with fewer than three such players also counts its Echo clears, damage divided by 1.2); * = only 1–2 clearers. Uptime: GCD time vs clearers of the role.`), el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: i >= 2 ? "num" : null }, h)))), el("tbody", {}, rows))),
+    scoreHead, scoreBody)),
     (r.light_parties || []).length === 2 ? el("p", { class: "note" }, `Light parties inferred from the White Flame baits: LP1 ${r.light_parties[0].join(", ")} · LP2 ${r.light_parties[1].join(", ")}.`) : "");
   // rotation and ability usage, per player
   const rotPlayers = r.players.filter(p => p.rotation && !p.rotation.opener_only);   // opener_only: no clears on the job, only the opener is compared
@@ -1337,16 +1340,16 @@ function pullsPage(day, group) {
     card("Party rotation loss per pull", info("Red: lost against the clearers; blue: did better."),
       divColumns(rows.map(q => ({ label: String(q.p.n), v: q.loss, tip: tip(q) })), { fmt: v => num(Math.round(v)), limit: 1500, invert: true }),
       () => tableOf(["Pull", "Party rotation loss"], rows.map(q => [String(q.p.n), q.loss != null ? `${num(q.loss)} DPS` : "–"])))));
-  const go = n => (location.hash = pullHref(day, group, n));
+  const go = n => (location.hash = pullHref(day, group, n)), pullBody = el("tbody");
   app.append(el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, ["Pull", "Length", "Boss HP", "Ended", "Mistakes", "Died before the wipe", "Lost to deaths", "Party damage", "Rotation loss"]
-      .map((h, i) => el("th", { class: i === 3 ? null : "num" }, h)))),
-    el("tbody", {}, rows.map(q => el("tr", { class: "link", tabindex: "0", on: { click: () => go(q.p.n), keydown: e => { if (e.key === "Enter") go(q.p.n); } } },
+    sortHead([["Pull", q => q.p.n, true, false], ["Length", q => q.p.dur, true], ["Boss HP", q => q.p.boss, true, false], ["Ended", q => pullEnd(q.p)],
+      ["Mistakes", q => q.p.mistakes.length, true], ["Died before the wipe", q => q.died, true], ["Lost to deaths", q => q.p.lost, true], ["Party damage", q => q.dmg, true],
+      ["Rotation loss", q => q.loss, true]], rows.map(q => ({ x: q, tr: el("tr", { class: "link", tabindex: "0", on: { click: () => go(q.p.n), keydown: e => { if (e.key === "Enter") go(q.p.n); } } },
       el("td", { class: "num" }, String(q.p.n)), el("td", { class: "num" }, mmss(q.p.dur)),
       el("td", { class: "num" }, q.p.boss != null ? `${q.p.boss.toFixed(1)}%` : "–"), el("td", { class: "wrap" }, pullEnd(q.p)),
       el("td", { class: "num" }, String(q.p.mistakes.length)), el("td", { class: "num" }, String(q.died)),
       el("td", { class: "num" }, q.p.lost != null ? hpfmt(q.p.lost) : "–"), el("td", { class: "num" }, q.dmg != null ? signed(q.dmg) : "–"),
-      el("td", { class: "num" }, q.loss != null ? `${num(q.loss)} DPS` : "–")))))));
+      el("td", { class: "num" }, q.loss != null ? `${num(q.loss)} DPS` : "–")) })), pullBody, PULLS_SORT), pullBody)));
 }
 
 function pullPage(day, group, n) {
@@ -2358,13 +2361,18 @@ function acrossNights(app, name) {
   // a row per night and job: each links to that night's page
   const rotLoss = q => q.rotation && q.rotation.checks && !q.rotation.opener_only ? sum(q.rotation.checks.map(c => c.cost > 1 ? c.cost : 0)) : null;
   const opener = q => q.rotation && q.rotation.opener && q.rotation.opener.dmg ? q.rotation.opener.dmg.vs : null;
+  const perMinOf = q => { const rep = findGroup(q.day, q.group), mins = rep ? sum(rep.pulls.filter(x => x.players.includes(name)).map(x => Math.min(x.dur, x.wipe ? x.wipe.t + 2 : x.dur) / 60)) : 0;
+    return mins ? (q.mistakes_w ?? q.mistakes) / mins : null; };
+  const nightBody = el("tbody");
   app.append(el("div", { class: "table-wrap", style: "margin-top:12px" }, el("table", {},
-    el("thead", {}, el("tr", {}, ["Day", "Group", "Job", "Pulls", "Mistakes/pull", "Per minute", "Wipes", "vs Clears", "Uptime", "Rotation loss", "Opener"].map((h, i) => el("th", { class: i >= 3 ? "num" : null }, h)))),
-    el("tbody", {}, [...hist].reverse().map(q => { const rep = findGroup(q.day, q.group), mins = rep ? sum(rep.pulls.filter(x => x.players.includes(name)).map(x => Math.min(x.dur, x.wipe ? x.wipe.t + 2 : x.dur) / 60)) : 0;
-      return linkRow([dayName(q.day), q.group, jobMark(q.job), rep ? pullsCell(q, rep.players) : String(q.pulls), el("span", {}, q.mrate.toFixed(2), gradeChip(grade("mistakes", q.mrate))),
-        mins ? ((q.mistakes_w ?? q.mistakes) / mins).toFixed(3) : "–", el("span", {}, pct(q.wrate), gradeChip(grade("wipes", q.wrate))),
+    sortHead([["Day", q => `${q.day} ${q.group}`, false, true], ["Group", q => q.group], ["Job", q => jobName(q.job)], ["Pulls", q => q.pull_detail ? q.pull_detail.length : q.pulls, true],
+      ["Mistakes/pull", q => q.mrate, true], ["Per minute", perMinOf, true], ["Wipes", q => q.wrate, true], ["vs Clears", q => q.vs ? q.vs[0] : null, true],
+      ["Uptime", q => q.uptime, true], ["Rotation loss", rotLoss, true], ["Opener", opener, true]], hist.map(q => { const rep = findGroup(q.day, q.group), pm = perMinOf(q);
+      return { x: q, tr: linkRow([dayName(q.day), q.group, jobMark(q.job), rep ? pullsCell(q, rep.players) : String(q.pulls), el("span", {}, q.mrate.toFixed(2), gradeChip(grade("mistakes", q.mrate))),
+        pm != null ? pm.toFixed(3) : "–", el("span", {}, pct(q.wrate), gradeChip(grade("wipes", q.wrate))),
         q.vs ? el("span", {}, signed(q.vs[0]), gradeChip(grade("damage", q.vs[0]))) : "–", q.uptime != null ? el("span", {}, `${q.uptime.toFixed(1)}%`, gradeChip(grade("uptime", q.uptime_diff))) : "–",
-        rotLoss(q) != null ? `${num(Math.round(rotLoss(q)))} DPS` : "–", opener(q) != null ? signed(opener(q)) : "–"], `#/day/${q.day}/${q.group}/${encodeURIComponent(name)}`, 3); })))));
+        rotLoss(q) != null ? `${num(Math.round(rotLoss(q)))} DPS` : "–", opener(q) != null ? signed(opener(q)) : "–"], `#/day/${q.day}/${q.group}/${encodeURIComponent(name)}`, 3) }; }),
+      nightBody, NIGHTS_SORT), nightBody)));
 }
 function playersPage() {
   crumbs([]);   // the header link names the page
@@ -2391,21 +2399,27 @@ function playersPage() {
     rows.map((x, i) => ({ x, tr: trs[i] })), body, PLAYERS_SORT);
   app.append(el("div", { class: "table-wrap" }, el("table", {}, head, body)));
 }
-// the Players table's order, kept for the visit: the column and its direction (latest night first by default)
-const PLAYERS_SORT = { col: 7, desc: true };
-// headers that sort a table's rows: cols [label, key(x), numeric, first click descending]; numbers sort high to low
-// first, text A to Z; empty values always last, ties by the first column. state {col, desc} is changed in place
-function sortHead(cols, rows, body, state) {
+// the tables' orders, kept for the visit: the column and its direction
+const PLAYERS_SORT = { col: 7, desc: true }, DAYS_SORT = { col: 0, desc: true }, SCORE_SORT = { col: 1, desc: false },
+  PULLS_SORT = { col: 0, desc: false }, NIGHTS_SORT = { col: 0, desc: true };
+// headers that sort a table's rows: cols [label, key(x), numeric, first click descending (default: numbers do)];
+// numbers sort high to low first, text A to Z, a list key by its items in turn; empty values always last, ties by the
+// first column. state {col, desc} is changed in place. section {col, of(x), row(label)}: sorted by that column, a
+// header row goes before each new of(x) (the scorecard's roles)
+function sortHead(cols, rows, body, state, section) {
   const ths = cols.map(([label, , numeric], i) => el("th", { class: numeric ? "num" : null },
-    el("button", { type: "button", class: "sort", on: { click: () => { state.desc = state.col === i ? !state.desc : cols[i][2] || !!cols[i][3]; state.col = i; apply(); } } },
+    el("button", { type: "button", class: "sort", on: { click: () => { state.desc = state.col === i ? !state.desc : cols[i][3] ?? !!cols[i][2]; state.col = i; apply(); } } },
       label, el("span", { class: "arrow", "aria-hidden": "true" }))));
-  const cmp = (a, b) => typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), "en", { numeric: true });
+  const cmp = (a, b) => Array.isArray(a) ? a.reduce((d, x, i) => d || cmp(x, b[i]), 0)
+    : typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), "en", { numeric: true });
   function apply() {
     const [, key] = cols[state.col], [, first] = cols[0];
     const sorted = [...rows].sort((a, b) => { const va = key(a.x), vb = key(b.x);
       if (va == null || vb == null) return (va == null) - (vb == null);
       return (state.desc ? -1 : 1) * cmp(va, vb) || cmp(first(a.x), first(b.x)); });
-    body.append(...sorted.map(r => r.tr));
+    const out = []; let prev = {};
+    for (const r of sorted) { if (section && state.col === section.col && section.of(r.x) !== prev) out.push(section.row(prev = section.of(r.x))); out.push(r.tr); }
+    body.replaceChildren(...out);
     ths.forEach((th, i) => { th.setAttribute("aria-sort", i === state.col ? (state.desc ? "descending" : "ascending") : "none");
       th.querySelector(".arrow").textContent = i === state.col ? (state.desc ? " ▼" : " ▲") : ""; });
   }
