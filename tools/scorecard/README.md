@@ -302,6 +302,7 @@ link).
 | Wipes | Share of the player's pulls where their mistake is what lost the pull (see below), each wipe counted by the player's share of the entry that decided it, as mistakes are. |
 | vs Clears | rDPS over 0:00–2:00, averaged over the player's best quarter of clean pulls, against the average player on the same job in the benchmark's clears without The Echo; * when only 1–2 clearers played the job. |
 | Uptime | Active GCD time over 0:00–2:00, against clearers of the same role. |
+| Pulls | The night's pulls. A player who changed jobs during the night has a row per job, showing the pulls on that job of the night's, "28 of 47": their mistakes and wipes per pull count over the whole night, vs Clears and uptime over the job's own pulls. The player summary's night table does the same. |
 
 Grades are coloured dots: green good, yellow ok, red worth focusing on. `*` marks a comparison against only one
 or two clearers, which is rough.

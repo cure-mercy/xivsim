@@ -178,6 +178,13 @@ const gainGrade = v => v == null ? null : v < 0.05 ? "good" : v < 0.15 ? "ok" : 
 const gainTitle = (text, v) => el("span", {}, text, gradeChip(gainGrade(v)));
 const gainNote = (v, what) => v == null ? "" : ` Potential gain ${(100 * v).toFixed(1)}% of their DPS (${what}; green under 5%, yellow under 15%).`;
 
+// a scorecard row's pulls: a player who changed jobs during the night has a row per job, "28 of 47": the pulls on that
+// job of the night's pulls, which their mistakes and wipes per pull count over (vs Clears and uptime are the job's own)
+function pullsCell(p, players) {
+  const k = p.pull_detail ? p.pull_detail.length : p.pulls;
+  if (players.filter(q => q.name === p.name).length < 2 || k === p.pulls) return String(p.pulls);
+  return el("span", { title: `${k} of the night's ${p.pulls} pulls on ${p.job}; mistakes and wipes per pull are over all ${p.pulls}` }, `${k} of ${p.pulls}`);
+}
 function findGroup(day, group) { return reports().find(r => r.day === day && r.group === group); }
 
 // ---------- tooltip ----------
@@ -1035,7 +1042,7 @@ function groupPage(day, group) {
     rows.push(el("tr", { class: "role" }, el("td", { colspan: head.length }, role)));
     for (const p of ps) {
       const vsG = p.vs ? grade("damage", p.vs[0]) : null;
-      rows.push(linkRow([p.name, JOB[p.job] || p.job, String(p.pulls),
+      rows.push(linkRow([p.name, JOB[p.job] || p.job, pullsCell(p, r.players),
         el("span", {}, p.mrate.toFixed(2), gradeChip(grade("mistakes", p.mrate))),
         ((p.mdeath_w ?? p.mdeath ?? 0) / p.pulls).toFixed(2), ((p.mdd_w ?? p.mdd ?? 0) / p.pulls).toFixed(2),
         el("span", {}, pct(p.wrate), gradeChip(grade("wipes", p.wrate))),
@@ -1043,7 +1050,7 @@ function groupPage(day, group) {
         p.uptime != null ? el("span", {}, `${p.uptime.toFixed(1)}%`, gradeChip(grade("uptime", p.uptime_diff))) : "–"], `#/day/${day}/${group}/${encodeURIComponent(p.name)}`, 2));
     }
   }
-  app.append(heading("h2", "Player scorecard", `Mistakes per pull counts every mistake until the pull was lost; Deaths/pull and DD/pull split it into mistakes that killed someone and those that only gave Damage Down (one that did neither, like both Superchain I lasers on a player who lived, counts only in the total). Wipes: share of pulls their mistake lost. Both count each mistake in full, or the player's share of it where the classifier could not tell several players apart (½ between two) or the shortfall was the party's (healing / mitigation). vs Clears: rDPS 0:00–2:00 (best quarter of clean pulls) against clearers on the same job (clears without The Echo; a job with fewer than three such players also counts its Echo clears, damage divided by 1.2); * = only 1–2 clearers. Uptime: GCD time vs clearers of the role.`), el("div", { class: "table-wrap" }, el("table", {},
+  app.append(heading("h2", "Player scorecard", `Pulls: a player who changed jobs during the night has a row per job, with the pulls on that job of the night's ("28 of 47"); their mistakes and wipes count over the whole night, vs Clears and uptime per job. Mistakes per pull counts every mistake until the pull was lost; Deaths/pull and DD/pull split it into mistakes that killed someone and those that only gave Damage Down (one that did neither, like both Superchain I lasers on a player who lived, counts only in the total). Wipes: share of pulls their mistake lost. Both count each mistake in full, or the player's share of it where the classifier could not tell several players apart (½ between two) or the shortfall was the party's (healing / mitigation). vs Clears: rDPS 0:00–2:00 (best quarter of clean pulls) against clearers on the same job (clears without The Echo; a job with fewer than three such players also counts its Echo clears, damage divided by 1.2); * = only 1–2 clearers. Uptime: GCD time vs clearers of the role.`), el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: i >= 2 ? "num" : null }, h)))), el("tbody", {}, rows))),
     (r.light_parties || []).length === 2 ? el("p", { class: "note" }, `Light parties inferred from the White Flame baits: LP1 ${r.light_parties[0].join(", ")} · LP2 ${r.light_parties[1].join(", ")}.`) : "");
   // rotation and ability usage, per player
@@ -2181,7 +2188,7 @@ function acrossNights(app, name) {
   app.append(el("div", { class: "table-wrap", style: "margin-top:12px" }, el("table", {},
     el("thead", {}, el("tr", {}, ["Day", "Group", "Job", "Pulls", "Mistakes/pull", "Per minute", "Wipes", "vs Clears", "Uptime", "Rotation loss", "Opener"].map((h, i) => el("th", { class: i >= 3 ? "num" : null }, h)))),
     el("tbody", {}, [...hist].reverse().map(q => { const rep = findGroup(q.day, q.group), mins = rep ? sum(rep.pulls.filter(x => x.players.includes(name)).map(x => Math.min(x.dur, x.wipe ? x.wipe.t + 2 : x.dur) / 60)) : 0;
-      return linkRow([dayName(q.day), q.group, JOB[q.job] || q.job, String(q.pulls), el("span", {}, q.mrate.toFixed(2), gradeChip(grade("mistakes", q.mrate))),
+      return linkRow([dayName(q.day), q.group, JOB[q.job] || q.job, rep ? pullsCell(q, rep.players) : String(q.pulls), el("span", {}, q.mrate.toFixed(2), gradeChip(grade("mistakes", q.mrate))),
         mins ? ((q.mistakes_w ?? q.mistakes) / mins).toFixed(3) : "–", el("span", {}, pct(q.wrate), gradeChip(grade("wipes", q.wrate))),
         q.vs ? el("span", {}, signed(q.vs[0]), gradeChip(grade("damage", q.vs[0]))) : "–", q.uptime != null ? el("span", {}, `${q.uptime.toFixed(1)}%`, gradeChip(grade("uptime", q.uptime_diff))) : "–",
         rotLoss(q) != null ? `${num(Math.round(rotLoss(q)))} DPS` : "–", opener(q) != null ? signed(opener(q)) : "–"], `#/day/${q.day}/${q.group}/${encodeURIComponent(name)}`, 3); })))));
