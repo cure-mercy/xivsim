@@ -1022,7 +1022,6 @@ function groupPage(day, group) {
     ["Pulls", String(r.pulls_total), r.kills ? `${r.kills} kills` : `${(sum(r.pulls.map(p => p.dur)) / 3600).toFixed(1)} hours in combat`], ["Best pull", `${r.best.toFixed(1)}% HP`, `longest ${mmss(stats([r]).longest)}`],
     ["Mistakes per pull", s.mistakesPerPull.toFixed(2), "per player", grade("mistakes", s.mistakesPerPull)],
     ["Party DPS 0:00–2:00", kfmt(r.party), `clears ~${kfmt(b.pools.clears.party_dps_median)} · min ~${kfmt(b.pools.clears.party_dps_min)}`],
-    ["Lost to mistakes", hpfmt(s.lostPerPull), s.lostPerPull != null ? `per pull: deaths ${hpfmt(s.lostPerPull - (s.lostDDPerPull || 0))} · Damage Down ${hpfmt(s.lostDDPerPull)}` : "per pull"],
     budgetTile([r]), pacingTile([r]),
   ]));
   app.append(heading("h2", "Raid leader focus", "The few things worth raising first: the mechanics that ended the most pulls and who failed them, the most common mistake, the costliest rotation issues against the clearers, the latest raid buff, and weak openers. Drill and Brief open the trainer on that mechanic."),
@@ -1298,53 +1297,8 @@ function playerPage(day, group, name) {
         el("td", {}, d.culprits.length ? confCell(d.confidence) : ""),
         wipeCell(d)))))
       : el("div", { class: "empty", style: "padding:14px" }, "No deaths recorded.")));
-  // across raid days
-  const hist = reports().filter(x => x.players).flatMap(x => x.players.filter(q => q.name === name).map(q => ({ ...q, day: x.day, group: x.group }))).sort((a, c) => a.day.localeCompare(c.day));
-  const byDay = Object.values(hist.reduce((a, q) => ((a[q.day + q.group] = a[q.day + q.group] || []).push(q), a), {}));
-  app.append(heading("h2", "Across raid days", "Their top issues: the three mistakes they made most over all raid days, each per pull that reached the mechanic it happens in (the pull not yet lost when the mechanic began), so getting further in later raid days does not read as more mistakes. Each row is one mistake in one mechanic, named as in the mistake tables (Trinity of Souls in Para I and in Dialogos are separate rows). Rotation issues: the latest raid day's costliest, per minute alive, on the same job only. Trend: the later half of their raid days against the earlier half, 20% or more apart."));
-  // their top issues, raid day by raid day
-  if (byDay.length > 1) {
-    const reps = byDay.map(es => findGroup(es[0].day, es[0].group)), dayCounts = reps.map(x => x ? mistakeCounts(x, name) : {});
-    const total = {}, mechOfCause = {};
-    dayCounts.forEach(c => Object.entries(c).forEach(([l, n]) => (total[l] = (total[l] || 0) + n)));
-    reps.forEach(x => x && Object.entries(causeInfo(x)).forEach(([l, i]) => (mechOfCause[l] = mechOfCause[l] || i.mech)));
-    const topM = Object.entries(total).sort((a, c) => c[1] - a[1]).slice(0, 3).map(x => x[0]);
-    const latestRot = (byDay[byDay.length - 1][0].rotation || { checks: [] }).checks.filter(c => c.cost > 20).slice(0, 3).map(c => c.label);
-    const trend = vals => { const v = vals.filter(x => x != null); if (v.length < 2) return ["–", null];
-      const first = v.slice(0, Math.ceil(v.length / 2)), last = v.slice(Math.floor(v.length / 2));
-      const a = first.reduce((s, x) => s + x, 0) / first.length, b = last.reduce((s, x) => s + x, 0) / last.length;
-      return b < a * 0.8 ? ["improving", "good"] : b > a * 1.2 ? ["worse", "bad"] : ["about the same", null]; };
-    const rows = [
-      ...topM.map(l => {   // per pull that reached the mechanic the mistake happens in
-        const start = DATA.benchmark.mech_start[mechOfCause[l]] ?? 0;
-        const v = reps.map((rep, i) => { if (!rep) return null;
-          const chances = rep.pulls.filter(q => q.players.includes(name) && (q.kill ? Infinity : (q.wipe ? q.wipe.t : q.dur)) >= start).length;
-          return chances ? (dayCounts[i][l] || 0) / chances : null; });
-        return [l, "per pull reaching it", v.map(x => x == null ? "–" : x.toFixed(2)), trend(v)]; }),
-      ...latestRot.map(l => { const job = byDay[byDay.length - 1][0].job;      // rotation issues only compare days on the same job
-        const v = byDay.map(es => { if (es[0].job !== job) return null; const c = (es[0].rotation || { checks: [] }).checks.find(x => x.label === l); return c ? c.ours : null; });
-        return [l, "per minute", v.map(x => x == null ? "–" : x.toFixed(1)), trend(v)]; })];
-    if (rows.length) app.append(el("div", { class: "table-wrap", style: "margin-bottom:12px" }, el("table", {},
-      el("thead", {}, el("tr", {}, ["Their top issues", "", ...byDay.map(es => `${dayName(es[0].day)} ${es[0].group}`), "Trend"].map((h, i) => el("th", { class: i >= 2 ? "num" : null }, h)))),
-      el("tbody", {}, rows.map(([l, unit, vals, [t, cls]]) => el("tr", {}, el("td", { class: "wrap" }, l), el("td", { class: "muted" }, unit),
-        ...vals.map(v => el("td", { class: "num" }, v)), el("td", { class: `num ${cls || ""}` }, t)))))));
-  }
-  if (byDay.length > 1) {
-    const pts = f => byDay.map(es => ({ x: `${dayName(es[0].day)} ${es[0].group}`, y: f(es), day: es[0].day }));
-    const perMin = es => { const rep = findGroup(es[0].day, es[0].group); if (!rep) return null;   // as on the overview, for one player
-      const m = sum(rep.pulls.filter(q => q.players.includes(name)).map(q => Math.min(q.dur, q.wipe ? q.wipe.t + 2 : q.dur) / 60));
-      return m ? es[0].mistakes / m : null; };   // mistakes are per player, repeated on each job entry
-    app.append(el("div", { class: "grid" },
-      card("Mistakes per pull", info("Counted until each pull was lost. The dashed line divides the same mistakes by the minutes they spent in pulls (up to where each pull was lost), so longer pulls as the groups progress do not read as more mistakes." + STRATEGY_NOTE),
-        lineChart(pts(es => es[0].mrate), { yFmt: v => v.toFixed(2), name: "per pull", dated: true, extra: [{ points: pts(perMin), name: "per minute", cls: "x-min", color: "#9b6cf2" }] }),
-        () => tableOf(["Day", "Mistakes per pull", "Per minute in pulls"], byDay.map(es => [`${dayName(es[0].day)} ${es[0].group}`, es[0].mrate.toFixed(2), perMin(es) != null ? perMin(es).toFixed(3) : "–"]))),
-      card("Wipes caused", info("Share of pulls." + STRATEGY_NOTE), lineChart(pts(es => es[0].wrate), { yFmt: v => pct(v), dated: true, yMax: Math.max(0.4, ...byDay.map(es => es[0].wrate)) }), () => tableOf(["Day", "Wipes"], byDay.map(es => [`${dayName(es[0].day)} ${es[0].group}`, pct(es[0].wrate)]))),
-    ));
-  }
-  app.append(el("div", { class: "table-wrap", style: "margin-top:12px" }, el("table", {},
-    el("thead", {}, el("tr", {}, ["Day", "Group", "Job", "Pulls", "Mistakes/pull", "Wipes", "vs Clears", "Uptime"].map((h, i) => el("th", { class: i >= 3 ? "num" : null }, h)))),
-    el("tbody", {}, hist.map(q => linkRow([dayName(q.day), q.group, JOB[q.job] || q.job, String(q.pulls), q.mrate.toFixed(2), pct(q.wrate), q.vs ? signed(q.vs[0]) : "–",
-      q.uptime != null ? `${q.uptime.toFixed(1)}%` : "–"], `#/day/${q.day}/${q.group}/${encodeURIComponent(name)}`, 3))))));
+  app.append(heading("h2", "Across raid days", "Their mistakes by mechanic over every raid day, night by night, and their trends are on their summary page."),
+    el("p", { class: "lede" }, el("a", { href: playerHref(name) }, `${name} over all raid days →`)));
 }
 
 // one pull: every player's pull_detail entry for it
@@ -2115,6 +2069,123 @@ function peopleOf(r) {   // a full record's players, else the progress fragment'
     return { name: n, jobs: es.map(e => e.job), pulls: es[0].pulls, m: es[0].mistakes_w ?? es[0].mistakes, w: es[0].wipes_w ?? es[0].wipes }; });
   return r.people || (r.names || []).map(n => ({ name: n, jobs: [], pulls: null, m: null, w: null }));
 }
+// a player over every raid day: tiles, their mistakes by mechanic, and their nights one by one (#/player/<name>)
+const playerHref = name => `#/player/${encodeURIComponent(name)}`;
+const lostAt = q => q.kill ? Infinity : q.wipe ? q.wipe.t : q.dur;   // mistakes count until here, as everywhere
+function playerSummary(name) {
+  const rs = reports().filter(r => r.players && r.players.some(p => p.name === name)).sort((a, c) => a.day.localeCompare(c.day) || a.group.localeCompare(c.group));
+  if (!rs.length) return notFound();
+  crumbs([["Players", "#/players"], [name, null]]);
+  const app = document.getElementById("app"), B = DATA.benchmark;
+  const entries = rs.flatMap(r => r.players.filter(p => p.name === name).map(p => ({ ...p, r })));
+  const first = rs.map(r => r.players.find(p => p.name === name));   // per night: counts are the player's, repeated on each job entry
+  const pulls = rs.flatMap(r => r.pulls.filter(q => q.players.includes(name)).map(q => ({ ...q, r })));
+  const mine = q => (q.mistakes || []).filter(m => m.who === name);
+  const shares = q => sum(mine(q).map(m => m.share ?? 1));
+  const minutes = sum(pulls.map(q => Math.min(q.dur, q.wipe ? q.wipe.t + 2 : q.dur) / 60));
+  const P = sum(first.map(p => p.pulls)), M = sum(pulls.map(shares)), W = sum(first.map(p => p.wipes_w ?? p.wipes));
+  const blamedWipes = pulls.filter(q => q.wipe && q.wipe.culprits && q.wipe.culprits.length).length;
+  // pulls is the night's count on every job entry; pull_detail has the pulls played on that job
+  const jobPulls = {}; for (const e of entries) jobPulls[e.job] = (jobPulls[e.job] || 0) + (e.pull_detail ? e.pull_detail.length : e.pulls);
+  const jobs = Object.entries(jobPulls).sort((a, c) => c[1] - a[1]);
+  const far = pulls.reduce((a, q) => !a || q.dur > a.dur ? q : a, null);
+  const farMech = far && Object.entries(B.mech_start).filter(([m, t]) => m !== "other" && t <= far.dur).sort((a, c) => c[1] - a[1])[0];
+  const last = rs[rs.length - 1];
+  app.append(el("h1", {}, name), el("p", { class: "lede" }, `${jobs.map(([j]) => JOB[j] || j).join(" / ")} · ${rs.length} night${rs.length > 1 ? "s" : ""}, ${dayName(rs[0].day)} to ${dayName(last.day)}. Latest: `,
+    el("a", { href: `#/day/${last.day}/${encodeURIComponent(last.group)}/${encodeURIComponent(name)}` }, `${dayName(last.day)} ${last.group}`), "."));
+  app.append(tiles([
+    ["Pulls", num(P), `${rs.length} night${rs.length > 1 ? "s" : ""} · ${(sum(pulls.map(q => q.dur)) / 3600).toFixed(1)} hours in combat`],
+    ["Jobs", jobs.map(([j]) => JOB[j] || j).slice(0, 3).join(" / "), jobs.map(([j, n]) => `${JOB[j] || j} ${n} pulls`).join(" · ")],
+    ["Furthest seen", far ? mmss(far.dur) : "–", far ? `${far.kill ? "kill" : farMech ? farMech[0] : "opener"} · ${dayName(far.r.day)} ${far.r.group}, pull ${far.n}` : ""],
+    ["Mistakes per pull", P ? (M / P).toFixed(2) : "–", `${minutes ? (M / minutes).toFixed(3) : "–"} per minute in pulls, all nights`, P ? grade("mistakes", M / P) : null],
+    ["Wipes caused", P ? pct(W / P) : "–", blamedWipes ? `${pct(W / blamedWipes)} of the blamed wipes in their pulls (a fair share: 12.5%)` : "of their pulls", P ? grade("wipes", W / P) : null],
+  ]));
+  // their mistakes by mechanic: per pull that reached it (still going when it began), clean share, pulls lost
+  const mechs = Object.entries(B.mech_start).filter(([m]) => m !== "other").sort((a, c) => a[1] - c[1]);
+  const trendOf = vals => { const v = vals.filter(x => x != null); if (v.length < 2 || !v.some(x => x)) return ["–", null];
+    const a = v.slice(0, Math.ceil(v.length / 2)), b = v.slice(Math.floor(v.length / 2)), ma = sum(a) / a.length, mb = sum(b) / b.length;
+    return mb < ma * 0.8 ? ["improving", "good"] : mb > ma * 1.2 ? ["worse", "bad"] : ["about the same", null]; };
+  const rowOf = (mech, start, inMech) => {
+    const reached = pulls.filter(q => lostAt(q) >= start);
+    const mis = q => sum(mine(q).filter(inMech).map(m => m.share ?? 1));
+    const n = sum(reached.map(mis)), clean = reached.filter(q => !mine(q).some(inMech)).length;
+    const lost = pulls.filter(q => q.wipe && q.wipe.culprits && q.wipe.culprits.includes(name) && inMech(q.wipe)).length;
+    const labels = countBy(pulls.flatMap(q => mine(q).filter(inMech).map(m => causeName(m.mechanic, m.label))));
+    const top = Object.entries(labels).sort((a, c) => c[1] - a[1])[0];
+    const perNight = rs.map(r => { const rq = reached.filter(q => q.r === r); return rq.length ? sum(rq.map(mis)) / rq.length : null; });
+    return { mech, reached: reached.length, n, rate: reached.length ? n / reached.length : null, clean: reached.length ? clean / reached.length : null, lost, top, trend: trendOf(perNight) };
+  };
+  const all = mechs.map(([m, t]) => rowOf(m, t, x => x.mechanic === m)).filter(x => x.reached);
+  const rows = all.filter(x => x.n || x.lost), spotless = all.filter(x => !x.n && !x.lost);   // the clean ones get a line, not a row
+  const other = rowOf("Other", 0, x => !x.mechanic || !(x.mechanic in B.mech_start) || x.mechanic === "other");
+  if (other.n || other.lost) rows.push(other);
+  const worst = rows.filter(x => x.rate != null).reduce((a, x) => !a || x.rate > a.rate ? x : a, null);
+  app.append(heading("h2", "Mechanics", "Their mistakes in each mechanic over all raid days, per pull that reached it (still going when the mechanic began), so getting further on later days does not read as more mistakes. Each mistake counts in full, or their share of it. Clean: the share of those pulls without a mistake of theirs in the mechanic. Pulls lost: pulls whose wipe was put on them there. Trend: their later nights against their earlier ones, 20% or more apart. The mechanic with the most mistakes per pull reaching it is marked. Drill and Brief open the trainer on the mechanic."),
+    el("div", { class: "table-wrap" }, el("table", {},
+      el("thead", {}, el("tr", {}, ["Mechanic", "Pulls reaching it", "Mistakes", "Per pull reaching it", "Clean", "Pulls lost", "Most common", "Trend", "Practice"].map((h, i) => el("th", { class: i >= 1 && i <= 5 ? "num" : null }, h)))),
+      el("tbody", {}, rows.map(x => el("tr", { class: x === worst && x.rate > 0 ? "moving" : null },
+        el("td", {}, shortMech(x.mech)), el("td", { class: "num" }, String(x.reached)), el("td", { class: "num" }, x.n ? num(x.n, x.n % 1 ? 1 : 0) : "–"),
+        el("td", { class: "num" }, x.rate != null ? x.rate.toFixed(2) : "–"), el("td", { class: "num" }, pct(x.clean)), el("td", { class: "num" }, x.lost ? String(x.lost) : "–"),
+        el("td", { class: "wrap" }, x.top ? `${x.top[0].replace(/^[^:]+: /, "")} (${x.top[1]})` : ""), el("td", { class: x.trend[1] || null }, x.trend[0]),
+        el("td", {}, drillLinks(x.mech) || "")))))),
+    spotless.length ? el("p", { class: "note" }, `No mistake of theirs in ${spotless.map(x => `${shortMech(x.mech)} (reached ${x.reached} time${x.reached > 1 ? "s" : ""})`).join(", ")}.`) : "");
+  acrossNights(app, name);
+}
+// their nights one by one: top issues per raid day, mistakes and wipes over time, and a row per night (job)
+function acrossNights(app, name) {
+  const hist = reports().filter(x => x.players).flatMap(x => x.players.filter(q => q.name === name).map(q => ({ ...q, day: x.day, group: x.group }))).sort((a, c) => a.day.localeCompare(c.day));
+  const byDay = Object.values(hist.reduce((a, q) => ((a[q.day + q.group] = a[q.day + q.group] || []).push(q), a), {}));
+  app.append(heading("h2", "Night by night", "Their top issues: the three mistakes they made most over all raid days, each per pull that reached the mechanic it happens in (the pull not yet lost when the mechanic began), so getting further in later raid days does not read as more mistakes. Each row is one mistake in one mechanic, named as in the mistake tables (Trinity of Souls in Para I and in Dialogos are separate rows). Rotation issues: the latest raid day's costliest, per minute alive, on the same job only. Trend: the later half of their raid days against the earlier half, 20% or more apart."));
+  // their top issues, raid day by raid day
+  if (byDay.length > 1) {
+    const reps = byDay.map(es => findGroup(es[0].day, es[0].group)), dayCounts = reps.map(x => x ? mistakeCounts(x, name) : {});
+    const total = {}, mechOfCause = {};
+    dayCounts.forEach(c => Object.entries(c).forEach(([l, n]) => (total[l] = (total[l] || 0) + n)));
+    reps.forEach(x => x && Object.entries(causeInfo(x)).forEach(([l, i]) => (mechOfCause[l] = mechOfCause[l] || i.mech)));
+    const topM = Object.entries(total).sort((a, c) => c[1] - a[1]).slice(0, 3).map(x => x[0]);
+    const latestRot = (byDay[byDay.length - 1][0].rotation || { checks: [] }).checks.filter(c => c.cost > 20).slice(0, 3).map(c => c.label);
+    const trend = vals => { const v = vals.filter(x => x != null); if (v.length < 2) return ["–", null];
+      const first = v.slice(0, Math.ceil(v.length / 2)), last = v.slice(Math.floor(v.length / 2));
+      const a = first.reduce((s, x) => s + x, 0) / first.length, b = last.reduce((s, x) => s + x, 0) / last.length;
+      return b < a * 0.8 ? ["improving", "good"] : b > a * 1.2 ? ["worse", "bad"] : ["about the same", null]; };
+    const rows = [
+      ...topM.map(l => {   // per pull that reached the mechanic the mistake happens in
+        const start = DATA.benchmark.mech_start[mechOfCause[l]] ?? 0;
+        const v = reps.map((rep, i) => { if (!rep) return null;
+          const chances = rep.pulls.filter(q => q.players.includes(name) && (q.kill ? Infinity : (q.wipe ? q.wipe.t : q.dur)) >= start).length;
+          return chances ? (dayCounts[i][l] || 0) / chances : null; });
+        return [l, "per pull reaching it", v.map(x => x == null ? "–" : x.toFixed(2)), trend(v)]; }),
+      ...latestRot.map(l => { const job = byDay[byDay.length - 1][0].job;      // rotation issues only compare days on the same job
+        const v = byDay.map(es => { if (es[0].job !== job) return null; const c = (es[0].rotation || { checks: [] }).checks.find(x => x.label === l); return c ? c.ours : null; });
+        return [l, "per minute", v.map(x => x == null ? "–" : x.toFixed(1)), trend(v)]; })];
+    if (rows.length) app.append(el("div", { class: "table-wrap", style: "margin-bottom:12px" }, el("table", {},
+      el("thead", {}, el("tr", {}, ["Their top issues", "", ...byDay.map(es => `${dayName(es[0].day)} ${es[0].group}`), "Trend"].map((h, i) => el("th", { class: i >= 2 ? "num" : null }, h)))),
+      el("tbody", {}, rows.map(([l, unit, vals, [t, cls]]) => el("tr", {}, el("td", { class: "wrap" }, l), el("td", { class: "muted" }, unit),
+        ...vals.map(v => el("td", { class: "num" }, v)), el("td", { class: `num ${cls || ""}` }, t)))))));
+  }
+  if (byDay.length > 1) {
+    const pts = f => byDay.map(es => ({ x: `${dayName(es[0].day)} ${es[0].group}`, y: f(es), day: es[0].day }));
+    const perMin = es => { const rep = findGroup(es[0].day, es[0].group); if (!rep) return null;   // as on the overview, for one player
+      const m = sum(rep.pulls.filter(q => q.players.includes(name)).map(q => Math.min(q.dur, q.wipe ? q.wipe.t + 2 : q.dur) / 60));
+      return m ? es[0].mistakes / m : null; };   // mistakes are per player, repeated on each job entry
+    app.append(el("div", { class: "grid" },
+      card("Mistakes per pull", info("Counted until each pull was lost. The dashed line divides the same mistakes by the minutes they spent in pulls (up to where each pull was lost), so longer pulls as the groups progress do not read as more mistakes." + STRATEGY_NOTE),
+        lineChart(pts(es => es[0].mrate), { yFmt: v => v.toFixed(2), name: "per pull", dated: true, extra: [{ points: pts(perMin), name: "per minute", cls: "x-min", color: "#9b6cf2" }] }),
+        () => tableOf(["Day", "Mistakes per pull", "Per minute in pulls"], byDay.map(es => [`${dayName(es[0].day)} ${es[0].group}`, es[0].mrate.toFixed(2), perMin(es) != null ? perMin(es).toFixed(3) : "–"]))),
+      card("Wipes caused", info("Share of pulls." + STRATEGY_NOTE), lineChart(pts(es => es[0].wrate), { yFmt: v => pct(v), dated: true, yMax: Math.max(0.4, ...byDay.map(es => es[0].wrate)) }), () => tableOf(["Day", "Wipes"], byDay.map(es => [`${dayName(es[0].day)} ${es[0].group}`, pct(es[0].wrate)]))),
+    ));
+  }
+  // a row per night and job: each links to that night's page
+  const rotLoss = q => q.rotation && q.rotation.checks && !q.rotation.opener_only ? sum(q.rotation.checks.map(c => c.cost > 1 ? c.cost : 0)) : null;
+  const opener = q => q.rotation && q.rotation.opener && q.rotation.opener.dmg ? q.rotation.opener.dmg.vs : null;
+  app.append(el("div", { class: "table-wrap", style: "margin-top:12px" }, el("table", {},
+    el("thead", {}, el("tr", {}, ["Day", "Group", "Job", "Pulls", "Mistakes/pull", "Per minute", "Wipes", "vs Clears", "Uptime", "Rotation loss", "Opener"].map((h, i) => el("th", { class: i >= 3 ? "num" : null }, h)))),
+    el("tbody", {}, [...hist].reverse().map(q => { const rep = findGroup(q.day, q.group), mins = rep ? sum(rep.pulls.filter(x => x.players.includes(name)).map(x => Math.min(x.dur, x.wipe ? x.wipe.t + 2 : x.dur) / 60)) : 0;
+      return linkRow([dayName(q.day), q.group, JOB[q.job] || q.job, String(q.pulls), el("span", {}, q.mrate.toFixed(2), gradeChip(grade("mistakes", q.mrate))),
+        mins ? ((q.mistakes_w ?? q.mistakes) / mins).toFixed(3) : "–", el("span", {}, pct(q.wrate), gradeChip(grade("wipes", q.wrate))),
+        q.vs ? el("span", {}, signed(q.vs[0]), gradeChip(grade("damage", q.vs[0]))) : "–", q.uptime != null ? el("span", {}, `${q.uptime.toFixed(1)}%`, gradeChip(grade("uptime", q.uptime_diff))) : "–",
+        rotLoss(q) != null ? `${num(Math.round(rotLoss(q)))} DPS` : "–", opener(q) != null ? signed(opener(q)) : "–"], `#/day/${q.day}/${q.group}/${encodeURIComponent(name)}`, 3); })))));
+}
 function playersPage() {
   crumbs([]);   // the header link names the page
   const by = {};
@@ -2126,12 +2197,12 @@ function playersPage() {
     .sort((a, c) => c.last.r.day.localeCompare(a.last.r.day) || a.name.localeCompare(c.name));
   const app = document.getElementById("app");
   const find = el("input", { type: "search", class: "filter", placeholder: "Find a player", "aria-label": "Find a player", autocomplete: "off" });
-  app.append(el("h1", {}, "Players"), el("p", { class: "lede" }, `${rows.length} players over ${days().length} raid days, the most recent first. Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard; their latest night links to their page, which follows them across raid days.`),
+  app.append(el("h1", {}, "Players"), el("p", { class: "lede" }, `${rows.length} players over ${days().length} raid days, the most recent first. Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard. Pick a player for their summary over all raid days.`),
     el("p", {}, find));
   const body = el("tbody", {}, rows.map(x => { const tr = linkRow([x.name, x.jobs.map(j => JOB[j] || j).join(" / ") || "–", String(x.ns.length), x.pulls ? num(x.pulls) : "–",
       x.mr != null ? el("span", {}, x.mr.toFixed(2), gradeChip(grade("mistakes", x.mr))) : "–", x.wr != null ? el("span", {}, pct(x.wr), gradeChip(grade("wipes", x.wr))) : "–",
       x.lastMr != null ? x.lastMr.toFixed(2) : "–", `${dayName(x.last.r.day)} · ${x.last.r.group}`],
-    `#/day/${x.last.r.day}/${encodeURIComponent(x.last.r.group)}/${encodeURIComponent(x.name)}`, 2); tr.dataset.name = x.name.toLowerCase(); tr.lastChild.className = ""; return tr; }));
+    playerHref(x.name), 2); tr.dataset.name = x.name.toLowerCase(); tr.lastChild.className = ""; return tr; }));
   find.addEventListener("input", () => { const q = find.value.trim().toLowerCase(); for (const tr of body.children) tr.hidden = !!q && !tr.dataset.name.includes(q); });
   app.append(el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, ["Player", "Jobs", "Nights", "Pulls", "Mistakes/pull", "Wipes", "Latest night: mistakes/pull", "Latest night"].map((h, i) => el("th", { class: i >= 2 && i < 7 ? "num" : null }, h)))), body)));
@@ -2483,7 +2554,7 @@ function pendingBadge(n) {   // the Admin link counts the logins waiting for app
   if (adm) { adm.textContent = n ? `Admin (${n})` : "Admin"; adm.title = n ? `${n} login${n > 1 ? "s" : ""} waiting for approval` : ""; }
 }
 function navSection(first) {   // marks the header link of the section the page is in (raid days for day pages and home)
-  const s = !first || first === "day" ? "days" : first;
+  const s = !first || first === "day" ? "days" : first === "player" ? "players" : first;
   for (const a of document.querySelectorAll(".navlink")) a.toggleAttribute("aria-current", a.dataset.section === s);
 }
 
@@ -2498,6 +2569,10 @@ function route(keepScroll = false) {   // keepScroll: redraw the same page in pl
   if (SB && parts[0] === "account") { accountPage(); return; }
   if (SB && parts[0] === "admin") { adminPage(); return; }
   if (LOCKED && !open) { SB ? gatePage() : lockedPage(); return; }
+  if (SB && parts[0] === "player" && parts.length === 2) {   // the summary reads every report the player is in
+    const missing = playerCodes(parts[1]).filter(c => !DATA.reports[c].players), h = location.hash;
+    if (missing.length) { waitPage("Loading their reports…"); needFull(missing).then(() => { if (location.hash === h) route(true); }).catch(failPage); return; }
+  }
   if (SB && parts[0] === "day" && parts.length >= 3) {   // group, pull and player pages need the full records (a player page: all of theirs)
     const r = findGroup(parts[1], parts[2]), h = location.hash;
     const player = parts.length === 4 && parts[3] !== "pulls";
@@ -2527,6 +2602,7 @@ function draw() {   // the page the hash names, from what DATA holds
   else if (parts[0] === "day" && parts.length === 5 && parts[3] === "pulls") pullPage(parts[1], parts[2], +parts[4]);
   else if (parts[0] === "day" && parts.length === 4) playerPage(parts[1], parts[2], parts[3]);
   else if (parts[0] === "players" && parts.length === 1) playersPage();
+  else if (parts[0] === "player" && parts.length === 2) playerSummary(parts[1]);
   else home();
   if (parts[0] === "day" && (parts.length === 3 || parts.length === 4 && parts[3] !== "pulls")) sectionLinks(app);
 }
