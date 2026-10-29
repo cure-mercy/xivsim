@@ -81,7 +81,7 @@ user API; everything else keeps using the app token.
 
 GitHub Pages sites are public, so the published copy splits its data. The rotation and gear pages are open to
 everyone. Everything else (progress, mistakes, player names, our players' figures) is for Syncademy staff only: staff
-accounts on Supabase, which an admin approves (ACCESS_CONCEPT.md), or the staff passphrase (see the end of this
+accounts on Supabase, which an admin approves (docs/ACCESS_CONCEPT.md), or the staff passphrase (see the end of this
 section).
 
 ```
@@ -115,7 +115,7 @@ data without writing `stats/`, for example after `--reanalyse`.
 `public.json`, `config.json` and `data.enc.json` go to Pages with a commit and push. The data in Supabase changes as
 soon as it is uploaded. The published `index.html` loads `style.css` and `app.js` with a version stamp (`?v=` and a
 hash of the file), so browsers fetch new page files after a deploy instead of mixing a cached stylesheet with a new
-script. The page may be indexed by search engines (ACCESS_CONCEPT.md, decision 4); only the open pages have anything
+script. The page may be indexed by search engines (docs/ACCESS_CONCEPT.md, decision 4); only the open pages have anything
 to index.
 
 ### Accounts
