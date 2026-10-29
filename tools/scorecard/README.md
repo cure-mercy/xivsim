@@ -80,64 +80,71 @@ user API; everything else keeps using the app token.
 ## Publishing
 
 GitHub Pages sites are public, so the published copy splits its data. The rotation and gear pages are open to
-everyone. Everything else (progress, mistakes, player names, our players' figures) is behind a login: user accounts
-on Supabase, linked to players (ACCESS_CONCEPT.md, step 2). Until Supabase is set up, a shared passphrase does that
-job (see the end of this section).
+everyone. Everything else (progress, mistakes, player names, our players' figures) is for Syncademy staff only: staff
+accounts on Supabase, which an admin approves (ACCESS_CONCEPT.md), or the staff passphrase (see the end of this
+section).
 
 ```
 python tools/scorecard/build_site.py [<report link> ...] --publish
 ```
 
-This writes `stats/` at the repository root: the three page files, `public.json` and `config.json`. It also sends the
-rest to Supabase.
+This writes `stats/` at the repository root: the three page files, `public.json`, `config.json` and, with a
+passphrase, `data.enc.json`. It also sends the rest to Supabase.
 
 - `public.json` holds what the rotation and gear pages need, unencrypted: `rotations`, `gear` and the benchmark's
   clears (`benchmark.pools`, from public FFLogs reports). It is a whitelist, `PUBLIC_KEYS` in `build_site.py`: a new
   key in the data stays private until it is added there. Before writing anything, `--publish` looks for every
   player's name (each report's players and actors, as whole names) in `public.json` and publishes nothing if one is
   there.
-- `config.json` tells the page where to log in: the project's address and its public (anon) key, which is meant to be
-  public. Row-level security in the database decides what a logged-in user may read.
-- Supabase gets the data split by who may read it (`build_site.fragments`, uploaded by `supa.py`):
+- `config.json` tells the page where to log in: the project's address and its public (publishable) key, which is meant
+  to be public, and whether `data.enc.json` is there. Row-level security in the database decides what a logged-in
+  account may read.
+- Supabase gets the private part (`build_site.fragments`, uploaded by `supa.py`). Staff and admins read all of it:
 
-| Table | Holds | Who reads it |
-|---|---|---|
-| `progress` | Per report, a whitelist (`PROGRESS_KEYS`, `PROGRESS_PULL_KEYS`): group-level figures and pulls, no names. Mistakes and wipes by mechanic (`MECHANIC_KEYS`, and each pull's mistake and wipe labels) are left out for the latest raid day | Linked users and admins |
-| `report_full` | The report's whole record, as in `data.json` | Users whose player is in the report, and admins |
-| `site_meta` | `strategies`, the whole benchmark, `ours` | Linked users and admins |
-| `reports`, `players`, `report_players` | Which reports exist; each player's FFLogs character id, name and world; who was in which report | For linking and the access rules |
-
-A player is identified by their FFLogs character id, which stays the same when a character is renamed or moves world
-(`fflogs.character_id`, from the home world each report lists; cached in `.cache/characters.json`). The few
-characters FFLogs doesn't know get a stable negative id. Each report entry in `data.json` has them in `roster`.
+| Table | Holds |
+|---|---|
+| `progress` | Per report, what the pages load first (`PROGRESS_KEYS`, `PROGRESS_PULL_KEYS`): group-level figures, mistakes by mechanic, its players' names and its pulls |
+| `report_full` | The report's whole record, as in `data.json`; a page loads it when it needs it (a group's, pull's or player's page) |
+| `site_meta` | `strategies`, the whole benchmark, `ours` |
+| `reports` | Which reports exist, with their day and group |
 
 Only what changed since the last upload to that project is sent (hashes in `.cache/supabase_sent.json`). A report
-removed with `--remove` is deleted from Supabase too, along with its progress, full record and player links.
-`--upload` sends the data without writing `stats/`, for example after `--reanalyse`.
+removed with `--remove` is deleted from Supabase too, along with its progress and full record. `--upload` sends the
+data without writing `stats/`, for example after `--reanalyse`.
 
-`public.json` and `config.json` go to Pages with a commit and push, as before. The data in Supabase changes as soon
-as it is uploaded. The published `index.html` loads `style.css` and `app.js` with a version stamp (`?v=` and a hash of
-the file), so browsers fetch new page files after a deploy instead of mixing a cached stylesheet with a new script.
-The page may be indexed by search engines (ACCESS_CONCEPT.md, decision 4); only the open pages have anything to index.
+`public.json`, `config.json` and `data.enc.json` go to Pages with a commit and push. The data in Supabase changes as
+soon as it is uploaded. The published `index.html` loads `style.css` and `app.js` with a version stamp (`?v=` and a
+hash of the file), so browsers fetch new page files after a deploy instead of mixing a cached stylesheet with a new
+script. The page may be indexed by search engines (ACCESS_CONCEPT.md, decision 4); only the open pages have anything
+to index.
 
 ### Accounts
 
 | Who | Sees |
 |---|---|
-| Not logged in, or logged in without a linked character | The rotation and gear pages; a progress link shows the login, or the form to link a character |
-| Linked to a character | Every raid day's progress without names. Full detail (players, pulls, mistakes) for each report a linked character played in. Another group's page shows "Not your group" with its progress figures |
-| Admin | Everything, plus the admin page |
+| Not logged in, or an account waiting for approval (`pending`) | The rotation and gear pages; a progress link shows the login, or that the account waits for approval, and the passphrase form |
+| Staff (`staff`), or anyone with the staff passphrase | Everything: every report in full, mistakes included |
+| Admin (`admin`) | Everything, plus the admin page |
 
-Users log in with Discord. On `#/account` they ask to be linked to a character by its name (and world, if the name
-isn't unique), and an admin approves the request. A user can link several characters (alts, a renamed character),
-and each character belongs to at most one user. The account page also lets users unlink a character, delete their
-account, and read what is stored about them.
+Anyone with a Discord account can log in; the account is `pending` until an admin approves it as staff on the admin
+page. The account page shows the role, what is stored, and lets users log out or delete their account.
 
 The first admin is made from the command line, once they have logged in on the site:
-`python tools/scorecard/supa.py admin <email or Discord name>`. After that, admins promote others on the admin page.
-`supa.py status` counts rows, users and link requests. `supa.py probe` checks the access rules from outside: the
-public key alone and a logged-in but unlinked account must see nothing, and an account linked to one player must see
-all progress and only that player's full reports. It uses a throwaway account and deletes it afterwards.
+`python tools/scorecard/supa.py admin <email or Discord name>` (`supa.py staff <who>` approves someone as staff the
+same way). After that, admins approve and promote others on the admin page; nobody changes their own role there.
+`supa.py status` counts rows and accounts by role, and `supa.py audit [N]` prints the audit log's last entries.
+`supa.py probe` checks the access rules from outside: the public key alone must see nothing; a `pending` account only
+its own profile; a `staff` account every report but none of the admin's tables; and neither may raise its own role,
+remove accounts, add reports, start an FFLogs search or write the audit log. It uses a throwaway account and deletes
+it afterwards (its entries stay in the audit log, as `probe-…`).
+
+**The audit log** (`audit_log`, on the admin page) keeps who did what and when: logins, accounts created, approved,
+promoted, revoked or removed, changes to the report list (added, renamed, rebuild or removal asked, live watching),
+FFLogs searches, and what the worker built, removed or failed to build and what the command line uploaded or
+published. The database writes the entries for what happens on the page itself, with triggers
+(`supabase/migrations/20261029000000_staff.sql`); the worker and the command line write theirs with the service key.
+Nobody can change or delete entries from the page. Opening the site with the passphrase leaves no entry: it happens in
+the browser and never reaches the server.
 
 ### The admin page and the worker
 
@@ -154,7 +161,9 @@ all progress and only that player's full reports. It uses a throwaway account an
   free one). For each report there are buttons to rename its group, rebuild it from a fresh download, watch it live,
   or remove it. Each row shows the state the worker reports: queued, building, ok, or error with FFLogs' message.
   The list refreshes every 15 seconds, except while a field is being edited.
-- **People.** Link requests to approve or reject, linked characters (unlink), and accounts (make or remove admins).
+- **Accounts.** Logins waiting for approval (approve as staff, or remove), and staff and admins (make or remove admin,
+  revoke staff access, remove the account).
+- **Audit log.** The newest hundred entries, with older ones a button away.
 
 The analysis runs in Python, not in the browser or the database, so the page only edits a list (`report_sources`).
 `worker.py` builds what the list asks for. It reads the list every 30 seconds, analyses new, renamed and rebuilt
@@ -186,8 +195,8 @@ database stop with it. To keep them running, keep a WSL process open, for exampl
 ### Setting up Supabase
 
 `supabase/` holds the project for the Supabase CLI: `config.toml`, and the schema with its access rules in
-`supabase/migrations/` (tables, row-level security, `request_link`, `delete_my_account`, and the trigger that caps
-live watching and queues admin changes for the worker).
+`supabase/migrations/` (tables, row-level security, the roles, `remove_account`, `delete_my_account`, the audit
+log's triggers, and the trigger that caps live watching and queues admin changes for the worker).
 
 **Locally, in WSL** (Docker and the CLI are installed in Ubuntu-26.04), from `/mnt/c/Gitroot/xivsim/tools/scorecard`:
 `supabase start` runs the stack: the API on <http://127.0.0.1:54321> and Studio on <http://127.0.0.1:54323>.
@@ -214,23 +223,30 @@ Discord login works locally only once a Discord application is set up (below). I
    `https://cure-mercy.github.io/xivsim/stats/` and add `https://cure-mercy.github.io/xivsim/stats/**` as a redirect
    URL. Leave the Email provider on, with Confirm email: `supa.py probe` logs its throwaway account in by password,
    which turning the provider off stops (it also blocks password logins for accounts an admin made). Someone who
-   signs up by email is like a new Discord user: they see nothing until an admin approves a link.
+   signs up by email is like a new Discord user: they see nothing until an admin approves them as staff.
 4. Apply the schema from WSL: `supabase login`, then `supabase link --project-ref <ref>`, then `supabase db push`.
 5. Put the project's URL, publishable (anon) key and secret (service_role) key in `.supabase` at the repository root,
-   in the format `supa.py` describes. Then run `build_site.py --publish`, check with `supa.py probe`, and commit and
-   push `stats/`. `stats/data.enc.json` is deleted by that publish.
+   in the format `supa.py` describes, and the staff passphrase in `.PUBLISH_KEY` (git-ignored). Then run
+   `build_site.py --publish`, check with `supa.py probe`, and commit and push `stats/`.
 6. Log in on the site once, then run `supa.py admin <you>`.
 7. Install the worker in WSL (`worker.service`). It reads `.supabase` by default.
 
-### Without Supabase: the passphrase
+### The passphrase
 
-Without `.supabase`, `--publish` writes `data.enc.json` instead of `config.json`. It holds the private part,
-compressed and encrypted with AES-256-GCM under a key derived from a passphrase (PBKDF2-SHA256, 600,000 rounds),
-which goes to `encrypt_data.js` (Node) on stdin, so no plaintext copy is written. The passphrase is asked for twice
-(or read from `SCORECARD_PASSPHRASE`) and must be at least 12 characters. Anyone can download the file and try
-passphrases offline, so several unrelated words are best. Readers enter it once per browser session; the Lock button
-forgets it. Everyone shares one passphrase, so changing it (and publishing again) is the only way to revoke access.
-Old encrypted files stay readable in git history to anyone who has the passphrase.
+The staff passphrase is the other way in: no account, staff's view, no admin page. With a passphrase,
+`--publish` writes `data.enc.json` next to `config.json`. It holds the private part, compressed and encrypted with
+AES-256-GCM under a key derived from the passphrase (PBKDF2-SHA256, 600,000 rounds), which goes to `encrypt_data.js`
+(Node) on stdin, so no plaintext copy is written. The passphrase comes from `SCORECARD_PASSPHRASE`, else from
+`.PUBLISH_KEY` at the repository root (git-ignored); with neither, a publish to Supabase leaves `data.enc.json` out
+(and deletes an old one). It must be at least 12 characters. Anyone can download the file and try passphrases
+offline, so several unrelated words are best.
+
+The page offers the passphrase below the Discord login. Readers enter it once per browser session; Lock (or logging
+out) forgets it. It opens the data as of the last publish: what the worker builds later reaches Supabase, and the
+passphrase sees it only after the next `--publish`. Everyone shares one passphrase, so changing it (and publishing
+again) is the only way to revoke it, and old encrypted files stay readable in git history to anyone who has it.
+Without `.supabase` the passphrase is the only way in: `--publish` writes no `config.json` and asks for the passphrase
+twice when it isn't set.
 
 `ours` is our players' share of the rotation pages, without names: per job, every clean 0:00–2:00 pull's rDPS and the
 buffs it gave others, how many players those come from, and each player's rotation ceiling (`ours_by_job` in
@@ -775,10 +791,10 @@ resumed. Run `build_site.py --reanalyse` afterwards so the site picks up the new
 
 | File | Purpose |
 |---|---|
-| `build_site.py` | The command: adds reports to the website's data (`site/data.json`); `--publish` writes the public copy to `stats/` (`public.json` open, the rest to Supabase or `data.enc.json`) |
-| `supa.py` | Uploads to Supabase; `status`, `admin`, `probe` |
+| `build_site.py` | The command: adds reports to the website's data (`site/data.json`); `--publish` writes the public copy to `stats/` (`public.json` open, the rest to Supabase and, with a passphrase, `data.enc.json`) |
+| `supa.py` | Uploads to Supabase, writes audit entries; `status`, `admin`, `staff`, `audit`, `probe` |
 | `worker.py`, `worker.service` | Builds what the admin page's report list asks for and watches live reports (runs in WSL) |
-| `supabase/` | The Supabase project: `config.toml` and the schema with its access rules (`migrations/`) |
+| `supabase/` | The Supabase project: `config.toml` and the schema with its access rules, roles and audit log (`migrations/`) |
 | `scorecard.py` | The analysis: fetching, mistakes and wipes, damage against clearers, damage lost to deaths, damage per phase |
 | `classifier.py` | Mistake attribution, and the rule book of which rules apply from which raid day |
 | `blame_diff.py` | Every attribution that changes between two versions of the classifier, over every cached report |

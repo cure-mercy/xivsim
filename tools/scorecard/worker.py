@@ -52,7 +52,7 @@ def step(bench):
         for r in rows:
             code = r["code"]
             if r["want"] == "absent":
-                if site["reports"].pop(code, None): done.append(code)
+                if site["reports"].pop(code, None): done.append(code); supa.audit("report removed", code, {"group": r["group_name"]}, by="worker")
                 gone.append(code); continue
             on, live = site["reports"].get(code), r["live_until"] and when(r["live_until"]) > now
             log = None
@@ -83,9 +83,11 @@ def step(bench):
                 patch(code, state="ok", message=None, group_name=e["group"], day=e["day"], pulls=e["pulls_total"],
                       segments=log["segments"], built_at=iso(datetime.datetime.now(UTC)))
                 done.append(code)
+                supa.audit("report built", code, dict(why=why, group=e["group"], day=e["day"], pulls=e["pulls_total"]), by="worker")
             except (Exception, SystemExit) as ex:   # S.fetch raises SystemExit for a report without P12S pulls (yet)
                 plain = isinstance(ex, (ValueError, SystemExit, RuntimeError))   # RuntimeError: FFLogs' own answer ("This report does not exist.")
                 patch(code, state="error", message=(str(ex) if plain else f"{type(ex).__name__}: {ex}")[:500], **({"segments": log["segments"]} if log else {}))
+                supa.audit("build failed", code, dict(why=why, message=str(ex)[:300]), by="worker")
                 if not plain: traceback.print_exc()
         if done:
             build_site.finish(site, bench)

@@ -1,9 +1,11 @@
 """Supabase for the scorecard (ACCESS_CONCEPT.md, step 2): uploads the data split by who may read it, and a few
 account commands.
 
-    python tools/scorecard/supa.py status                  rows, users and open link requests
-    python tools/scorecard/supa.py admin <email | name>    make a user an admin (they must have logged in once)
-    python tools/scorecard/supa.py probe                   checks the row-level security with throwaway accounts
+    python tools/scorecard/supa.py status                  rows, and accounts by role
+    python tools/scorecard/supa.py admin <email | name>    make an account an admin (they must have logged in once)
+    python tools/scorecard/supa.py staff <email | name>    approve an account as staff (as the admin page does)
+    python tools/scorecard/supa.py audit [N]               the last N entries of the audit log (default 30)
+    python tools/scorecard/supa.py probe                   checks the row-level security with a throwaway account
 
 build_site.py --publish (and --upload, and worker.py) call upload(). The keys come from .supabase at the repository
 root (git-ignored), or from the file SCORECARD_SUPABASE names (.supabase.local for the local stack in WSL):
@@ -34,9 +36,10 @@ def config():
                 email_login=kv.get("SCORECARD_EMAIL_LOGIN") == "1")
 
 
-def page_config(cfg):
-    """What the page needs to log in (published as config.json): the project's address and its public key."""
-    return dict(supabase_url=cfg["url"], anon_key=cfg["anon"], email_login=cfg["email_login"])
+def page_config(cfg, passphrase=False):
+    """What the page needs to log in (published as config.json): the project's address and its public key, and whether
+    data.enc.json is there for the passphrase."""
+    return dict(supabase_url=cfg["url"], anon_key=cfg["anon"], email_login=cfg["email_login"], passphrase=passphrase)
 
 
 def _headers(key, token=None):
@@ -70,7 +73,7 @@ def in_list(values):   # a PostgREST in.(...) list, each value quoted
 
 def upload(fr, cfg=None):
     """Bring the project's tables in line with build_site.fragments(): upsert what changed, delete reports that are no
-    longer on the site (their progress, full record and player links go with them)."""
+    longer on the site (their progress and full record go with them)."""
     cfg = cfg or config()
     sent_all = json.loads(SENT.read_text()) if SENT.exists() else {}
     sent = sent_all.setdefault(cfg["url"], {})
@@ -81,19 +84,15 @@ def upload(fr, cfg=None):
     def mark(table, items):
         sent.setdefault(table, {}).update({k: h(v) for k, v in items.items()})
     codes = [r["code"] for r in fr["reports"]]
-    # reports that left the site: deleting them cascades to progress, report_full and report_players
+    # reports that left the site: deleting them cascades to progress and report_full
     gone = call("GET", "/rest/v1/reports?select=code" + (f"&code=not.in.{q(in_list(codes))}" if codes else ""))
     for r in gone:
         call("DELETE", f"/rest/v1/reports?code=eq.{q(r['code'])}")
         for t in sent.values(): t.pop(r["code"], None)
-    if fr["players"]: call("POST", "/rest/v1/players?on_conflict=id", fr["players"], "resolution=merge-duplicates")
     if fr["reports"]: call("POST", "/rest/v1/reports?on_conflict=code", [dict(r, built="now()") for r in fr["reports"]], "resolution=merge-duplicates")
     full = changed("report_full", fr["full"])
     for code, doc in full.items():   # one at a time: a full record is a few hundred kB
         call("POST", "/rest/v1/report_full?on_conflict=code", [dict(code=code, doc=doc)], "resolution=merge-duplicates")
-        call("DELETE", f"/rest/v1/report_players?report_code=eq.{q(code)}")
-        rp = [x for x in fr["report_players"] if x["report_code"] == code]
-        if rp: call("POST", "/rest/v1/report_players", rp)
     mark("report_full", full)
     prog = changed("progress", fr["progress"])
     if prog: call("POST", "/rest/v1/progress?on_conflict=code", [dict(code=c, doc=d) for c, d in prog.items()], "resolution=merge-duplicates")
@@ -138,73 +137,84 @@ def users(cfg=None):
                  provider=(u.get("app_metadata") or {}).get("provider"), role=(prof.get(u["id"]) or {}).get("role")) for u in out]
 
 
-def make_admin(who, cfg=None):
+def audit(action, target=None, detail=None, by=None, cfg=None):
+    """An entry in the audit log the admin page shows, for what the command line or the worker did (by: who, e.g.
+    "worker"); what admins do on the page the database logs itself (supabase/migrations/20261029000000_staff.sql)."""
+    try: call("POST", "/rest/v1/audit_log", dict(action=action, target=target, detail=detail, actor_name=by), cfg=cfg)
+    except Exception as e: print(f"audit log: {e}", file=sys.stderr)   # never stop a build over the log (HTTP or network errors)
+
+
+def set_role(who, role, cfg=None):
     m = [u for u in users(cfg) if who.lower() in ((u["email"] or "").lower(), (u["name"] or "").lower(), u["id"])]
     if len(m) != 1: raise SystemExit(f"{len(m)} users match {who!r}; give the email, the exact display name or the user id")
-    call("PATCH", f"/rest/v1/profiles?user_id=eq.{m[0]['id']}", dict(role="admin"), cfg=cfg)
-    print(f"{m[0]['name'] or m[0]['email']} is an admin now")
+    call("PATCH", f"/rest/v1/profiles?user_id=eq.{m[0]['id']}", dict(role=role), cfg=cfg)
+    print(f"{m[0]['name'] or m[0]['email']} is {'an admin' if role == 'admin' else role} now")
+
+
+def count(table, cfg=None):
+    """Rows in a table (Content-Range of an exact count; a plain select stops at the project's max rows)."""
+    cfg = cfg or config()
+    h = dict(_headers(cfg["service"]), Prefer="count=exact", Range="0-0")
+    with urllib.request.urlopen(urllib.request.Request(cfg["url"] + f"/rest/v1/{table}?select=*", headers=h, method="HEAD"), timeout=60) as r:
+        return int(r.headers["Content-Range"].split("/")[-1])
 
 
 def status(cfg=None):
-    count = lambda t: len(call("GET", f"/rest/v1/{t}?select=*" if t != "report_full" else "/rest/v1/report_full?select=code", cfg=cfg))
     us = users(cfg)
-    links = call("GET", "/rest/v1/user_players?select=status", cfg=cfg)
     src = call("GET", "/rest/v1/report_sources?select=state", cfg=cfg)
-    print(f"{cfg['url']}: {count('reports')} reports, {count('report_full')} full records, {count('players')} players")
-    print(f"{len(us)} users ({sum(u['role'] == 'admin' for u in us)} admins), {sum(l['status'] == 'approved' for l in links)} linked players, "
-          f"{sum(l['status'] == 'requested' for l in links)} link requests")
+    print(f"{cfg['url']}: {count('reports', cfg)} reports, {count('report_full', cfg)} full records, {count('audit_log', cfg)} audit log entries")
+    print(f"{len(us)} accounts: " + ", ".join(f"{sum(u['role'] == r for u in us)} {r}" for r in ("admin", "staff", "pending")))
     print("report list: " + ", ".join(f"{n} {s}" for s, n in sorted({s: sum(r['state'] == s for r in src) for s in {r['state'] for r in src}}.items())))
 
 
+def show_audit(n, cfg=None):
+    for e in reversed(call("GET", f"/rest/v1/audit_log?select=*&order=at.desc&limit={int(n)}", cfg=cfg)):
+        print(f"{e['at'][:16].replace('T', ' ')}  {e['actor_name'] or '(service key)':16} {e['action']:22} {e['target'] or ''}"
+              + (f"  {json.dumps(e['detail'], ensure_ascii=False)}" if e["detail"] else ""))
+
+
 def probe(cfg=None):
-    """Row-level security from outside: the public key alone, a logged-in user who isn't linked, and one linked to a
-    single player must see exactly what ACCESS_CONCEPT.md's access rules allow. Uses throwaway accounts, deleted after."""
+    """Row-level security from outside: the public key alone, an account waiting for approval and a staff account must
+    see exactly what they may (ACCESS_CONCEPT.md, staff only), and neither may raise its own role, remove accounts,
+    start an FFLogs search or write the audit log. Uses a throwaway account, deleted after; its audit entries stay."""
     cfg = cfg or config()
-    tables = ["reports", "progress", "report_full", "site_meta", "players", "report_players", "user_players", "profiles", "report_sources", "report_searches"]
+    key = {"site_meta": "key", "profiles": "user_id", "report_searches": "id", "audit_log": "id"}
+    tables = ["reports", "progress", "report_full", "site_meta", "profiles", "report_sources", "report_searches", "audit_log"]
     def rows(t, token=None):   # refused outright counts as nothing seen
-        try: return call("GET", f"/rest/v1/{t}?select=*", key=cfg["anon"], token=token, cfg=cfg)
+        try: return call("GET", f"/rest/v1/{t}?select={key.get(t, 'code')}", key=cfg["anon"], token=token, cfg=cfg)
         except RuntimeError as e:
             if " 401 " in str(e) or " 403 " in str(e): return []
             raise
+    def attempt(method, path, body, token):   # "refused", or "accepted" when the request went through
+        try: call(method, path, body, key=cfg["anon"], token=token, cfg=cfg); return "accepted"
+        except RuntimeError as e: return "refused" if any(f" {c} " in str(e) for c in (400, 401, 403)) else str(e)
     fails = []
-    def expect(who, t, got, want):
+    def expect(who, what, got, want):
         ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {who:9} {t:15} {got} rows (want {want})")
-        if not ok: fails.append((who, t))
+        print(f"  {'ok  ' if ok else 'FAIL'} {who:8} {what:18} {got} (want {want})")
+        if not ok: fails.append((who, what))
     for t in tables: expect("anon", t, len(rows(t)), 0)
     pw = secrets.token_urlsafe(18)
     email = f"probe-{secrets.token_hex(4)}@example.invalid"
     u = call("POST", "/auth/v1/admin/users", dict(email=email, password=pw, email_confirm=True), cfg=cfg)
+    role = lambda: call("GET", f"/rest/v1/profiles?select=role&user_id=eq.{u['id']}", cfg=cfg)[0]["role"]
+    n = lambda t: len(call("GET", f"/rest/v1/{t}?select={key.get(t, 'code')}", cfg=cfg))
     try:
         tok = call("POST", "/auth/v1/token?grant_type=password", dict(email=email, password=pw), key=cfg["anon"], cfg=cfg)["access_token"]
-        for t in tables: expect("unlinked", t, len(rows(t, tok)), 1 if t == "profiles" else 0)
-        try: call("POST", "/rest/v1/report_searches", dict(day="2026-01-01"), key=cfg["anon"], token=tok, cfg=cfg); asked = "accepted"
-        except RuntimeError as e: asked = "refused" if " 401 " in str(e) or " 403 " in str(e) else str(e)
-        expect("unlinked", "search FFLogs", asked, "refused")   # only admins make the worker ask FFLogs
-        rp = call("GET", "/rest/v1/report_players?select=*&limit=1", cfg=cfg)
-        if not rp: print("  (no reports uploaded: the linked checks are skipped)")
-        else:
-            pid = rp[0]["player_id"]
-            prev = call("GET", f"/rest/v1/user_players?player_id=eq.{pid}", cfg=cfg)   # don't disturb a real link: borrow it
-            call("DELETE", f"/rest/v1/user_players?player_id=eq.{pid}", cfg=cfg)
-            try:
-                pl = call("GET", f"/rest/v1/players?id=eq.{pid}", cfg=cfg)[0]
-                got = call("POST", "/rest/v1/rpc/request_link", dict(p_name=pl["name"], p_world=pl["world"]), key=cfg["anon"], token=tok, cfg=cfg)
-                expect("unlinked", "request_link", got, "requested")
-                call("PATCH", f"/rest/v1/user_players?player_id=eq.{pid}", dict(status="approved"), key=cfg["anon"], token=tok, cfg=cfg)
-                expect("unlinked", "self-approve", call("GET", f"/rest/v1/user_players?player_id=eq.{pid}", cfg=cfg)[0]["status"], "requested")
-                expect("requested", "report_full", len(rows("report_full", tok)), 0)
-                call("PATCH", f"/rest/v1/user_players?player_id=eq.{pid}", dict(status="approved"), cfg=cfg)
-                mine = {r["report_code"] for r in call("GET", f"/rest/v1/report_players?select=report_code&player_id=eq.{pid}", cfg=cfg)}
-                n = lambda t: len(call("GET", f"/rest/v1/{t}?select=" + ("code" if t != "site_meta" else "key"), cfg=cfg))
-                for t in ("reports", "progress", "site_meta"): expect("linked", t, len(rows(t, tok)), n(t))
-                expect("linked", "report_full", sorted(r["code"] for r in call("GET", "/rest/v1/report_full?select=code", key=cfg["anon"], token=tok, cfg=cfg)), sorted(mine))
-                expect("linked", "players", len(rows("players", tok)), 1)
-                expect("linked", "report_sources", len(rows("report_sources", tok)), 0)
-                expect("linked", "report_searches", len(rows("report_searches", tok)), 0)
-            finally:
-                call("DELETE", f"/rest/v1/user_players?player_id=eq.{pid}", cfg=cfg)
-                if prev: call("POST", "/rest/v1/user_players", prev, cfg=cfg)
+        for who in ("pending", "staff"):
+            if who == "staff": call("PATCH", f"/rest/v1/profiles?user_id=eq.{u['id']}", dict(role="staff"), cfg=cfg)
+            for t in tables:
+                want = 1 if t == "profiles" else n(t) if who == "staff" and t in ("reports", "progress", "report_full", "site_meta") else 0
+                expect(who, t, len(rows(t, tok)), want)
+            call("PATCH", f"/rest/v1/profiles?user_id=eq.{u['id']}", dict(role="admin"), key=cfg["anon"], token=tok, cfg=cfg)
+            expect(who, "raise own role", role(), who)
+            expect(who, "search FFLogs", attempt("POST", "/rest/v1/report_searches", dict(day="2026-01-01"), tok), "refused")
+            expect(who, "write audit log", attempt("POST", "/rest/v1/audit_log", dict(action="forged"), tok), "refused")
+            expect(who, "remove an account", attempt("POST", "/rest/v1/rpc/remove_account", dict(p_user=u["id"]), tok), "refused")
+            expect(who, "add a report", attempt("POST", "/rest/v1/report_sources", dict(code="A" * 16), tok), "refused")
+        logged = {e["action"] for e in call("GET", f"/rest/v1/audit_log?select=action&target=eq.{q(email.split('@')[0])}", cfg=cfg)}
+        expect("audit", "throwaway account", sorted(logged & {"account created", "logged in", "approved as staff"}),
+               ["account created", "approved as staff", "logged in"])
     finally:
         call("DELETE", f"/auth/v1/admin/users/{u['id']}", cfg=cfg)
     print("probe: " + ("all checks passed" if not fails else f"{len(fails)} FAILED"))
@@ -216,6 +226,7 @@ if __name__ == "__main__":
     if not cfg: raise SystemExit("no Supabase keys: put them in .supabase at the repository root (see this file's docstring)")
     cmd = sys.argv[1:] or ["status"]
     if cmd[0] == "status": status(cfg)
-    elif cmd[0] == "admin" and len(cmd) == 2: make_admin(cmd[1], cfg)
+    elif cmd[0] in ("admin", "staff") and len(cmd) == 2: set_role(cmd[1], cmd[0], cfg)
+    elif cmd[0] == "audit": show_audit(cmd[1] if len(cmd) > 1 else 30, cfg)
     elif cmd[0] == "probe": sys.exit(0 if probe(cfg) else 1)
     else: print(__doc__)
