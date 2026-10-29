@@ -128,6 +128,35 @@ const budgetTile = rs => { const b = budget(rs);
   if (b.hp <= 0) return ["Mistake budget", "none", `party DPS ${kfmt(b.party)} is below the ${kfmt(b.min)} needed to clear`];
   return ["Mistake budget", `${b.hp.toFixed(1)}% HP`, `per kill ≈ ${b.deaths != null ? b.deaths.toFixed(1) : "–"} deaths or ${b.dds != null ? Math.floor(b.dds) : "–"} Damage Downs (party DPS ${kfmt(b.party)} vs ${kfmt(b.min)} needed)`]; };
 
+// pacing over one or more nights: time in combat against the raid time (each group's first pull to its last pull's
+// end), the reset between pulls (one pull's end to the next one's start), pulls per hour and breaks of 5 minutes or more
+const BREAK_S = 300;
+function pacing(rs) {
+  let span = 0, combat = 0, pulls = 0; const gaps = [];
+  for (const r of rs) {
+    const ps = r.pulls.filter(p => p.at != null).sort((a, c) => a.at - c.at);
+    if (ps.length < 2) continue;
+    span += (ps[ps.length - 1].at + ps[ps.length - 1].dur * 1000 - ps[0].at) / 1000; combat += sum(ps.map(p => p.dur)); pulls += ps.length;
+    for (let i = 1; i < ps.length; i++) gaps.push((ps[i].at - ps[i - 1].at) / 1000 - ps[i - 1].dur);
+  }
+  return span ? { span, combat, share: combat / span, reset: median(gaps.filter(g => g < BREAK_S)), perHour: pulls / (span / 3600), breaks: gaps.filter(g => g >= BREAK_S).length } : null;
+}
+const pacingTile = rs => { const x = pacing(rs);
+  return ["In combat", x ? pct(x.share) : "–", x ? `of ${(x.span / 3600).toFixed(1)} h raid time${rs.length > 1 ? ` (${rs.length} groups)` : ""} · reset ${Math.round(x.reset)} s · ${x.perHour.toFixed(1)} pulls/h · ${x.breaks} break${x.breaks === 1 ? "" : "s"} of 5+ min` : "needs pull times"]; };
+// the night in thirds by pull order, per group: how long pulls last and the mistakes per player per minute in pulls
+// (up to where each pull was lost, as the trend charts count them)
+function nightThirds(rs) {
+  const t = [0, 1, 2].map(() => ({ n: 0, dur: 0, m: 0, mins: 0, pp: 0 }));
+  for (const r of rs) {
+    const ps = [...r.pulls].sort((a, c) => (a.at || 0) - (c.at || 0) || a.n - c.n);
+    ps.forEach((p, i) => { const x = t[Math.min(2, Math.floor(3 * i / ps.length))], np = p.players ? p.players.length : p.np || 0;
+      x.n++; x.pp += np; x.dur += p.dur; x.m += p.mistakes ? sum(p.mistakes.map(m => m.share ?? 1)) : p.m || 0;
+      x.mins += np * Math.min(p.dur, p.wipe ? p.wipe.t + 2 : p.dur) / 60; });
+  }
+  return t.map((x, i) => ({ name: ["First third", "Middle third", "Last third"][i], n: x.n, dur: x.n ? x.dur / x.n : null, perMin: x.mins ? x.m / x.mins : null,
+    perPull: x.pp ? x.m / x.pp : null }));
+}
+
 // what one death of theirs costs at full length: time dead until raised (median over our reports) plus the raise's
 // Weakness for its whole duration, at their own rDPS; as boss HP, kill time at the group's party DPS, and against the
 // group's mistake budget (Echo pulls are already left out of avg and party)
@@ -750,16 +779,22 @@ const stratNote = () => {
   return ` ${s.invuln} of ${s.invuln + s.moving} clears skip Paradeigma I's movement with two tank invulnerabilities and keep casting; ` +
     `in the first phase their values are adjusted to the ${s.moving} clears that move like we do (${f}).`;
 };
+// the cards of what each player's mistakes cost (player page: "What their mistakes cost"; group page: "What each
+// player's mistakes cost"), hidden for now; set true to bring them back
+const SHOW_MISTAKE_COST = false;
 const MIN_PHASE = 2;   // clean samples a phase needs before it is compared with clearers
 const shortPhase = w => w.replace("Opener & Paradeigma I", "Opener & Para I").replace("Paradeigma", "Para").replace(" & Dialogos", "").replace(" & Ultima Blade", "").replace(" & Theos's Ultima", "");
 
 // boss HP at each checkpoint, drawn as points ahead of (left) or behind (right) the Clear pace: the targets run from
 // 84% to 10% HP while what matters is a point or two either side of them, so every row shares the Clear line at 0
-function checkpointChart(hp) {
-  const cps = seenCps();
+// hp: one group's checkpoints; or groups, [{ name, hp }]: a block of rows per mechanic, one row per group
+function checkpointChart(hp, groups) {
+  const cps = seenCps(), list = groups || [{ name: "", hp }], multi = !!groups;
+  const rows = cps.flatMap(c => list.map((g, k) => ({ c, g, k })));
   return width => {
-    const lab = width < 420 ? 118 : 150, valW = width < 420 ? 70 : 88, rh = 30, head = 8, H = head + cps.length * rh + 34, w = width - lab - valW;
-    const diffs = cps.flatMap(c => (hp[c.mechanic] || []).length ? [hp[c.mechanic][0] - c.breakeven, median(hp[c.mechanic]) - c.breakeven] : []);
+    const lab = width < 420 ? 118 : 150, valW = width < 420 ? 70 : 88, rh = multi ? 24 : 30, gap = multi ? 10 : 0, head = 8, w = width - lab - valW;
+    const H = head + rows.length * rh + (cps.length - 1) * gap + 34, rowY = i => head + i * rh + Math.floor(i / list.length) * gap + rh / 2;
+    const diffs = rows.flatMap(({ c, g }) => (g.hp[c.mechanic] || []).length ? [g.hp[c.mechanic][0] - c.breakeven, median(g.hp[c.mechanic]) - c.breakeven] : []);
     const lo = -Math.max(6, Math.ceil(Math.max(...cps.map(c => c.breakeven - c.comfortable)) + 1), Math.ceil(-Math.min(0, ...diffs)) + 1);
     const hi = Math.min(20, Math.max(6, Math.ceil(Math.max(0, ...diffs)) + 1));
     const X = v => lab + ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * w;
@@ -769,11 +804,15 @@ function checkpointChart(hp) {
       svg.append(sv("line", { class: "gridline", x1: X(v), x2: X(v), y1: head, y2: H - 34 }),
         sv("text", { x: X(v), y: H - 20, "text-anchor": "middle" }, v === 0 ? "Clear" : `${v > 0 ? "+" : "−"}${Math.abs(v)}`));
     svg.append(sv("text", { x: lab, y: H - 4 }, w > 260 ? "← ahead of pace (HP points)" : "← ahead"), sv("text", { x: lab + w, y: H - 4, "text-anchor": "end" }, "behind →"));
-    cps.forEach((c, i) => {
-      const y = head + i * rh + rh / 2, vals = hp[c.mechanic] || [];
-      svg.append(sv("text", { class: "lbl", x: lab - 10, y: y + 4, "text-anchor": "end" }, clip(`${c.mechanic} ${mmss(c.start_s)}`, lab - 14)));
-      svg.append(sv("rect", { x: X(c.comfortable - c.breakeven), y: y - 9, width: X(0) - X(c.comfortable - c.breakeven), height: 18, rx: 3, fill: "var(--zone)" }));
-      svg.append(sv("line", { x1: X(0), x2: X(0), y1: y - 11, y2: y + 11, stroke: "var(--ink-2)", "stroke-width": 1 }));
+    rows.forEach(({ c, g: grp, k }, i) => {
+      const y = rowY(i), vals = grp.hp[c.mechanic] || [];
+      if (!multi) svg.append(sv("text", { class: "lbl", x: lab - 10, y: y + 4, "text-anchor": "end" }, clip(`${c.mechanic} ${mmss(c.start_s)}`, lab - 14)));
+      else {   // the mechanic on its block's first row, each row's group beside the axis
+        if (!k) svg.append(sv("text", { class: "lbl", x: 0, y: y + 4 }, clip(`${shortMech(c.mechanic)} ${mmss(c.start_s)}`, lab - 44)));
+        svg.append(sv("text", { x: lab - 10, y: y + 4, "text-anchor": "end" }, grp.name));
+      }
+      svg.append(sv("rect", { x: X(c.comfortable - c.breakeven), y: y - (multi ? 7 : 9), width: X(0) - X(c.comfortable - c.breakeven), height: multi ? 14 : 18, rx: 3, fill: "var(--zone)" }));
+      svg.append(sv("line", { x1: X(0), x2: X(0), y1: y - (multi ? 9 : 11), y2: y + (multi ? 9 : 11), stroke: "var(--ink-2)", "stroke-width": 1 }));
       if (!vals.length) { svg.append(sv("text", { x: X(0) + 8, y: y + 4 }, "not reached")); return; }
       const best = vals[0], med = median(vals), db = best - c.breakeven, dm = med - c.breakeven;
       svg.append(sv("circle", { cx: X(dm), cy: y, r: 5, fill: "var(--surface)", stroke: "var(--series)", "stroke-width": 2 }));
@@ -785,7 +824,7 @@ function checkpointChart(hp) {
       svg.append(sv("text", { class: "val", x: width - 16, y: y + 4, "text-anchor": "end" }, `${best.toFixed(1)}%`), dot);
       const ahead = d => d <= 0 ? `${(-d).toFixed(1)} ahead` : `${d.toFixed(1)} behind`;
       const hit = sv("rect", { class: "hit", x: lab, y: y - rh / 2, width: w + valW, height: rh });
-      hover(hit, `${c.mechanic} (starts ${mmss(c.start_s)})`, [[`${best.toFixed(1)}%`, `best (${ahead(db)})`], [`${med.toFixed(1)}%`, `median (${ahead(dm)})`],
+      hover(hit, `${multi ? `${grp.name} · ` : ""}${c.mechanic} (starts ${mmss(c.start_s)})`, [[`${best.toFixed(1)}%`, `best (${ahead(db)})`], [`${med.toFixed(1)}%`, `median (${ahead(dm)})`],
         [`${vals.length}`, "pulls got there"], [`${c.breakeven}%`, "Clear: on pace to kill at enrage"], [`${c.comfortable}%`, "Comfy: ~13 s to spare"]]);
       svg.append(hit);
     });
@@ -802,10 +841,11 @@ const checkpointLegend = () => [
   el("span", {}, el("i", { style: "width:8px;height:8px;border-radius:50%;background:var(--warn)" }), "at Clear"),
   el("span", {}, el("i", { style: "width:8px;height:8px;border-radius:50%;background:var(--bad)" }), "behind"),
 ];
-function checkpointTable(hp) {
-  return tableOf(["Mechanic", "Starts", "Clear", "Comfy", "Best", "Median", "Pulls"],
-    seenCps().map(c => { const v = hp[c.mechanic] || []; return [c.mechanic, mmss(c.start_s), `${c.breakeven}%`, `${c.comfortable}%`,
-      v.length ? `${v[0].toFixed(1)}%` : "–", v.length ? `${median(v).toFixed(1)}%` : "–", String(v.length)]; }));
+function checkpointTable(hp, groups) {
+  const list = groups || [{ name: null, hp }];
+  return tableOf(["Mechanic", ...(groups ? ["Group"] : []), "Starts", "Clear", "Comfy", "Best", "Median", "Pulls"],
+    seenCps().flatMap(c => list.map(g => { const v = g.hp[c.mechanic] || []; return [c.mechanic, ...(groups ? [g.name] : []), mmss(c.start_s), `${c.breakeven}%`, `${c.comfortable}%`,
+      v.length ? `${v[0].toFixed(1)}%` : "–", v.length ? `${median(v).toFixed(1)}%` : "–", String(v.length)]; })), groups ? 2 : 1);
 }
 
 // ---------- shared pieces ----------
@@ -878,7 +918,7 @@ function home() {
   const far = reports().flatMap(r => r.pulls.map(q => ({ ...q, day: r.day, group: r.group }))).reduce((a, q) => (!a || q.dur > a.dur ? q : a), null);
   const reached = far && Object.entries(DATA.benchmark.mech_start).filter(([m, t]) => m !== "other" && t <= far.dur).sort((a, b) => b[1] - a[1])[0];
   app.append(tiles([
-    ["Pulls", num(all.pulls), `${all.kills} kills`],
+    ["Pulls", num(all.pulls), all.kills ? `${all.kills} kills` : `${(sum(reports().flatMap(r => r.pulls.map(p => p.dur))) / 3600).toFixed(1)} hours in combat`],
     ["Best pull", `${all.best.toFixed(1)}% HP`, "lowest boss HP reached"],
     ["Furthest seen", far ? mmss(far.dur) : "–", far ? `${far.kill ? "kill" : reached ? reached[0] : "opener"} · ${dayName(far.day)} ${far.group}, pull ${far.n}` : ""],
     ["Latest day", dayName(last.day), `${last.groups.length} group${last.groups.length > 1 ? "s" : ""}, ${ls.pulls} pulls`],
@@ -918,6 +958,16 @@ function home() {
     card("Party DPS 0:00–2:00", info(`Clean pulls. Clears ~${kfmt(DATA.benchmark.pools.clears.party_dps_median)}. Minimum to clear ~${kfmt(DATA.benchmark.pools.clears.party_dps_min)}: the 0:00–2:00 party DPS that is on pace to kill just before enrage (7:38), if the rest of the fight goes like a clear's (clears do about 11% more in their first two minutes than their fight average).`),
       lineChart(series(s => s.party), { yFmt: v => kfmt(v), yMin: 60000, yMax: 100000,
         refs: [{ value: DATA.benchmark.pools.clears.party_dps_median, label: "clears" }, { value: DATA.benchmark.pools.clears.party_dps_min, label: "min to clear", cls: "ref-min" }] }), () => tableOf(["Day", "Party DPS"], ds.map(d => [dayName(d.day), kfmt(stats(d.groups).party)]))),
+    card("Pull pacing", info(`Time in combat against the raid time (each group's first pull to the end of its last), all groups of the day together. The table view adds the median reset between pulls (breaks of 5 minutes or more left out), pulls per hour and those breaks; group and day pages have them as a tile.`),
+      lineChart(ds.map(d => { const x = pacing(d.groups); return { x: dayName(d.day), y: x ? x.share : null, day: d.day }; }).filter(p => p.y != null), { yFmt: v => pct(v), yMax: 1, name: "in combat" }),
+      () => tableOf(["Day", "In combat", "Raid time", "Median reset", "Pulls per hour", "Breaks of 5+ min"], ds.map(d => { const x = pacing(d.groups);
+        return x ? [dayName(d.day), pct(x.share), `${(x.span / 3600).toFixed(1)} h`, `${Math.round(x.reset)} s`, x.perHour.toFixed(1), String(x.breaks)] : [dayName(d.day), "–", "–", "–", "–", "–"]; }))),
+    (() => { const th = nightThirds(reports());
+      return card("Through the night", info("Each group's pulls of a night split into thirds by pull order, all nights together: mistakes per player per minute in pulls (up to where each pull was lost). Hover for how long the pulls lasted and mistakes per pull. The first pulls of a night are the shortest and the most error-prone."),
+        hbarChart(th.map(x => ({ label: x.name, value: x.perMin || 0, tip: [[x.perMin != null ? x.perMin.toFixed(3) : "–", "mistakes per player per minute", true],
+          [x.dur != null ? mmss(x.dur) : "–", "average pull"], [x.perPull != null ? x.perPull.toFixed(2) : "–", "mistakes per player per pull"], [String(x.n), "pulls"]] })), { fmt: v => v.toFixed(3) }),
+        () => tableOf(["Part of the night", "Pulls", "Average pull", "Mistakes per player per pull", "Per minute"], th.map(x => [x.name, String(x.n), x.dur != null ? mmss(x.dur) : "–",
+          x.perPull != null ? x.perPull.toFixed(2) : "–", x.perMin != null ? x.perMin.toFixed(3) : "–"]))); })(),
   ));
   app.append(el("h2", {}, "Days"), el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, ["Day", "Groups", "Pulls", "Best HP", "Longest", "Clean ≤2:00", "Party DPS", "Mistakes/pull", "Top wipe cause"].map((h, i) => el("th", { class: i && i < 8 ? "num" : null }, h)))),
@@ -942,14 +992,16 @@ function dayPage(day) {
     ["Best pull", `${s.best.toFixed(1)}% HP`, `longest ${mmss(s.longest)}${was(ps && ps.best, v => `${v.toFixed(1)}%`)}`],
     ["Mistakes per pull", s.mistakesPerPull.toFixed(2), `per player${was(ps && ps.mistakesPerPull, v => v.toFixed(2))}`, grade("mistakes", s.mistakesPerPull)],
     ["Party DPS 0:00–2:00", kfmt(s.party), `clears ~${kfmt(DATA.benchmark.pools.clears.party_dps_median)} · min to clear ~${kfmt(DATA.benchmark.pools.clears.party_dps_min)}${was(ps && ps.party, kfmt)}`],
-    budgetTile(d.groups),
+    budgetTile(d.groups), pacingTile(d.groups),
   ]));
   app.append(el("h2", {}, "Groups"), el("div", { class: "table-wrap" }, el("table", {},
     el("thead", {}, el("tr", {}, ["Group", "Pulls", "Best HP", "Longest", "Clean ≤2:00", "Party DPS", "Mistakes/pull", "Lost to deaths/pull", "Top wipe cause"].map((h, i) => el("th", { class: i && i < 8 ? "num" : null }, h)))),
     el("tbody", {}, d.groups.map(r => { const g = stats([r]); const tr = linkRow([r.echo ? `${r.group} (Echo)` : r.group, String(r.pulls_total), `${r.best.toFixed(1)}%`, mmss(stats([r]).longest), pct(r.clean2 / r.pulls_total),
       kfmt(r.party), g.mistakesPerPull.toFixed(2), hpfmt(g.lostPerPull), topWipeCell(g)], `#/day/${day}/${r.group}`); tr.lastChild.className = ""; return tr; })))));
   app.append(heading("h2", "Boss HP checkpoints", "Boss HP when each mechanic begins, as points ahead of or behind the pace for a kill at enrage (Clear). Hover a row for the exact HP."),
-    el("div", { class: "grid wide" }, d.groups.map(r => card(r.group, `${r.pulls_total} pulls`, checkpointChart(r.hp), () => checkpointTable(r.hp), checkpointLegend()))));
+    (() => { const gs = d.groups.map(r => ({ name: r.group, hp: r.hp }));
+      return card(d.groups.length > 1 ? "Groups side by side" : d.groups[0].group, `${d.groups.map(r => `${r.group} ${r.pulls_total} pulls`).join(" · ")}`,
+        checkpointChart(null, gs), () => checkpointTable(null, gs), checkpointLegend()); })());
   const cols = d.groups.map(r => ({ label: r.group, r }));
   app.append(el("h2", {}, "What went wrong"), el("div", { class: "grid wide" },
     causeMatrix("All mistakes", "Every mistake until each pull was lost, by cause and group.", cols, c => mistakeCounts(c.r)),
@@ -967,11 +1019,11 @@ function groupPage(day, group) {
       ". Pick a player for their mistakes, damage and trend.", others.length ? [" Other groups this day: ", ...others.flatMap((g, i) => [i ? " · " : "", el("a", { href: `#/day/${day}/${encodeURIComponent(g.group)}` }, g.group)])] : ""),
     echoNote(r));
   app.append(tiles([
-    ["Pulls", String(r.pulls_total), `${r.kills} kills`], ["Best pull", `${r.best.toFixed(1)}% HP`, `longest ${mmss(stats([r]).longest)}`],
+    ["Pulls", String(r.pulls_total), r.kills ? `${r.kills} kills` : `${(sum(r.pulls.map(p => p.dur)) / 3600).toFixed(1)} hours in combat`], ["Best pull", `${r.best.toFixed(1)}% HP`, `longest ${mmss(stats([r]).longest)}`],
     ["Mistakes per pull", s.mistakesPerPull.toFixed(2), "per player", grade("mistakes", s.mistakesPerPull)],
     ["Party DPS 0:00–2:00", kfmt(r.party), `clears ~${kfmt(b.pools.clears.party_dps_median)} · min ~${kfmt(b.pools.clears.party_dps_min)}`],
     ["Lost to mistakes", hpfmt(s.lostPerPull), s.lostPerPull != null ? `per pull: deaths ${hpfmt(s.lostPerPull - (s.lostDDPerPull || 0))} · Damage Down ${hpfmt(s.lostDDPerPull)}` : "per pull"],
-    budgetTile([r]),
+    budgetTile([r]), pacingTile([r]),
   ]));
   app.append(heading("h2", "Raid leader focus", "The few things worth raising first: the mechanics that ended the most pulls and who failed them, the most common mistake, the costliest rotation issues against the clearers, the latest raid buff, and weak openers. Drill and Brief open the trainer on that mechanic."),
     el("div", { class: "focus-card" }, focusList(groupFocus(r), "Nothing stands out against the clears.")));
@@ -993,7 +1045,8 @@ function groupPage(day, group) {
     }
   }
   app.append(heading("h2", "Player scorecard", `Mistakes per pull counts every mistake until the pull was lost; Deaths/pull and DD/pull split it into mistakes that killed someone and those that only gave Damage Down (one that did neither, like both Superchain I lasers on a player who lived, counts only in the total). Wipes: share of pulls their mistake lost. Both count each mistake in full, or the player's share of it where the classifier could not tell several players apart (½ between two) or the shortfall was the party's (healing / mitigation). vs Clears: rDPS 0:00–2:00 (best quarter of clean pulls) against clearers on the same job (clears without The Echo; a job with fewer than three such players also counts its Echo clears, damage divided by 1.2); * = only 1–2 clearers. Uptime: GCD time vs clearers of the role.`), el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: i >= 2 ? "num" : null }, h)))), el("tbody", {}, rows))));
+    el("thead", {}, el("tr", {}, head.map((h, i) => el("th", { class: i >= 2 ? "num" : null }, h)))), el("tbody", {}, rows))),
+    (r.light_parties || []).length === 2 ? el("p", { class: "note" }, `Light parties inferred from the White Flame baits: LP1 ${r.light_parties[0].join(", ")} · LP2 ${r.light_parties[1].join(", ")}.`) : "");
   // rotation and ability usage, per player
   const rotPlayers = r.players.filter(p => p.rotation && !p.rotation.opener_only);   // opener_only: no clears on the job, only the opener is compared
   if (rotPlayers.length) {
@@ -1063,7 +1116,7 @@ function groupPage(day, group) {
   app.append(heading("h2", "Damage lost to mistakes",
     `Before each pull was lost, mistakes cost ${hpfmt(s.lostPerPull)} per pull (${secs(s.lostPerPull)}), of which Damage Down ${hpfmt(s.lostDDPerPull)}: time spent dead and the 100 s of Weakness after a raise (−22% damage), and Damage Down (−38% while it lasts), valued at the player's own rDPS in that phase. A mistake counts against whoever caused it. The Mistake budget tile above is how much boss HP the group can lose to mistakes over a whole kill and still kill before enrage: 1 − (minimum party DPS to clear ÷ the group's party DPS), shown as deaths (time dead until raised plus the raise's Weakness) or Damage Downs at full length and the group's average player DPS.`),
     el("div", { class: "grid wide" },
-      card("What each player's mistakes cost", info("Boss HP per pull lost to deaths they caused (their own or others')."),
+      !SHOW_MISTAKE_COST ? null : card("What each player's mistakes cost", info("Boss HP per pull lost to deaths they caused (their own or others')."),
         hbarChart(costRows, { fmt: v => `${v.toFixed(2)}%` }), () => tableOf(["Player", "Caused per pull", "Own deaths cost per pull", "Dead per pull"],
           costRows.map(x => [x.label, `${x.value.toFixed(2)}%`, `${(x.p.lost_suffered / x.p.pulls).toFixed(2)}%`, `${(x.p.dead_s / x.p.pulls).toFixed(1)} s`]))),
       causeCost.length ? card("What the losses came from", info("Boss HP per pull, by the mistake behind each death."), hbarChart(causeCost, { fmt: v => `${v.toFixed(2)}%` }),
@@ -1081,8 +1134,7 @@ function groupPage(day, group) {
     .sort((a, c) => ROLES.indexOf(a.role) - ROLES.indexOf(c.role)).map(p => ({ label: p.name, p }));
   app.append(el("h2", {}, "Who made which mistakes"), el("div", { class: "grid wide" },
     causeMatrix("All mistakes by player", "Every mistake until each pull was lost.", cols, c => mistakeCounts(r, c.p.name)),
-    causeMatrix("Wipes by player", "The mistake that lost the pull.", cols, c => wipeCounts(r, c.p.name))),
-    el("p", { class: "note" }, `Light parties inferred from the White Flame baits: LP1 ${r.light_parties[0].join(", ")} · LP2 ${r.light_parties[1].join(", ")}.`));
+    causeMatrix("Wipes by player", "The mistake that lost the pull.", cols, c => wipeCounts(r, c.p.name))));
 }
 
 // a death's place in the pull: what decided the wipe, the collapse after it, or a death that saved the pull
@@ -1140,7 +1192,6 @@ function playerPage(day, group, name) {
             ...(e.ceiling ? [num(top(c)), `${Math.round(100 * c.rdps / top(c))}%`, num(c.given || 0)] : [])])));
     })));
   // damage: cost of their mistakes and damage per phase
-  const SHOW_MISTAKE_COST = false;   // "What their mistakes cost" card, hidden for now; set true to bring it back
   const costBy = Object.entries(p.lost_caused_by || {}).sort((a, c) => c[1] - a[1]).map(([label, value]) => ({ label, value }));
   app.append(el("h2", {}, "Damage"), el("div", { class: "grid wide" },
     ...entries.map(e => {
