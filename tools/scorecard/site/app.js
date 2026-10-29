@@ -499,7 +499,9 @@ function lineChart(points, { yFmt = v => v, yMax, yMin = 0, invert = false, refs
       points.forEach((p, i) => { const hit = sv("rect", { class: "hit", x: X(i) - 14, y: T, width: 28, height: h });
         hover(hit, p.x, [[p.y != null ? yFmt(p.y) : "–", name || "", true], ...extra.map(x => [x.points[i].y != null ? yFmt(x.points[i].y) : "–", x.name])]); svg.append(hit); });
       let lx = L;
-      for (const [label, cls, dashed, color] of [[name || "", "", false], ...extra.map(x => [x.name, x.cls || "", true, x.color])]) {
+      for (let [label, cls, dashed, color] of [[name || "", "", false], ...extra.map(x => [x.name, x.cls || "", true, x.color])]) {
+        if (width - lx - 24 < 40) break;   // no room left on a narrow screen: the tooltips still name every line
+        if (lx + 24 + label.length * 6.2 > width) label = clip(label, width - lx - 24);
         svg.append(sv("line", { class: dashed ? `extra ${cls}` : null, x1: lx, x2: lx + 18, y1: 10, y2: 10, ...(dashed ? (color ? { stroke: color } : {}) : { stroke: "var(--series)", "stroke-width": 2 }) }),
           sv("text", { class: "lbl", x: lx + 24, y: 14 }, label));
         lx += 34 + label.length * 6.2;
@@ -814,7 +816,8 @@ function checkpointChart(hp, groups) {
     rows.forEach(({ c, g: grp, k }, i) => {
       const y = rowY(i), vals = grp.hp[c.mechanic] || [];
       if (!multi) svg.append(sv("text", { class: "lbl", x: lab - 10, y: y + 4, "text-anchor": "end" }, clip(`${c.mechanic} ${mmss(c.start_s)}`, lab - 14)));
-      else {   // the mechanic on its block's first row, each row's group beside the axis
+      else {   // the mechanic on its block's first row, each row's group beside the axis; a faint line between blocks
+        if (!k && i) svg.append(sv("line", { x1: 0, x2: width, y1: y - rh / 2 - gap / 2, y2: y - rh / 2 - gap / 2, stroke: "var(--grid)", "stroke-width": 1 }));
         if (!k) svg.append(sv("text", { class: "lbl", x: 0, y: y + 4 }, clip(`${shortMech(c.mechanic)} ${mmss(c.start_s)}`, lab - 44)));
         svg.append(sv("text", { x: lab - 10, y: y + 4, "text-anchor": "end" }, grp.name));
       }
@@ -2136,7 +2139,171 @@ function playerSummary(name) {
         el("td", { class: "wrap" }, x.top ? `${x.top[0].replace(/^[^:]+: /, "")} (${x.top[1]})` : ""), el("td", { class: x.trend[1] || null }, x.trend[0]),
         el("td", {}, drillLinks(x.mech) || "")))))),
     spotless.length ? el("p", { class: "note" }, `No mistake of theirs in ${spotless.map(x => `${shortMech(x.mech)} (reached ${x.reached} time${x.reached > 1 ? "s" : ""})`).join(", ")}.`) : "");
+  const ctx = { app, name, rs, pulls, entries };
+  summaryPulls(ctx); summaryDeaths(ctx); summaryDamage(ctx); summaryRotation(ctx); summaryThirds(ctx);
   acrossNights(app, name);
+}
+const nightLabel = r => `${dayName(r.day)} ${r.group}`;
+// how a pull ended for one player: the kill, the wipe put on them, their death before the pull was lost (to their own
+// mistake, someone else's or no culprit found), or alive when it was lost (dying in the collapse or after is the wipe's)
+const PULL_KINDS = { kill: ["Kill", "var(--good)"], lost: ["Lost the pull", "var(--wipe, #9e1f30)"], own: ["Died to their own mistake", "var(--div-neg)"],
+  other: ["Died to someone else's mistake", "#e0a03a"], none: ["Died, no culprit found", "var(--muted)"], alive: ["Alive when the pull was lost", "var(--series)"] };
+function pullKind(q, name) {
+  if (q.kill) return { kind: "kill" };
+  if (q.wipe && (q.wipe.culprits || []).includes(name)) return { kind: "lost" };
+  const d = (q.death_list || []).find(x => x.who === name && !x.when);   // dead before the pull was lost
+  if (!d) return { kind: "alive" };
+  return { kind: d.culprits.includes(name) ? "own" : d.culprits.length ? "other" : "none", d };
+}
+
+// every pull they played, in order and night by night: a bar as long as the pull, coloured by how it ended for them
+function pullStrip(items) {
+  return width => {
+    const H = 170, L = 40, R = 8, T = 20, B = 8, w = width - L - R, h = H - T - B, gap = 6;
+    const nights = [...new Set(items.map(x => x.q.r))], n = items.length;
+    const bw = Math.max(1, (w - gap * (nights.length - 1)) / n);
+    const top = Math.max(60, Math.ceil(Math.max(...items.map(x => x.q.dur)) / 60) * 60), Y = v => T + h - (v / top) * h;
+    const svg = sv("svg", { viewBox: `0 0 ${width} ${H}`, role: "img" });
+    for (let v = 0; v <= top; v += 60) svg.append(sv("line", { class: "gridline", x1: L, x2: L + w, y1: Y(v), y2: Y(v) }), sv("text", { x: L - 6, y: Y(v) + 4, "text-anchor": "end" }, mmss(v)));
+    let x = L, prev = null;
+    items.forEach(({ q, kind }) => {
+      if (q.r !== prev) {
+        if (prev) x += gap;
+        const k = items.filter(i => i.q.r === q.r).length;
+        if (k * bw > 46) svg.append(sv("text", { class: "lbl", x, y: 12 }, dayName(q.r.day).replace(/^\w+ /, "")));
+        prev = q.r;
+      }
+      const rect = sv("rect", { class: "mark", x: x + (bw > 3 ? 0.5 : 0), y: Y(q.dur), width: Math.max(0.8, bw - (bw > 3 ? 1 : 0)), height: Math.max(1, T + h - Y(q.dur)), fill: PULL_KINDS[kind.kind][1] });
+      const mine = (q.mistakes || []).filter(m => m.who === q.who).length;
+      hover(rect, `${nightLabel(q.r)}, pull ${q.n}`, [[mmss(q.dur), q.kill ? "kill" : `boss at ${q.boss != null ? q.boss.toFixed(1) : "–"}%`, true],
+        [PULL_KINDS[kind.kind][0], kind.d ? `${mmss(kind.d.t)}, ${shortMech(kind.d.mechanic || "")}` : ""], ...(q.wipe ? [[causeName(q.wipe.mechanic, q.wipe.label), "lost the pull"]] : []),
+        [String(mine), `mistake${mine === 1 ? "" : "s"} of theirs`]]);
+      rect.addEventListener("click", () => (location.hash = pullHref(q.r.day, q.r.group, q.n)));
+      rect.style.cursor = "pointer";
+      svg.append(rect);
+      x += bw;
+    });
+    return svg;
+  };
+}
+function summaryPulls({ app, name, pulls }) {
+  const items = pulls.map(q => ({ q: { ...q, who: name }, kind: pullKind(q, name) }));
+  const counts = countBy(items.map(x => x.kind.kind));
+  app.append(heading("h2", "Pulls", "Every pull they played, night by night: each bar as long as the pull, coloured by how it ended for them. Lost the pull: the wipe was put on them. Died: their death before the pull was lost, by whose mistake it was. Alive: they were still alive when the pull was lost (dying in the collapse that lost it, or after, counts as alive). Click a bar to open the pull."),
+    card("Every pull", null, pullStrip(items),
+      () => tableOf(["Night", "Pull", "Length", "For them", "Lost to"], items.map(({ q, kind }) => [nightLabel(q.r), String(q.n), mmss(q.dur), PULL_KINDS[kind.kind][0],
+        q.wipe ? causeName(q.wipe.mechanic, q.wipe.label) : ""]), [1, 2]),
+      Object.entries(PULL_KINDS).filter(([k]) => counts[k]).map(([k, [label, color]]) => el("span", {}, el("i", { style: `width:10px;height:10px;border-radius:2px;background:${color}` }), `${label} (${counts[k]})`))));
+}
+
+// whose mistakes their deaths were, and whom their mistakes killed, before each pull was lost (the deaths that lost it
+// and the collapse after are the wipe's: a raidwide puts every death on one culprit)
+function summaryDeaths({ app, name, rs, pulls }) {
+  const theirs = pulls.flatMap(q => (q.death_list || []).filter(d => d.who === name && !d.when).map(d => ({ ...d, q })));
+  const caused = pulls.flatMap(q => (q.death_list || []).filter(d => d.who !== name && !d.when && (d.culprits || []).includes(name)).map(d => ({ ...d, q })));
+  const own = theirs.filter(d => d.culprits.includes(name)), other = theirs.filter(d => d.culprits.length && !d.culprits.includes(name)), none = theirs.filter(d => !d.culprits.length);
+  const top = (list, key) => Object.entries(countBy(list.flatMap(key))).sort((a, c) => c[1] - a[1]).slice(0, 3);
+  const byOthers = top(other, d => d.culprits), victims = top(caused, d => [d.who]);
+  const P = pulls.length, per = n => `${(n / P).toFixed(2)} per pull`;
+  const rows = [
+    { label: "Their own mistake", value: own.length, tip: [[String(own.length), per(own.length), true]] },
+    { label: "Someone else's mistake", value: other.length, tip: [[String(other.length), per(other.length), true], ...byOthers.map(([n2, k]) => [String(k), n2])] },
+    { label: "No culprit found", value: none.length, tip: [[String(none.length), per(none.length), true]] },
+    { label: "Others killed by their mistakes", value: caused.length, tip: [[String(caused.length), per(caused.length), true], ...victims.map(([n2, k]) => [String(k), n2])] }];
+  app.append(heading("h2", "Deaths", "Their deaths before each pull was lost, by whose mistake each was, and the deaths of other players their own mistakes caused before it was lost. The deaths that lost a pull and the collapse after it are left out: a raidwide would put every death on one player (the pulls lost on them are in Wipes caused and the Pulls chart). Hover for the players most often involved. A death can come from several players' mistakes, so it can count for each of them."),
+    el("div", { class: "grid wide" },
+      card("Whose mistakes", `${theirs.length} deaths of theirs before a pull was lost, in ${P} pulls; their mistakes killed others ${caused.length} time${caused.length === 1 ? "" : "s"}.`,
+        hbarChart(rows, { fmt: v => String(v) }),
+        () => tableOf(["Night", "Their own", "Someone else's", "No culprit", "Others they killed"], rs.map(r => { const f = l => String(l.filter(d => d.q.r === r).length);
+          return [nightLabel(r), f(own), f(other), f(none), f(caused)]; }))),
+      card("Who is involved", "The players whose mistakes killed them most, and whom their mistakes killed most.",
+        () => el("div", { class: "table-wrap" }, el("table", {}, el("tbody", {},
+          el("tr", {}, el("th", {}, "Killed them"), el("th", { class: "num" }, "Deaths")), ...(byOthers.length ? byOthers.map(([n2, k]) => el("tr", {}, el("td", {}, el("a", { href: playerHref(n2) }, n2)), el("td", { class: "num" }, String(k)))) : [el("tr", {}, el("td", { class: "muted", colspan: 2 }, "No one"))]),
+          el("tr", {}, el("th", {}, "Killed by their mistakes"), el("th", { class: "num" }, "Deaths")), ...(victims.length ? victims.map(([n2, k]) => el("tr", {}, el("td", {}, el("a", { href: playerHref(n2) }, n2)), el("td", { class: "num" }, String(k)))) : [el("tr", {}, el("td", { class: "muted", colspan: 2 }, "No one"))])))),
+        () => tableOf(["Player", "Killed them", "Killed by their mistakes"], [...new Set([...other.flatMap(d => d.culprits), ...caused.map(d => d.who)])].map(n2 =>
+          [n2, String(other.filter(d => d.culprits.includes(n2)).length), String(caused.filter(d => d.who === n2).length)])))));
+}
+
+// rDPS on clean pulls night by night against the clearers and their ceiling, how far their clean pulls spread, and
+// their damage per phase against clearers on the job
+const spreadOf = xs => { if (xs.length < 3) return null; const m = sum(xs) / xs.length; return Math.sqrt(sum(xs.map(x => (x - m) ** 2)) / (xs.length - 1)) / m; };
+function summaryDamage({ app, entries }) {
+  const jb = DATA.benchmark.pools, jobs = [...new Set(entries.filter(e => e.clean_pulls.length).map(e => e.job))];
+  const cards = jobs.map(job => {
+    const es = entries.filter(e => e.job === job && e.clean_pulls.length), clears = (jb.clears.jobs[job] || {}).rdps;
+    const val = (e, f) => f(e.clean_pulls.map(c => c.rdps));
+    const pts = f => es.map(e => ({ x: nightLabel(e.r), y: f(e), day: e.r.day }));
+    const ceil = e => e.ceiling ? e.ceiling + median(e.clean_pulls.map(c => c.given || 0)) : null;
+    // the axis around what is drawn (medians, bests, ceilings, the clears), in four steps of whole thousands
+    const drawn = es.flatMap(e => [val(e, median), val(e, xs => Math.max(...xs)), ceil(e)]).concat(clears ? [clears] : []).filter(v => v != null);
+    const lo = Math.floor(Math.min(...drawn) / 1000) * 1000 - 1000, hi = lo + 4 * Math.ceil((Math.max(...drawn) - lo) / 4000) * 1000;
+    const spreads = es.map(e => spreadOf(e.clean_pulls.map(c => c.rdps))).filter(v => v != null);
+    return card(`${JOB[job] || job} rDPS on clean pulls`, info(`0:00–2:00 of their pulls with no death or Damage Down before 2:00, night by night: the median and the best pull${es.some(ceil) ? ", and their ceiling (the optimizer's best rotation without raid buffs at their GCD, plus the buffs they gave others)" : ""}${clears ? "; the line is the clearers' average on the job" : ""}. Spread: how far a night's clean pulls scatter around their mean (standard deviation over the mean), from nights with three or more.`),
+      lineChart(pts(e => val(e, median)), { yFmt: kfmt, yMin: lo, yMax: hi, name: "median", refs: clears ? [{ value: clears, label: "clears avg" }] : [],
+        extra: [{ points: pts(e => val(e, xs => Math.max(...xs))), name: "best", cls: "x-min", color: "#9b6cf2" }, ...(es.some(ceil) ? [{ points: pts(ceil), name: "ceiling", cls: "x-dd" }] : [])] }),
+      () => tableOf(["Night", "Clean pulls", "Median", "Best", "Ceiling", "Median of ceiling", "Spread"], es.map(e => { const m = val(e, median), c = ceil(e), sp = spreadOf(e.clean_pulls.map(x => x.rdps));
+        return [nightLabel(e.r), String(e.clean_pulls.length), num(Math.round(m)), num(Math.round(val(e, xs => Math.max(...xs)))), c ? num(Math.round(c)) : "–", c ? pct(m / c) : "–", sp != null ? pct(sp, 1) : "–"]; })),
+      spreads.length ? [el("span", {}, `Spread of their clean pulls: ${pct(median(spreads), 1)} on a typical night`)] : null);
+  });
+  // phases x nights against clearers on the job
+  const W = seenWindows().map(w => w.name), withPh = entries.filter(e => (e.phases || []).some(ph => ph.n >= MIN_PHASE && ph.vs));
+  if (withPh.length) cards.push(card("Damage by phase", info("nDPS in each phase against clearers on the job, night by night, from pulls where they were alive and unweakened through the phase; a phase needs two such pulls."),
+    divHeatmap(withPh.map(e => `${nightLabel(e.r)} ${JOB[e.job] || e.job}`), W.map(shortPhase), (i, j) => { const ph = (withPh[i].phases || []).find(x => x.window === W[j]);
+      return ph && ph.n >= MIN_PHASE && ph.vs ? { v: ph.vs[0], thin: ph.vs[1] < 3, tip: phaseTip(ph) } : null; }),
+    () => tableOf(["Night", ...W.map(shortPhase)], withPh.map(e => [`${nightLabel(e.r)} ${JOB[e.job] || e.job}`, ...W.map(w => { const ph = (e.phases || []).find(x => x.window === w);
+      return ph && ph.n >= MIN_PHASE && ph.vs ? `${signed(ph.vs[0])} (n=${ph.n})` : "–"; })])), divLegend()));
+  if (cards.length) app.append(el("h2", {}, "Damage"), el("div", { class: "grid wide" }, ...cards));
+}
+
+// their costliest rotation checks night by night (same job only), opener damage against the clears, raid buff timing
+function summaryRotation({ app, name, rs, entries }) {
+  const cards = [];
+  for (const job of [...new Set(entries.map(e => e.job))]) {
+    const es = entries.filter(e => e.job === job && e.rotation && e.rotation.checks && !e.rotation.opener_only);
+    if (es.length < 2) continue;
+    const costs = {}; for (const e of es) for (const c of e.rotation.checks) if (c.cost > 1) costs[c.label] = (costs[c.label] || 0) + c.cost;
+    const top = Object.entries(costs).sort((a, c) => c[1] - a[1]).slice(0, 2).map(x => x[0]);
+    const cost = (e, l) => { const c = e.rotation.checks.find(x => x.label === l); return c && c.cost > 1 ? c.cost : 0; };
+    const pts = f => es.map(e => ({ x: nightLabel(e.r), y: f(e), day: e.r.day }));
+    const dps = v => `${num(Math.round(v))} DPS`;
+    cards.push(card(`${JOB[job] || job} rotation loss`, info("What the costed rotation checks against clearers on the job add up to, night by night (GCD gaps, cooldowns held, lost procs, missed DoT ticks, positionals, combos, gauge overcaps), with their two costliest checks over all nights on their own."),
+      lineChart(pts(e => sum(e.rotation.checks.map(c => c.cost > 1 ? c.cost : 0))), { yFmt: dps, name: "all checks", extra: top.map((l, k) => ({ points: pts(e => cost(e, l)), name: l, cls: k ? "x-dd" : "x-min", color: k ? null : "#9b6cf2" })) }),
+      () => tableOf(["Night", "All checks", ...top], es.map(e => [nightLabel(e.r), dps(sum(e.rotation.checks.map(c => c.cost > 1 ? c.cost : 0))), ...top.map(l => dps(cost(e, l)))]))));
+  }
+  const op = entries.filter(e => e.rotation && e.rotation.opener && e.rotation.opener.dmg);
+  if (op.length >= 2) cards.push(card("Opener against clearers", info("Their opener damage (nDPS over 0:00–0:20, tinctures removed) against the clears on the job, night by night (jobs with fewer than three clears: against our other players)."),
+    lineChart(op.map(e => ({ x: `${nightLabel(e.r)} ${JOB[e.job] || e.job}`, y: e.rotation.opener.dmg.vs, day: e.r.day })), { yFmt: v => signed(v), yMin: Math.min(-0.15, ...op.map(e => e.rotation.opener.dmg.vs)) - 0.02, yMax: Math.max(0.1, ...op.map(e => e.rotation.opener.dmg.vs)) + 0.02, refs: [{ value: 0, label: "clears" }] }),
+    () => tableOf(["Night", "Job", "Opener nDPS", "Against", "Difference"], op.map(e => [nightLabel(e.r), JOB[e.job] || e.job, num(e.rotation.opener.dmg.ndps), num(e.rotation.opener.dmg.clears), signed(e.rotation.opener.dmg.vs)]))));
+  const buffs = rs.flatMap(r => (r.burst ? r.burst.buffs : []).filter(b => b.player === name).map(b => ({ ...b, r })));
+  if (buffs.length) {
+    const bursts = [...new Set(buffs.map(b => b.burst))].sort((a, c) => a - c), keys = [...new Set(buffs.map(b => `${b.r.code}|${b.buff}`))];
+    cards.push(card("Raid buff timing", info("When their raid buff landed in each 2-minute burst against the clears' median for that buff and burst, night by night (seconds, + is later), from pulls that got through the burst; skipped: they were alive and did not use it."),
+      () => el("div", { class: "table-wrap" }, tableOf(["Night", "Buff", ...bursts.map(burstName)], keys.map(k => { const [code, buff] = k.split("|"), r = rs.find(x => x.code === code);
+        return [nightLabel(r), buff, ...bursts.map(n => { const b = buffs.find(x => x.r === r && x.buff === buff && x.burst === n);
+          return b ? `${b.delay != null ? secs1(b.delay) : "–"}${b.skipped ? `, skipped ${b.skipped}×` : ""}` : "–"; })]; }))),
+      () => tableOf(["Night", "Buff", "Burst", "Delay", "Uses", "Skipped"], buffs.map(b => [nightLabel(b.r), b.buff, burstName(b.burst), b.delay != null ? secs1(b.delay) : "–", String(b.n), String(b.skipped)]))));
+  }
+  if (cards.length) app.append(el("h2", {}, "Rotation"), el("div", { class: "grid wide" }, ...cards));
+}
+
+// their mistakes per minute in the first, middle and last third of their nights, against their groups' in the same
+// thirds; needs a few nights to say anything
+const THIRDS_NIGHTS = 4;
+function summaryThirds({ app, name, rs }) {
+  if (rs.length < THIRDS_NIGHTS) return;
+  const t = [0, 1, 2].map(() => ({ m: 0, mins: 0, gm: 0, gmins: 0, n: 0 }));
+  for (const r of rs) {
+    const ps = [...r.pulls].sort((a, c) => (a.at || 0) - (c.at || 0) || a.n - c.n);
+    ps.forEach((q, i) => { const x = t[Math.min(2, Math.floor(3 * i / ps.length))], mins = Math.min(q.dur, q.wipe ? q.wipe.t + 2 : q.dur) / 60;
+      x.gm += sum((q.mistakes || []).map(m => m.share ?? 1)); x.gmins += (q.players || []).length * mins;
+      if (!q.players.includes(name)) return;
+      x.n++; x.m += sum((q.mistakes || []).filter(m => m.who === name).map(m => m.share ?? 1)); x.mins += mins; });
+  }
+  const rows = t.map((x, i) => ({ label: ["First third", "Middle third", "Last third"][i], value: x.mins ? x.m / x.mins : 0, ref: x.gmins ? x.gm / x.gmins : null, n: x.n }));
+  app.append(heading("h2", "Through the night", "Their mistakes per minute in pulls (up to where each pull was lost) in the first, middle and last third of each of their nights by pull order, all nights together, against everyone in their groups in the same thirds. Shown from four nights on."),
+    el("div", { class: "grid" }, card("Their mistakes by part of the night", null,
+      hbarChart(rows.map(x => ({ label: x.label, value: x.value, tip: [[x.value.toFixed(3), "their mistakes per minute", true], [x.ref != null ? x.ref.toFixed(3) : "–", "their groups, per player"], [String(x.n), "pulls"]] })), { fmt: v => v.toFixed(3) }),
+      () => tableOf(["Part of the night", "Pulls", "Theirs per minute", "Their groups, per player"], rows.map(x => [x.label, String(x.n), x.value.toFixed(3), x.ref != null ? x.ref.toFixed(3) : "–"])))));
 }
 // their nights one by one: top issues per raid day, mistakes and wipes over time, and a row per night (job)
 function acrossNights(app, name) {
@@ -2611,7 +2778,7 @@ function draw() {   // the page the hash names, from what DATA holds
   else if (parts[0] === "players" && parts.length === 1) playersPage();
   else if (parts[0] === "player" && parts.length === 2) playerSummary(parts[1]);
   else home();
-  if (parts[0] === "day" && (parts.length === 3 || parts.length === 4 && parts[3] !== "pulls")) sectionLinks(app);
+  if (parts[0] === "day" && (parts.length === 3 || parts.length === 4 && parts[3] !== "pulls") || parts[0] === "player") sectionLinks(app);
 }
 // "On this page": links to a long page's sections (its h2s), between its title and its tiles
 function sectionLinks(app) {
