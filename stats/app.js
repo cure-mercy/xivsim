@@ -907,10 +907,8 @@ function dayPage(day) {
       kfmt(r.party), g.mistakesPerPull.toFixed(2), hpfmt(g.lostPerPull), g.topWipe ? `${g.topWipe[0]} (${g.topWipe[1]})` : "–"], `#/day/${day}/${r.group}`); tr.lastChild.className = ""; return tr; })))));
   app.append(heading("h2", "Boss HP checkpoints", "Boss HP when each mechanic begins, as points ahead of or behind the pace for a kill at enrage (Clear). Hover a row for the exact HP."),
     el("div", { class: "grid wide" }, d.groups.map(r => card(r.group, `${r.pulls_total} pulls`, checkpointChart(r.hp), () => checkpointTable(r.hp), checkpointLegend()))));
-  const cols = d.groups.filter(r => r.wipe_causes).map(r => ({ label: r.group, r }));   // progress only, on the latest day: no mistakes by mechanic
-  const hidden = d.groups.filter(r => !r.wipe_causes).map(r => r.group);
-  app.append(el("h2", {}, "What went wrong"), hidden.length ? el("p", { class: "note" }, `${hidden.join(", ")}: mistakes by mechanic of the latest raid day are shown only to the group's own players.`) : "",
-    !cols.length ? "" : el("div", { class: "grid wide" },
+  const cols = d.groups.map(r => ({ label: r.group, r }));
+  app.append(el("h2", {}, "What went wrong"), el("div", { class: "grid wide" },
     causeMatrix("All mistakes", "Every mistake until each pull was lost, by cause and group.", cols, c => mistakeCounts(c.r)),
     causeMatrix("What wiped us", "The mistake that lost each pull, by cause and group.", cols, c => wipeCounts(c.r))));
 }
@@ -2013,17 +2011,18 @@ function notFound() {
   document.getElementById("app").append(el("h1", {}, "Not found"), el("p", { class: "lede" }, "That day, group, player or rotation is not in the data."), el("a", { href: "#/" }, "Back to the raid days"));
 }
 
-// ---------- accounts (Supabase, ACCESS_CONCEPT.md step 2) ----------
-// config.json names the project. A linked user gets every report's progress (the progress table: no names, and no
-// mistakes by mechanic on the latest raid day) and a report's full record (report_full) when a page needs it and their
-// player was in it; admins get everything. Row-level security in the database decides; the page only asks.
+// ---------- accounts (Supabase; ACCESS_CONCEPT.md, staff only) ----------
+// config.json names the project. Anyone can log in with Discord, but an account sees nothing until an admin approves
+// it as staff. Staff get every report's progress (the progress table) and a report's full record (report_full) when a
+// page needs it; admins also get the admin page. Row-level security in the database decides; the page only asks. Staff
+// can also open the site with the passphrase instead (data.enc.json, as of the last publish; config.json says whether
+// it is there).
 const SUPABASE_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js";
 const SUPABASE_SRI = "sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R";
 let SB = null, CFG = null;
-let ME = null;            // the logged-in user: { id, name, admin, links: [{ player_id, status, name, world }] }; null when logged out
-let MINE = new Set();     // codes of the reports whose full record the user may read
-const FULL = {};          // code -> the promise of its full record
-const linkedMe = () => !!ME && (ME.admin || ME.links.some(l => l.status === "approved"));
+let ME = null;               // the logged-in user: { id, name, role, staff, admin }; null when logged out
+let BY_PASSPHRASE = false;   // the data came from data.enc.json
+const FULL = {};             // code -> the promise of its full record
 const sbCheck = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
 function loadScript(src, integrity) {
   return new Promise((ok, fail) => { const s = el("script", { src, integrity, crossorigin: "anonymous" });
@@ -2046,35 +2045,27 @@ async function loadMe() {
   const { data: { session } } = await SB.auth.getSession();
   if (!session) { ME = null; return; }
   const u = session.user;
-  const [prof, links] = await Promise.all([
-    SB.from("profiles").select("display_name, role").eq("user_id", u.id).maybeSingle().then(sbCheck),
-    SB.from("user_players").select("player_id, status, players(name, world)").eq("user_id", u.id).then(sbCheck)]);
-  ME = { id: u.id, name: (prof && prof.display_name) || u.email || "you", admin: !!prof && prof.role === "admin",
-         links: links.map(l => ({ player_id: l.player_id, status: l.status, name: l.players ? l.players.name : "?", world: l.players ? l.players.world : "" })) };
+  const prof = await SB.from("profiles").select("display_name, role").eq("user_id", u.id).maybeSingle().then(sbCheck);
+  const role = prof ? prof.role : "pending";
+  ME = { id: u.id, name: (prof && prof.display_name) || u.email || "you", role, staff: role === "staff" || role === "admin", admin: role === "admin" };
 }
-async function loadProgress() {   // every report's progress and the private site data, for linked users
-  if (!linkedMe()) return;
-  const [prog, meta, rp] = await Promise.all([SB.from("progress").select("doc").then(sbCheck), SB.from("site_meta").select("key, doc").then(sbCheck),
-    ME.admin ? Promise.resolve([]) : SB.from("report_players").select("report_code").then(sbCheck)]);
+async function loadProgress() {   // every report's progress and the private site data, for staff
+  if (!ME || !ME.staff || BY_PASSPHRASE) return;
+  const [prog, meta] = await Promise.all([SB.from("progress").select("doc").then(sbCheck), SB.from("site_meta").select("key, doc").then(sbCheck)]);
   DATA.reports = Object.fromEntries(prog.map(x => [x.doc.code, x.doc]));
   for (const k of Object.keys(FULL)) delete FULL[k];
-  for (const k of Object.keys(PLAYER_CODES)) delete PLAYER_CODES[k];
   for (const x of meta) DATA[x.key] = x.doc;   // the whole benchmark replaces the public part of it
-  MINE = new Set(ME.admin ? Object.keys(DATA.reports) : rp.map(x => x.report_code));
   LOCKED = false;
 }
 function needFull(codes) {   // the full records of these reports, merged into DATA.reports (they hold every progress field too)
-  return Promise.all(codes.filter(c => DATA.reports[c] && !DATA.reports[c].players && MINE.has(c)).map(c => FULL[c] = FULL[c] ||
-    SB.from("report_full").select("doc").eq("code", c).maybeSingle().then(sbCheck).then(x => { if (x) DATA.reports[c] = x.doc; })
+  return Promise.all(codes.filter(c => DATA.reports[c] && !DATA.reports[c].players).map(c => FULL[c] = FULL[c] ||
+    SB.from("report_full").select("doc").eq("code", c).maybeSingle().then(sbCheck).then(x => {
+      if (!x) throw new Error("This report is no longer there for you: it was removed, or your access changed. Reload the page.");   // not looping on it
+      DATA.reports[c] = x.doc; })
       .catch(e => { delete FULL[c]; throw e; })));
 }
-const PLAYER_CODES = {};   // player name -> the codes playerCodes found
-async function playerCodes(name) {   // the reports a player page reads (the player across raid days)
-  if (!ME.admin) return [...MINE];
-  const ps = await SB.from("players").select("id").eq("name", name).then(sbCheck);
-  if (!ps.length) return [];
-  return (await SB.from("report_players").select("report_code").in("player_id", ps.map(p => p.id)).then(sbCheck)).map(x => x.report_code);
-}
+const playerCodes = name => Object.values(DATA.reports)   // the reports a player page reads (the player across raid days)
+  .filter(r => (r.names || (r.players || []).map(p => p.name)).includes(name)).map(r => r.code);
 function loginDiscord() {
   try { sessionStorage.setItem("p12s-return", location.hash); } catch (e) {}
   SB.auth.signInWithOAuth({ provider: "discord", options: { redirectTo: location.origin + location.pathname, scopes: "identify email" } });
@@ -2093,74 +2084,48 @@ function loginBox(msg) {
       el("div", { class: "actions" }, el("button", { type: "button", on: { click: go(false) } }, "Log in"), el("button", { type: "button", on: { click: go(true) } }, "Create account")), note);
   }
   if (msg) box.append(el("p", { class: "note" }, msg));
-  return box;
+  return el("div", {}, box, CFG && CFG.passphrase && !BY_PASSPHRASE ? [el("p", { class: "note" }, "Or open it with the staff passphrase:"), passphraseForm()] : "");
 }
 const openPages = () => DATA && DATA.rotations ? [" The ", el("a", { href: "#/rotations" }, "rotations"), " and ", el("a", { href: "#/gear" }, "best-in-slot gear"), " are open to everyone."] : [];
-function gatePage() {   // a progress page while the user cannot see progress
+function gatePage() {   // a progress page for someone who isn't staff (yet)
   crumbs([["Raid progress", null]]);
   const app = document.getElementById("app");
   if (!ME) {
-    app.append(el("h1", {}, "Raid progress"), el("p", { class: "lede" }, "Log in to see the raid's progress. Once an admin has linked your account to your character, you see every raid day's progress and the full details of the reports you played in.", ...openPages()), loginBox());
+    app.append(el("h1", {}, "Raid progress"), el("p", { class: "lede" }, "Raid progress is for Syncademy staff. Log in with Discord, and an admin approves your account.", ...openPages()), loginBox());
     return;
   }
-  app.append(el("h1", {}, "Raid progress"), el("p", { class: "lede" }, ME.links.length ? "Your request is waiting for an admin's approval." : "Tell us which character is yours; an admin then links it to your account.", ...openPages()));
-  accountBody(app);
-}
-function notYourGroup(r) {   // a group the user did not play in: its progress figures only
-  crumbs([["Raid days", "#/"], [dayName(r.day), `#/day/${r.day}`], [r.group, null]]);
-  const app = document.getElementById("app"), b = DATA.benchmark;
-  app.append(el("h1", {}, `${r.group} · ${dayName(r.day)}`),
-    el("p", { class: "lede" }, "Not your group: its players, pulls and mistakes are shown only to the players who were in it. Its progress:"));
-  app.append(tiles([["Pulls", String(r.pulls_total), `${r.kills} kills`], ["Best pull", `${r.best.toFixed(1)}% HP`, `longest ${mmss(r.longest)}`],
-    ["Clean ≤2:00", pct(r.clean2 / r.pulls_total), `${r.clean2} pulls`],
-    ["Party DPS 0:00–2:00", kfmt(r.party), `clears ~${kfmt(b.pools.clears.party_dps_median)} · min ~${kfmt(b.pools.clears.party_dps_min)}`]]));
-  app.append(el("div", { class: "grid wide" }, card("Boss HP checkpoints", `${r.pulls_total} pulls`, checkpointChart(r.hp), () => checkpointTable(r.hp), checkpointLegend())));
+  app.append(el("h1", {}, "Raid progress"), el("p", { class: "lede" }, "Your account is waiting for an admin's approval as Syncademy staff.", ...openPages()),
+    ...(CFG.passphrase ? [el("p", { class: "note" }, "Or open it with the staff passphrase:"), passphraseForm()] : []));
 }
 function waitPage(text) { document.getElementById("app").append(el("p", { class: "muted" }, text)); }
 function failPage(e) { document.getElementById("app").replaceChildren(el("h1", {}, "Cannot load this page"), el("p", { class: "lede" }, e.message || String(e))); }
-
-const LINK_ANSWERS = { requested: "Requested. An admin will approve it.", already: "That character is already yours.", taken: "That character is linked to another account. Ask an admin if it is yours.",
-  not_found: "No character of that name has played in our reports. Check the spelling (as in game).", ambiguous: "Several characters have that name: add the world.",
-  too_many: "You have three requests waiting already." };
+const forgetPassphrase = () => { try { for (const k of Object.keys(sessionStorage)) if (k.startsWith("p12s-key:")) sessionStorage.removeItem(k); } catch (e) {} };
 function accountBody(app) {
-  const reload = async () => { await loadMe(); await loadProgress(); header(); route(true); };
-  if (ME.links.length) app.append(el("h2", {}, "Your characters"), el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, ["Character", "World", "Status", ""].map(h => el("th", {}, h)))),
-    el("tbody", {}, ME.links.map(l => el("tr", {}, el("td", {}, l.name), el("td", {}, l.world || "–"),
-      el("td", { class: l.status === "approved" ? "good" : null }, l.status === "approved" ? "linked" : "waiting for approval"),
-      el("td", {}, el("button", { type: "button", class: "small", on: { click: async () => {
-        if (!confirm(`Unlink ${l.name} from your account?`)) return;
-        try { sbCheck(await SB.from("user_players").delete().eq("player_id", l.player_id)); } catch (e) { alert(e.message); }
-        reload(); } } }, l.status === "approved" ? "Unlink" : "Withdraw"))))))));
-  const name = el("input", { type: "text", id: "char", required: true, autocomplete: "off", placeholder: "First Last" });
-  const world = el("input", { type: "text", id: "world", autocomplete: "off", placeholder: "only if the name is not unique" });
-  const msg = el("p", { class: "note", role: "status" });
-  const form = el("form", { class: "unlock" }, el("label", { for: "char" }, "Character name"), name, el("label", { for: "world" }, "World"), world,
-    el("button", { type: "submit", class: "primary" }, "Request link"), msg);
-  form.addEventListener("submit", async e => { e.preventDefault(); msg.textContent = "…";
-    try { const a = sbCheck(await SB.rpc("request_link", { p_name: name.value, p_world: world.value || null })); msg.textContent = LINK_ANSWERS[a] || a;
-      if (a === "requested") setTimeout(reload, 1200); } catch (err) { msg.textContent = err.message; } });
-  app.append(el("h2", {}, "Link a character"), el("p", { class: "lede" }, "Linking shows you the full details, mistakes included, of every report your character played in, and every raid day's progress without names."), form);
-  app.append(el("h2", {}, "Your data"), el("p", { class: "lede" }, "This site stores your Discord user id, name and email address, as Discord sends them at login, and which characters are yours. "
-    + "Linking connects your account to that character's mistakes as the reports show them. Unlinking takes effect at once; deleting your account removes all of it."),
-    el("div", { class: "actions" }, el("button", { type: "button", on: { click: () => SB.auth.signOut() } }, "Log out"),
+  app.append(el("h2", {}, "Your data"), el("p", { class: "lede" }, "This site stores your Discord user id, name and email address, as Discord sends them at login, and your role. "
+    + "Logins and what admins do (approving accounts, changing roles, managing reports) go into an audit log that admins read. Deleting your account removes the account and its role; the audit log keeps its entries."),
+    el("div", { class: "actions" }, el("button", { type: "button", on: { click: () => { forgetPassphrase(); SB.auth.signOut(); } } }, "Log out"),
       el("button", { type: "button", class: "danger", on: { click: async () => {
-        if (!confirm("Delete your account and all your links? This cannot be undone.")) return;
+        if (!confirm("Delete your account? This cannot be undone; you would start over as waiting for approval.")) return;
         try { sbCheck(await SB.rpc("delete_my_account")); } catch (e) { alert(e.message); return; }
-        await SB.auth.signOut(); } } }, "Delete my account")));
+        forgetPassphrase(); await SB.auth.signOut(); } } }, "Delete my account")));
 }
+const ROLE_TEXT = { admin: "Admin: you see every report and manage reports and accounts.", staff: "Staff: you see every report.",
+  pending: "Waiting for an admin's approval as Syncademy staff." };
 function accountPage() {
   crumbs([["Account", null]]);
   const app = document.getElementById("app");
-  if (!ME) { app.append(el("h1", {}, "Log in"), el("p", { class: "lede" }, "Log in with your Discord account.", ...openPages()), loginBox()); return; }
-  app.append(el("h1", {}, ME.name), el("p", { class: "lede" }, ME.admin ? "Admin. " : "", linkedMe() ? "You see every raid day's progress and the reports your characters played in." : "Not linked to a character yet."));
+  const lock = BY_PASSPHRASE ? el("p", {}, "Opened with the staff passphrase: the data as of the last publish. ",
+    el("button", { type: "button", class: "small", on: { click: lockAgain } }, "Lock")) : "";
+  if (!ME) { app.append(el("h1", {}, "Log in"), lock, el("p", { class: "lede" }, "Log in with your Discord account. Raid progress is for Syncademy staff: an admin approves new accounts.", ...openPages()), loginBox()); return; }
+  app.append(el("h1", {}, ME.name), el("p", { class: "lede" }, ROLE_TEXT[ME.role] || ME.role), lock);
   accountBody(app);
 }
 
-// the admin page: link requests, users, and the reports the worker builds (tools/scorecard/worker.py)
+// the admin page: the reports the worker builds (tools/scorecard/worker.py), accounts, and the audit log
 let adminTimer = null;
 const fflogsLink = code => el("a", { href: `https://www.fflogs.com/reports/${encodeURIComponent(code)}`, target: "_blank", rel: "noopener" }, code);
 const localTime = s => s ? new Date(s).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "–";
+const dateTime = s => s ? new Date(s).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "–";
 const REPORT_CODE = /^[A-Za-z0-9]{16}$/;
 async function adminPage() {
   crumbs([]);   // the header link names the page
@@ -2174,20 +2139,20 @@ async function adminPage() {
   const act = fn => async () => { try { await fn(); } catch (e) { alert(e.message); return; } reportsBox.replaceChildren(); draw(); };
   app.append(el("h2", {}, "Reports"), el("p", { class: "lede" }, "The reports on the site. The worker builds what this list asks for within a minute; a live report is checked for new pulls every 3 minutes until its watch ends (12 hours at most)."),
     el("h3", {}, "Find a raid day's reports on FFLogs"), findBox(act), el("h3", {}, "The list"), reportsBox,
-    el("h2", {}, "People"), people);
+    el("h2", {}, "Accounts"), people, el("h2", {}, "Audit log"), auditBox());
   let lastBuilt = null;
   async function draw() {
     if (location.hash !== "#/admin") return;
-    let src, profs, links;
+    let src, profs;
     try {
-      [src, profs, links] = await Promise.all([SB.from("report_sources").select("*").order("day", { ascending: false, nullsFirst: true }).order("group_name").then(sbCheck),
-        SB.from("profiles").select("*").order("created_at").then(sbCheck), SB.from("user_players").select("*, players(name, world)").then(sbCheck)]);
+      [src, profs] = await Promise.all([SB.from("report_sources").select("*").order("day", { ascending: false, nullsFirst: true }).order("group_name").then(sbCheck),
+        SB.from("profiles").select("*").order("created_at").then(sbCheck)]);
     } catch (e) { reportsBox.replaceChildren(el("p", { class: "warn" }, e.message)); return; }
     const built = src.map(r => `${r.code}:${r.built_at}`).join();   // a build finished: take the new data
     if (lastBuilt != null && built !== lastBuilt) { await loadProgress(); }
     lastBuilt = built;
     if (!busy(reportsBox)) reportsBox.replaceChildren(addReportForm(act), reportTable(src, act));
-    people.replaceChildren(...peopleTables(profs, links, act));
+    people.replaceChildren(...peopleTables(profs, act));
     clearTimeout(adminTimer); adminTimer = setTimeout(draw, 15000);
   }
   draw();
@@ -2295,28 +2260,57 @@ function reportTable(src, act) {
           el("button", { type: "button", class: "small danger", disabled: gone, on: { click: () => { if (confirm(`Remove ${r.group_name || r.code}${r.day ? ` of ${dayName(r.day)}` : ""} from the site?`)) upd(r.code, { want: "absent" }); } } }, "Remove")));
     }))));
 }
-function peopleTables(profs, links, act) {
-  const who = Object.fromEntries(profs.map(p => [p.user_id, p.display_name || p.user_id.slice(0, 8)]));
-  const req = links.filter(l => l.status === "requested"), ok = links.filter(l => l.status === "approved");
-  const pl = l => l.players ? `${l.players.name}${l.players.world ? ` (${l.players.world})` : ""}` : String(l.player_id);
-  const out = [el("h3", {}, `Link requests (${req.length})`)];
-  out.push(req.length ? el("div", { class: "table-wrap" }, el("table", { class: "admin" }, el("tbody", {}, req.map(l => el("tr", {},
-    el("td", {}, who[l.user_id] || "?"), el("td", {}, "asks to be ", el("b", {}, pl(l))), el("td", {}, localTime(l.requested_at)),
-    el("td", { class: "actions" }, el("button", { type: "button", class: "small", on: { click: act(async () => sbCheck(await SB.from("user_players").update({ status: "approved", approved_by: ME.id, approved_at: new Date().toISOString() }).eq("player_id", l.player_id))) } }, "Approve"),
-      el("button", { type: "button", class: "small danger", on: { click: act(async () => sbCheck(await SB.from("user_players").delete().eq("player_id", l.player_id))) } }, "Reject"))))))) : el("p", { class: "muted" }, "None waiting."));
-  out.push(el("h3", {}, `Linked characters (${ok.length})`), ok.length ? el("div", { class: "table-wrap" }, el("table", { class: "admin" }, el("tbody", {}, ok.map(l => el("tr", {},
-    el("td", {}, pl(l)), el("td", {}, who[l.user_id] || "?"), el("td", { class: "actions" }, el("button", { type: "button", class: "small danger", on: { click: () => {
-      if (confirm(`Unlink ${pl(l)} from ${who[l.user_id] || "that account"}?`)) act(async () => sbCheck(await SB.from("user_players").delete().eq("player_id", l.player_id)))(); } } }, "Unlink"))))))) : el("p", { class: "muted" }, "None yet."));
-  out.push(el("h3", {}, `Accounts (${profs.length})`), el("div", { class: "table-wrap" }, el("table", { class: "admin" }, el("tbody", {}, profs.map(p => el("tr", {},
-    el("td", {}, who[p.user_id]), el("td", {}, p.role), el("td", {}, `since ${localTime(p.created_at)}`),
-    el("td", { class: "actions" }, p.user_id === ME.id ? "" : el("button", { type: "button", class: "small", on: { click: () => {
-      if (confirm(p.role === "admin" ? `Take admin rights from ${who[p.user_id]}?` : `Make ${who[p.user_id]} an admin? Admins see every report.`))
-        act(async () => sbCheck(await SB.from("profiles").update({ role: p.role === "admin" ? "member" : "admin" }).eq("user_id", p.user_id)))(); } } }, p.role === "admin" ? "Remove admin" : "Make admin"))))))));
-  return out;
+function peopleTables(profs, act) {
+  const name = p => p.display_name || p.user_id.slice(0, 8);
+  const btn = (label, fn, cls = "small") => el("button", { type: "button", class: cls, on: { click: fn } }, label);
+  const setRole = (p, role, ask) => () => { if (!ask || confirm(ask)) act(async () => {
+    if (!sbCheck(await SB.from("profiles").update({ role }).eq("user_id", p.user_id).select("user_id")).length) throw new Error(`${name(p)}'s role was not changed.`); })(); };
+  const remove = p => () => { if (confirm(`Remove the account of ${name(p)}? Logging in again makes a new account, waiting for approval.`))
+    act(async () => sbCheck(await SB.rpc("remove_account", { p_user: p.user_id })))(); };
+  const table = (rows, mine) => el("div", { class: "table-wrap" }, el("table", { class: "admin" }, el("tbody", {}, rows.map(p => el("tr", {},
+    el("td", {}, name(p)), el("td", {}, p.role), el("td", {}, `since ${dateTime(p.created_at)}`), el("td", { class: "actions" }, p.user_id === ME.id ? el("span", { class: "muted" }, "you") : mine(p)))))));
+  const waiting = profs.filter(p => p.role === "pending"), team = profs.filter(p => p.role !== "pending");
+  return [el("h3", {}, `Waiting for approval (${waiting.length})`),
+    el("p", { class: "note" }, "Anyone with a Discord account can log in. Approve only Syncademy staff; remove the others."),
+    waiting.length ? table(waiting, p => [btn("Approve as staff", setRole(p, "staff")), " ", btn("Remove", remove(p), "small danger")]) : el("p", { class: "muted" }, "None waiting."),
+    el("h3", {}, `Staff and admins (${team.length})`),
+    table(team, p => [p.role === "admin" ? btn("Remove admin", setRole(p, "staff", `Take admin rights from ${name(p)}?`))
+      : btn("Make admin", setRole(p, "admin", `Make ${name(p)} an admin? Admins manage reports and accounts and read the audit log.`)), " ",
+      btn("Revoke", setRole(p, "pending", `Take ${name(p)}'s staff access away? Their account stays, waiting for approval.`)), " ",
+      btn("Remove", remove(p), "small danger")])];
+}
+// the audit log (audit_log): logins, accounts, the report list, searches, and what the worker and the command line did;
+// newest first, a hundred at a time. Entries with no name came in with the service key
+function auditBox() {
+  const body = el("tbody"), msg = el("p", { class: "note", role: "status" });
+  const more = el("button", { type: "button", class: "small", hidden: true }, "Older entries"), again = el("button", { type: "button", class: "small" }, "Refresh");
+  const fmt = v => Array.isArray(v) ? v.join(", ") : typeof v === "string" && /^\d{4}-\d\d-\d\dT/.test(v) ? dateTime(v) : typeof v === "object" ? JSON.stringify(v) : String(v);
+  let oldest = null, ask = 0;
+  async function load(fresh) {   // a newer load (Refresh, or a second click) wins; an older one's rows are dropped
+    const mine = ++ask;
+    if (fresh) { body.replaceChildren(); oldest = null; }
+    more.disabled = true;
+    let q = SB.from("audit_log").select("*").order("id", { ascending: false }).limit(100);
+    if (oldest != null) q = q.lt("id", oldest);
+    let rows;
+    try { rows = sbCheck(await q); } catch (e) { if (mine === ask) { msg.textContent = e.message; more.disabled = false; } return; }
+    if (mine !== ask) return;
+    more.disabled = false;
+    msg.textContent = !body.children.length && !rows.length ? "No entries yet." : "";
+    for (const e of rows) body.append(el("tr", {}, el("td", {}, dateTime(e.at)), el("td", {}, e.actor_name || (e.actor ? e.actor.slice(0, 8) : el("span", { class: "muted" }, "service key"))),
+      el("td", {}, e.action), el("td", {}, e.target || ""), el("td", { class: "note" }, Object.entries(e.detail || {}).map(([k, v]) => `${k} ${fmt(v)}`).join(" · "))));
+    if (rows.length) oldest = rows[rows.length - 1].id;
+    more.hidden = rows.length < 100;
+  }
+  more.addEventListener("click", () => load(false)); again.addEventListener("click", () => load(true));
+  load(true);
+  return el("div", {}, el("p", { class: "lede" }, "Logins, accounts and their roles, changes to the report list, FFLogs searches, and what the worker and the command line built. Opening the site with the passphrase leaves no entry: it never reaches the server."),
+    el("p", {}, again), el("div", { class: "table-wrap" }, el("table", { class: "admin" },
+      el("thead", {}, el("tr", {}, ["When", "Who", "What", "Target", "Details"].map(h => el("th", {}, h)))), body)), msg, el("p", {}, more));
 }
 function header() {   // the header's account button and admin link
   const btn = document.getElementById("lock"), adm = document.getElementById("nav-admin");
-  if (SB) { btn.hidden = false; btn.textContent = ME ? "Account" : "Log in"; }
+  if (SB) { btn.hidden = false; btn.textContent = ME ? "Account" : BY_PASSPHRASE ? "Lock" : "Log in"; }
   if (adm) adm.hidden = !(ME && ME.admin);
 }
 function navSection(first) {   // marks the header link of the section the page is in (raid days for day pages and home)
@@ -2335,19 +2329,14 @@ function route(keepScroll = false) {   // keepScroll: redraw the same page in pl
   if (SB && parts[0] === "account") { accountPage(); return; }
   if (SB && parts[0] === "admin") { adminPage(); return; }
   if (LOCKED && !open) { SB ? gatePage() : lockedPage(); return; }
-  if (SB && parts[0] === "day" && parts.length >= 3) {   // group, pull and player pages need the report's full record
+  if (SB && parts[0] === "day" && parts.length >= 3) {   // group, pull and player pages need the full records (a player page: all of theirs)
     const r = findGroup(parts[1], parts[2]), h = location.hash;
-    if (r && !r.players && !MINE.has(r.code)) { notYourGroup(r); return; }
     const player = parts.length === 4 && parts[3] !== "pulls";
-    if (r && (!r.players || player)) {
-      const missing = cs => cs.filter(c => DATA.reports[c] && !DATA.reports[c].players && MINE.has(c));
-      const known = player ? PLAYER_CODES[parts[3]] : [r.code];
-      if (!known || missing(known).length) {
-        waitPage("Loading the report…");
-        (known ? Promise.resolve(known) : playerCodes(parts[3]).then(cs => (PLAYER_CODES[parts[3]] = [r.code, ...cs])))
-          .then(cs => needFull(missing(cs))).then(() => { if (location.hash === h) route(true); }).catch(failPage);
-        return;
-      }
+    const missing = r ? [r.code, ...(player ? playerCodes(parts[3]) : [])].filter(c => DATA.reports[c] && !DATA.reports[c].players) : [];
+    if (missing.length) {
+      waitPage("Loading the report…");
+      needFull(missing).then(() => { if (location.hash === h) route(true); }).catch(failPage);
+      return;
     }
   }
   draw();
@@ -2423,8 +2412,9 @@ function canDecrypt(env) {
   if (env.compressed === "gzip" && !window.DecompressionStream) throw new Error("This browser is too old to open the data; please update it.");
 }
 function opened(data) {   // the private part goes over the public one (its benchmark is the whole one)
-  Object.assign(DATA, data); LOCKED = false;
+  Object.assign(DATA, data); LOCKED = false; BY_PASSPHRASE = true;
   document.getElementById("lock").hidden = false;
+  if (SB) header();
 }
 async function openRemembered() {   // with a key remembered earlier in this browser session, without asking
   try { if (!Object.keys(sessionStorage).some(k => k.startsWith("p12s-key:"))) return; } catch (e) { return; }
@@ -2437,6 +2427,13 @@ async function openRemembered() {   // with a key remembered earlier in this bro
 }
 function lockedPage() {
   crumbs([["Locked", null]]);
+  const form = passphraseForm();
+  const pub = DATA && DATA.rotations ? [" The ", el("a", { href: "#/rotations" }, "rotations"), " and ", el("a", { href: "#/gear" }, "best-in-slot gear"), " are open to everyone."] : [];
+  document.getElementById("app").append(el("h1", {}, "Locked"),
+    el("p", { class: "lede" }, "Raid progress is encrypted. Enter the passphrase to open it.", ...pub), form);
+  form.querySelector("input").focus();
+}
+function passphraseForm() {   // opens data.enc.json
   envelope().catch(() => {});   // start the download while the passphrase is typed
   const input = el("input", { type: "password", id: "pass", autocomplete: "current-password", required: true });
   const remember = el("input", { type: "checkbox", id: "remember", checked: true });
@@ -2455,18 +2452,12 @@ function lockedPage() {
       opened(data); route();
     } catch (err) { msg.textContent = "That passphrase does not open the data."; btn.disabled = false; input.select(); }
   });
-  const pub = DATA && DATA.rotations ? [" The ", el("a", { href: "#/rotations" }, "rotations"), " and ", el("a", { href: "#/gear" }, "best-in-slot gear"), " are open to everyone."] : [];
-  document.getElementById("app").append(el("h1", {}, "Locked"),
-    el("p", { class: "lede" }, "Raid progress is encrypted. Enter the passphrase to open it.", ...pub), form);
-  input.focus();
+  return form;
 }
-function lockAgain() {
-  try { for (const k of Object.keys(sessionStorage)) if (k.startsWith("p12s-key:")) sessionStorage.removeItem(k); } catch (e) {}
-  location.reload();
-}
+function lockAgain() { forgetPassphrase(); location.reload(); }
 async function boot() {
   setupTheme();
-  document.getElementById("lock").addEventListener("click", () => SB ? (location.hash = "#/account") : lockAgain());
+  document.getElementById("lock").addEventListener("click", () => SB && (ME || !BY_PASSPHRASE) ? (location.hash = "#/account") : lockAgain());
   try {
     let r = await fetch("data.json", { cache: "no-store" });
     if (r.ok) DATA = await r.json();
@@ -2475,7 +2466,11 @@ async function boot() {
       DATA = r.ok ? await r.json() : {};
       LOCKED = true;
       const cfg = await fetch("config.json", { cache: "no-store" }).then(x => x.ok ? x.json() : null).catch(() => null);
-      if (cfg && cfg.supabase_url) { await startAccounts(cfg); header(); }   // accounts (ACCESS_CONCEPT.md step 2)
+      if (cfg && cfg.supabase_url) {   // staff accounts (ACCESS_CONCEPT.md), or the passphrase remembered in this browser session
+        await startAccounts(cfg);
+        if (!(ME && ME.staff) && cfg.passphrase) await openRemembered();
+        header();
+      }
       else {   // the passphrase
         if (!r.ok) await envelope().catch(() => { throw new Error("data.json is missing. Run tools/scorecard/build_site.py with report links, then serve this folder with python -m http.server."); });
         await openRemembered();
