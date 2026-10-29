@@ -2084,8 +2084,9 @@ function gearJobPage(code) {
 // every player across the raid days: their jobs, nights and pulls, mistakes and wipes per pull (their shares, as the
 // scorecard counts them), overall and on their latest night, which links to their page there
 function peopleOf(r) {   // a full record's players, else the progress fragment's summary (build_site.progress_of)
-  if (r.players) return [...new Set(r.players.map(p => p.name))].map(n => { const es = r.players.filter(p => p.name === n);
-    return { name: n, jobs: es.map(e => e.job), pulls: es[0].pulls, m: es[0].mistakes_w ?? es[0].mistakes, w: es[0].wipes_w ?? es[0].wipes }; });
+  if (r.players) return [...new Set(r.players.map(p => p.name))].map(n => { const es = r.players.filter(p => p.name === n), per = f => Object.fromEntries(es.map(e => [e.job, f(e)]));
+    return { name: n, jobs: es.map(e => e.job), pulls: es[0].pulls, m: es[0].mistakes_w ?? es[0].mistakes, w: es[0].wipes_w ?? es[0].wipes,
+      jp: per(e => e.pull_detail ? e.pull_detail.length : e.pulls), vs: per(e => e.vs), bq: per(e => e.best_quarter) }; });
   return r.people || (r.names || []).map(n => ({ name: n, jobs: [], pulls: null, m: null, w: null }));
 }
 // a player over every raid day: tiles, their mistakes by mechanic, and their nights one by one (#/player/<name>)
@@ -2374,33 +2375,68 @@ function acrossNights(app, name) {
         rotLoss(q) != null ? `${num(Math.round(rotLoss(q)))} DPS` : "–", opener(q) != null ? signed(opener(q)) : "–"], `#/day/${q.day}/${q.group}/${encodeURIComponent(name)}`, 3) }; }),
       nightBody, NIGHTS_SORT), nightBody)));
 }
+// per player and job, their damage against the clears (vs) from the latest night they played the job with a clean
+// pull; a job none of the clears plays (Bard) against our other players on it instead: their best-quarter rDPS over
+// the median of the others', each other player counted once at the median of their nights (as the openers do)
+function playerDps(by) {
+  const nightsOn = (ns, job) => ns.filter(n => n.bq && n.bq[job] != null);
+  const ours = {};   // job -> {player: median best quarter over their nights}, for jobs without clears
+  for (const [name, ns] of Object.entries(by)) for (const n of ns) for (const job of n.jobs)
+    if (n.vs && n.vs[job] == null && n.bq && n.bq[job] != null) (ours[job] = ours[job] || {})[name] = median(nightsOn(ns, job).map(x => x.bq[job]));
+  const out = {};
+  for (const [name, ns] of Object.entries(by)) {
+    const pulls = {}; for (const n of ns) for (const job of n.jobs) pulls[job] = (pulls[job] || 0) + ((n.jp || {})[job] ?? n.pulls ?? 0);
+    out[name] = Object.keys(pulls).sort((a, c) => pulls[c] - pulls[a]).map(job => {
+      const withVs = ns.filter(n => n.vs && n.vs[job]), last = withVs[withVs.length - 1];
+      if (last) return { job, v: last.vs[job][0], n: last.vs[job][1], night: last.r, kind: "clears" };
+      const mine = nightsOn(ns, job), others = Object.entries(ours[job] || {}).filter(([k]) => k !== name).map(([, v]) => v);
+      if (!mine.length || !others.length) return { job, v: null };   // no clean 0:00-2:00 pull on the job
+      const at = mine[mine.length - 1];
+      return { job, v: at.bq[job] / median(others) - 1, n: others.length, night: at.r, kind: "ours" };
+    });
+  }
+  return out;
+}
+const dpsCell = list => !list || !list.length ? "–" : el("span", { class: "marks" }, ...list.flatMap((x, i) => [i ? "  " : "", x.v == null
+  ? el("span", { title: `${jobName(x.job)}: no clean 0:00–2:00 pull on the job` }, jobMark(x.job), el("span", { class: "muted" }, " –")) :
+  el("span", { title: `${jobName(x.job)}: ${signed(x.v)} against ${x.kind === "ours" ? `our other ${x.n} player${x.n > 1 ? "s" : ""} on the job` : `${x.n} clearer${x.n > 1 ? "s" : ""} on the job`}, ${nightLabel(x.night)}` },
+    jobMark(x.job), ` ${signed(x.v)}${x.n < 3 ? "*" : ""}`, x.kind === "ours" ? el("span", { class: "muted" }, " ours") : "", gradeChip(grade("damage", x.v)))]));
+// their latest night against their earlier ones, after the Mistakes/pull dot: ▲ more mistakes per pull, ▼ fewer,
+// when 20% or more apart (as the trends elsewhere); nothing for a single night
+const mistakeTrend = x => { if (x.lastMr == null || x.earlierMr == null) return "";
+  const worse = x.lastMr >= x.earlierMr * 1.2 && x.lastMr - x.earlierMr >= 0.05, better = x.lastMr <= x.earlierMr * 0.8 && x.earlierMr - x.lastMr >= 0.05;
+  const text = `Latest night (${nightLabel(x.last.r)}): ${x.lastMr.toFixed(2)} per pull, against ${x.earlierMr.toFixed(2)} on their earlier nights`;
+  return el("span", { class: `trend ${worse ? "bad" : better ? "good" : "flat"}`, title: text, "aria-label": text }, worse ? "▲" : better ? "▼" : "▸"); };
 function playersPage() {
   crumbs([]);   // the header link names the page
   const by = {};
   for (const r of [...reports()].sort((a, c) => a.day.localeCompare(c.day) || a.group.localeCompare(c.group)))
     for (const x of peopleOf(r)) (by[x.name] = by[x.name] || []).push({ ...x, r });
   const rate = (ns, k) => { const ok = ns.filter(n => n.pulls && n[k] != null), P = sum(ok.map(n => n.pulls)); return P ? sum(ok.map(n => n[k])) / P : null; };
+  const dps = playerDps(by);
   const rows = Object.entries(by).map(([name, ns]) => { const last = ns[ns.length - 1];
-    return { name, ns, last, jobs: [...new Set(ns.flatMap(n => n.jobs))], pulls: sum(ns.map(n => n.pulls || 0)), mr: rate(ns, "m"), wr: rate(ns, "w"), lastMr: rate([last], "m") }; })
+    return { name, ns, last, jobs: [...new Set(ns.flatMap(n => n.jobs))], pulls: sum(ns.map(n => n.pulls || 0)), mr: rate(ns, "m"), wr: rate(ns, "w"), lastMr: rate([last], "m"), earlierMr: rate(ns.slice(0, -1), "m"), dps: dps[name] }; })
     .sort((a, c) => c.last.r.day.localeCompare(a.last.r.day) || a.name.localeCompare(c.name));
   const app = document.getElementById("app");
   const find = el("input", { type: "search", class: "filter", placeholder: "Find a player", "aria-label": "Find a player", autocomplete: "off" });
-  app.append(el("h1", {}, "Players"), el("p", { class: "lede" }, `${rows.length} players over ${days().length} raid days, the most recent first. Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard. Pick a player for their summary over all raid days; a column's header sorts by it.`),
+  app.append(el("h1", {}, "Players"), el("p", { class: "lede" }, `${rows.length} players over ${days().length} raid days, the most recent first. Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard; the arrow after the mistakes compares their latest night with their earlier ones (▲ more, ▼ fewer, by 20% or more; ▸ about the same; hover for both). Jobs · vs Clears: every job they played, most played first, each with its rDPS over 0:00–2:00 (the best quarter of their clean pulls) against clearers on the job, from the latest night they played it with a clean pull; a job without clears (Bard) against our other players on it ("ours"); * = one or two to compare with; the column sorts by their most played job with a value. Pick a player for their summary over all raid days; a column's header sorts by it.`),
     el("p", {}, find));
-  const trs = rows.map(x => { const tr = linkRow([x.name, x.jobs.length ? el("span", { class: "marks" }, ...jobMarks(x.jobs)) : "–", String(x.ns.length), x.pulls ? num(x.pulls) : "–",
-      x.mr != null ? el("span", {}, x.mr.toFixed(2), gradeChip(grade("mistakes", x.mr))) : "–", x.wr != null ? el("span", {}, pct(x.wr), gradeChip(grade("wipes", x.wr))) : "–",
-      x.lastMr != null ? x.lastMr.toFixed(2) : "–", `${dayName(x.last.r.day)} · ${x.last.r.group}`],
+  const trs = rows.map(x => { const tr = linkRow([x.name, dpsCell(x.dps), String(x.ns.length), x.pulls ? num(x.pulls) : "–",
+      x.mr != null ? el("span", {}, x.mr.toFixed(2), gradeChip(grade("mistakes", x.mr)), mistakeTrend(x)) : "–", x.wr != null ? el("span", {}, pct(x.wr), gradeChip(grade("wipes", x.wr))) : "–",
+      `${dayName(x.last.r.day)} · ${x.last.r.group}`],
     playerHref(x.name), 2); tr.dataset.name = x.name.toLowerCase(); tr.lastChild.className = ""; return tr; });
   const body = el("tbody", {}, trs);
   find.addEventListener("input", () => { const q = find.value.trim().toLowerCase(); for (const tr of body.children) tr.hidden = !!q && !tr.dataset.name.includes(q); });
   const night = x => `${x.last.r.day} ${x.last.r.group}`;
-  const head = sortHead([["Player", x => x.name], ["Jobs", x => x.jobs.map(j => JOB[j] || j).join(" ")], ["Nights", x => x.ns.length, true], ["Pulls", x => x.pulls || null, true],
-    ["Mistakes/pull", x => x.mr, true], ["Wipes", x => x.wr, true], ["Latest night: mistakes/pull", x => x.lastMr, true], ["Latest night", night, false, true]],
+  const mainVs = x => (x.dps.find(d => d.v != null) || {}).v;   // their most played job that has a value
+  const head = sortHead([["Player", x => x.name], ["Jobs · vs Clears", mainVs, false, true], ["Nights", x => x.ns.length, true], ["Pulls", x => x.pulls || null, true],
+    ["Mistakes/pull", x => x.mr, true], ["Wipes", x => x.wr, true],
+    ["Latest night", night, false, true]],
     rows.map((x, i) => ({ x, tr: trs[i] })), body, PLAYERS_SORT);
   app.append(el("div", { class: "table-wrap" }, el("table", {}, head, body)));
 }
 // the tables' orders, kept for the visit: the column and its direction
-const PLAYERS_SORT = { col: 7, desc: true }, DAYS_SORT = { col: 0, desc: true }, SCORE_SORT = { col: 1, desc: false },
+const PLAYERS_SORT = { col: 6, desc: true }, DAYS_SORT = { col: 0, desc: true }, SCORE_SORT = { col: 1, desc: false },
   PULLS_SORT = { col: 0, desc: false }, NIGHTS_SORT = { col: 0, desc: true };
 // headers that sort a table's rows: cols [label, key(x), numeric, first click descending (default: numbers do)];
 // numbers sort high to low first, text A to Z, a list key by its items in turn; empty values always last, ties by the

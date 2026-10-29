@@ -164,8 +164,12 @@ def progress_of(r):
     first = {p["name"]: p for p in reversed(r["players"])}   # as app.js stats(): each name once, its first entry
     out["player_pulls"] = sum(p["pulls"] for p in first.values())
     # the players index (#/players): per player their jobs, pulls, and mistakes and wipes as their shares added up
+    # and per job: its pulls, vs Clears and the best-quarter rDPS it comes from (jobs without clears compare with ours)
+    def per_job(n, f): return {q["job"]: f(q) for q in r["players"] if q["name"] == n}
     out["people"] = [dict(name=n, jobs=[q["job"] for q in r["players"] if q["name"] == n], pulls=p["pulls"],
-                          m=p.get("mistakes_w", p.get("mistakes", 0)), w=p.get("wipes_w", p.get("wipes", 0))) for n, p in sorted(first.items())]
+                          m=p.get("mistakes_w", p.get("mistakes", 0)), w=p.get("wipes_w", p.get("wipes", 0)),
+                          jp=per_job(n, lambda q: len(q.get("pull_detail") or []) or q["pulls"]), vs=per_job(n, lambda q: q.get("vs")),
+                          bq=per_job(n, lambda q: q.get("best_quarter"))) for n, p in sorted(first.items())]
     out["pulls"] = []
     for q in r["pulls"]:
         x = {k: q.get(k) for k in PROGRESS_PULL_KEYS}
