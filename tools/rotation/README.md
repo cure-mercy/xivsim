@@ -558,6 +558,11 @@ Finish, half the Esprit or feathers) shows each as illegal or early casts (`scra
 - Devilment (+20% critical and direct-hit rate) counts on the Dancer's own hits at its expected worth (x1.155), as
   Bard's Battle Voice. Starfall Dance is weighed at a sure critical direct hit with Devilment's rates turned into damage
   (`STAR_W`, x1.88) and converted per player (`AUTO_CRIT`; `dps.py` measures it under Devilment, `OWN_CRIT_BUFFS`).
+  It comes in the burst, so 100 of our 102 Starfalls landed under Battle Litany or Chain Stratagem as well: `dps.py`
+  keeps them all and divides those buffs out at their worth on a sure critical direct hit, (1 + crit rate x (crit
+  damage - 1)) x (1 + direct-hit rate x 0.25), at the player's crit damage (`SURE_BUFFED`, `crit_damage`; 2.33-2.65
+  times the plain hit per potency). Until 2026-10-29 it kept only the unbuffed ones, found none on 9 of 11 player-nights
+  and fell back to the ordinary gain (~1.25): those ceilings were 2.5-2.9% low and our Dancers read 98-100% of them.
 - A dance is one step of the search (Step, steps and finish): a state halfway through had dealt nothing, so states
   banking filler damage outranked it and the search danced Standard Step once a minute, just keeping its buff (-3%).
 - While Athena is away the steps are danced so that the finish comes as she returns.
@@ -569,8 +574,10 @@ Standard Step every ~32 s (13 finishes), seven Flourishes, 29 Saber Dances. Devi
 rather than after its finish, a near-tie for the Dancer's own damage (what it gives the partner isn't counted).
 Settings from `tune.py` (scales 0.25-0.35 tie, as Summoner's); a search takes ~40 s. The clears' rotations, replayed
 standing still over 0:00-370 s, deal 93-99% of the best (one pull 83%; two lucky ones just over 100%, as a replay takes
-the log's procs). Our Dancers' logged 0:00-2:00 sits at ~97% of the ceiling (the opener is scripted); the ceiling isn't
-under-searched: widths from 2,000 to 15,000 agree within 0.2%.
+the log's procs). Our Dancers' rotations, replayed over 0:00-2:00, deal 96-97% of the best (`scratch/dnc/compare.py`,
+the opener is scripted; their logged procs come at 49% against the model's 50%), and their median clean pulls' nDPS
+sits at 94.5-97.5% of each night's ceiling (2026-10-29); the ceiling isn't under-searched: widths from 2,000 to 15,000
+agree within 0.2%.
 
 ## The fight
 
@@ -709,7 +716,9 @@ so it can't leave the results identical (see Checks).
 - **damage per potency**: their plain hits with others' buffs divided out, over the model's potency; FFLogs' multiplier
   holds the player's own damage-ups too, so the job's `own_factor` puts them back (Death's Design, Arcane Circle, ...);
 - **crit and direct hit**: their average hit over their plain hit, action by action, over the hits under no crit or
-  direct-hit raid buff (rDPS credits those to whoever gave them); sure crits at their own gain;
+  direct-hit raid buff (rDPS credits those to whoever gave them); sure crits at their own gain (a job whose sure hits
+  nearly all come under others' crit buffs, Dancer's Starfall Dance, keeps them with those buffs divided out:
+  `SURE_BUFFED`, see Dancer);
 - **DoT ticks** at their average over their plain level, DoT by DoT (`tick_gain`); **GCD** from back-to-back casts. Where the job model rounds as the game
   does (`engine.recast`: Black Mage, Samurai, Viper, Monk, Ninja) the speed factor within the GCD counts too
   (`calibrate.speed_for`): under Fuka or Swiftscaled the player's hasted GCD as played decides it (the fastest spacing
