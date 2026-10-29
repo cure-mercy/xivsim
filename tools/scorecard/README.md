@@ -290,6 +290,8 @@ The player page's "What their mistakes cost" card (boss HP lost to deaths they c
 
 Wherever a mistake is named (the mistake and wipe heatmaps, Raid leader focus, a player's Work on this, Mistakes by cause and top issues), it starts with the major mechanic it happened in, in the short form of How far pulls get, then the mistake: "SC I: Orange cone overlap", "Para II: Soul tower in the wrong quadrant". A mistake that happens in several mechanics gets a row for each (Trinity of Souls in Para I, Dialogos and SC I). Labels that already name the mechanic don't repeat it. The stored labels are unchanged; the names are made when the page draws (`causeName` in `site/app.js`).
 
+Jobs show as the game's job icons (`job_icons` in the data, every job's from XIVAPI via `gamedata.job_icon`, public like the rotations) in tables, tiles, titles and the lists of a player's jobs, with the job's name on hover; chart labels, tooltips and sentences keep the short name (MNK).
+
 Every chart has a Table button for the same numbers as a table and shows details on hover or keyboard focus.
 The theme follows the system and can be switched with the button (or `?theme=light` / `?theme=dark` in the
 link).
