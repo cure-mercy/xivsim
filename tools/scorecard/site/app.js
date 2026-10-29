@@ -2269,8 +2269,7 @@ async function adminPage() {
   const act = fn => async () => { try { await fn(); } catch (e) { alert(e.message); return; } reportsBox.replaceChildren(); draw(); };
   const waitingNote = el("div");   // logins waiting for approval, at the top where they are seen
   app.append(waitingNote, el("h2", {}, "Reports"), el("p", { class: "lede" }, "The reports on the site. The worker builds what this list asks for within a minute; a live report is checked for new pulls every 3 minutes until its watch ends (12 hours at most)."),
-    el("div", { class: "cols" }, el("div", { class: "col" }, el("h3", {}, "Find a raid day's reports on FFLogs"), findBox(act)),
-      el("div", { class: "col" }, el("h3", {}, "The list"), reportsBox)),
+    adminTabs([["The list", reportsBox], ["Find a raid day's reports on FFLogs", findBox(act)]]),
     el("h2", { id: "accounts" }, "Accounts"), people, el("h2", {}, "Audit log"), auditBox());
   let lastBuilt = null;
   async function draw() {
@@ -2292,6 +2291,19 @@ async function adminPage() {
     clearTimeout(adminTimer); adminTimer = setTimeout(draw, 15000);
   }
   draw();
+}
+// the report list and the FFLogs search as tabs, the list first; the open tab stays across the 15-second redraws and
+// for the rest of the visit
+let adminTab = 0;
+function adminTabs(panes) {
+  const panels = panes.map(([, box]) => el("div", { class: "tabpanel", role: "tabpanel" }, box));
+  const tabs = el("div", { class: "tabs", role: "tablist", "aria-label": "Reports" }, panes.map(([label], k) =>
+    el("button", { type: "button", role: "tab", on: { click: () => show(k) } }, label)));
+  const show = k => { adminTab = k;
+    [...tabs.children].forEach((b, j) => { b.classList.toggle("on", j === k); b.setAttribute("aria-selected", String(j === k)); });
+    panels.forEach((x, j) => { x.hidden = j !== k; }); };
+  show(adminTab);
+  return el("div", {}, tabs, ...panels);
 }
 function addReportForm(act) {
   const link = el("input", { type: "text", id: "rep", required: true, autocomplete: "off", placeholder: "https://www.fflogs.com/reports/… or the code" });
@@ -2343,7 +2355,7 @@ function findBox(act) {
 function foundReports(q, act) {
   const res = q.results, all = res.reports, ours = all.filter(r => r.ours.length || r.asked.length || r.site || r.listed);
   const out = [el("p", { class: "note" }, `${dayName(q.day)}${q.names ? `, looking for ${q.names}` : ""}: ${all.length} public P12S Savage reports on FFLogs, ${ours.length} with our players`,
-    ` (searched ${localTime(q.done_at)}). Unlisted and private reports never show up here: add those by link below.`)];
+    ` (searched ${localTime(q.done_at)}). Unlisted and private reports never show up here: add those by link under The list.`)];
   if (res.not_found.length) out.push(el("p", { class: "warn" }, `Not in any of them: ${res.not_found.join(", ")}.`));
   const time = ms => new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const table = rows => el("div", { class: "table-wrap" }, el("table", { class: "admin" },
@@ -2389,23 +2401,22 @@ function reportTable(src, act) {
   const older = src.filter(r => !isRecent(r));
   const shown = olderOpen ? src : src.filter(isRecent);
   const table = el("div", { class: "table-wrap" }, el("table", { class: "admin" },
-    el("thead", {}, el("tr", {}, ["Report", "Pulls", "State"].map((h, i) => el("th", { class: i === 1 ? "num" : null }, h)))),
+    el("thead", {}, el("tr", {}, ["Day", "Group", "Report", "Pulls", "State", ""].map((h, i) => el("th", { class: i === 3 ? "num" : null }, h)))),
     el("tbody", {}, shown.map(r => {
       const live = r.live_until && new Date(r.live_until) > now, gone = r.want === "absent";
       const g = el("input", { type: "text", value: r.group_name || "", maxlength: 24, size: 6, "aria-label": `Group name of ${r.code}`, disabled: gone });
       const save = el("button", { type: "button", class: "small", disabled: gone, on: { click: () => upd(r.code, { group_name: g.value.trim() || null }) } }, "Rename");
       const onSite = !gone && r.state === "ok" && r.day && findGroup(r.day, r.group_name);
-      // narrow enough for half the page: the report, its links and its buttons in one cell, the state's notes wrap
+      const state = el("td", { class: `wrap${r.state === "error" ? " bad" : r.state === "ok" ? "" : " muted"}`, title: r.message || "" }, gone ? "removing" : r.state, r.message ? el("div", { class: "note" }, r.message) : "",
+        live ? el("div", { class: "note" }, `live until ${localTime(r.live_until)}${r.checked_at ? `, checked ${localTime(r.checked_at)}` : ""}`) : "");
       return el("tr", { class: gone ? "muted" : null },
-        el("td", {}, el("div", {}, r.day ? dayName(r.day) : "–", " ", g, " ", save),
-          el("div", { class: "note" }, fflogsLink(r.code), onSite ? [" · ", el("a", { href: `#/day/${r.day}/${encodeURIComponent(r.group_name)}` }, "on the site")] : ""),
-          el("div", { class: "actions" },
+        el("td", {}, r.day ? dayName(r.day) : "–"), el("td", {}, g, " ", save),
+        el("td", {}, fflogsLink(r.code), onSite ? [" · ", el("a", { href: `#/day/${r.day}/${encodeURIComponent(r.group_name)}` }, "on the site")] : ""),
+        el("td", { class: "num" }, r.pulls != null ? String(r.pulls) : "–"), state,
+        el("td", {}, el("div", { class: "actions" },
           el("button", { type: "button", class: "small", disabled: gone, on: { click: () => upd(r.code, { live_until: live ? new Date().toISOString() : new Date(now + 6 * 3600e3).toISOString() }) } }, live ? "Stop watching" : "Watch 6 h"),
           el("button", { type: "button", class: "small", disabled: gone, on: { click: () => upd(r.code, { rebuild_at: new Date().toISOString() }) } }, "Rebuild"),
-          el("button", { type: "button", class: "small danger", disabled: gone, on: { click: () => { if (confirm(`Remove ${r.group_name || r.code}${r.day ? ` of ${dayName(r.day)}` : ""} from the site?`)) upd(r.code, { want: "absent" }); } } }, "Remove"))),
-        el("td", { class: "num" }, r.pulls != null ? String(r.pulls) : "–"),
-        el("td", { class: `wrap${r.state === "error" ? " bad" : r.state === "ok" ? "" : " muted"}`, title: r.message || "" }, gone ? "removing" : r.state, r.message ? el("div", { class: "note" }, r.message) : "",
-          live ? el("div", { class: "note" }, `live until ${localTime(r.live_until)}${r.checked_at ? `, checked ${localTime(r.checked_at)}` : ""}`) : ""));
+          el("button", { type: "button", class: "small danger", disabled: gone, on: { click: () => { if (confirm(`Remove ${r.group_name || r.code}${r.day ? ` of ${dayName(r.day)}` : ""} from the site?`)) upd(r.code, { want: "absent" }); } } }, "Remove"))));
     }))));
   if (!older.length) return table;
   const toggle = el("button", { type: "button", class: "small", on: { click: () => { olderOpen = !olderOpen; act(async () => {})(); } } },

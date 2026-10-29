@@ -205,8 +205,11 @@ td.wrap{ white-space: normal; min-width: 260px; }
 .unlock input[type=number]{ width: 4.5em; padding: 4px 6px; }
 table.admin input[type=text]{ padding: 3px 6px; }
 table.admin td.wrap{ white-space: normal; min-width: 8em; }
-table.admin div.actions{ display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.col form.unlock{ margin-bottom: 12px; }
+table.admin div.actions{ display: flex; flex-wrap: nowrap; gap: 4px; }
+/* admin tabs: space between a tab's form and the list or search results under it */
+.tabpanel form.unlock{ margin-bottom: 16px; }
+.unlock .note:empty{ display: none; }   /* a form's status line takes no room until it says something */
+.tabpanel .note + .table-wrap, .tabpanel .warn + .table-wrap{ margin-top: 8px; }
 table.admin .names{ min-width: 16em; max-width: 30em; }
 .actions{ display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .actions button, button.small{ font: inherit; font-size: 13px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
