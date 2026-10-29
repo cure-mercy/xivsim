@@ -664,7 +664,7 @@ function heatmap(rowLabels, colLabels, cell) {
         const t = sv("text", { x: x + cw / 2, y: y + rh / 2 + 4, "text-anchor": "middle", style: `fill:${dark ? "#fff" : "#0b0b0b"};font-weight:600` }, String(v));
         const hit = sv("rect", { class: "hit", x, y, width: cw, height: rh });
         hover(hit, `${rl} · ${cl}`, [[String(v), ""]]);
-        svg.append(r, t, hit);
+        svg.append(hit, r, t);   // the hover target first: ".hit:hover + .mark" lights the cell after it
       });
     });
     return svg;
@@ -764,8 +764,8 @@ function divHeatmap(rowLabels, colLabels, cell) {
         const fill = divColor(c.v);
         const hit = sv("rect", { class: "hit", x, y, width: cw, height: rh });
         hover(hit, `${rl} · ${cl}`, c.tip);
-        svg.append(sv("rect", { class: "mark", x: x + 1, y: y + 1, width: cw - 2, height: rh - 2, rx: 3, fill }),
-          sv("text", { x: x + cw / 2, y: y + rh / 2 + 4, "text-anchor": "middle", style: `fill:${inkOn(fill)};font-weight:600` }, `${signed(c.v)}${c.thin ? "*" : ""}`), hit);
+        svg.append(hit, sv("rect", { class: "mark", x: x + 1, y: y + 1, width: cw - 2, height: rh - 2, rx: 3, fill }),   // hover target first, as in heatmap()
+          sv("text", { x: x + cw / 2, y: y + rh / 2 + 4, "text-anchor": "middle", style: `fill:${inkOn(fill)};font-weight:600` }, `${signed(c.v)}${c.thin ? "*" : ""}`));
       });
     });
     return svg;
