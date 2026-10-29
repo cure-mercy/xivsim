@@ -245,6 +245,10 @@ h3 .help{ width: 16px; height: 16px; margin-left: 6px; font-size: 10px; }
 .sections{ display: flex; flex-wrap: wrap; gap: 4px 14px; margin: -6px 0 16px; font-size: 14px; }
 /* "Show N more causes" under a cut-short heatmap */
 .card p.more{ margin: 8px 0 0; }
+/* sortable headers: the header is a button, the arrow marks the column and direction */
+th button.sort{ font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
+th button.sort:hover{ color: var(--ink); text-decoration: underline; }
+th[aria-sort="ascending"], th[aria-sort="descending"]{ color: var(--ink); }
 input.filter{ font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; width: min(100%, 280px); }
 .focus-card{ background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; max-width: 90ch; }
 ol.focus{ margin: 0; padding-left: 22px; display: grid; gap: 10px; }

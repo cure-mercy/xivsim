@@ -2377,15 +2377,40 @@ function playersPage() {
     .sort((a, c) => c.last.r.day.localeCompare(a.last.r.day) || a.name.localeCompare(c.name));
   const app = document.getElementById("app");
   const find = el("input", { type: "search", class: "filter", placeholder: "Find a player", "aria-label": "Find a player", autocomplete: "off" });
-  app.append(el("h1", {}, "Players"), el("p", { class: "lede" }, `${rows.length} players over ${days().length} raid days, the most recent first. Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard. Pick a player for their summary over all raid days.`),
+  app.append(el("h1", {}, "Players"), el("p", { class: "lede" }, `${rows.length} players over ${days().length} raid days, the most recent first. Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard. Pick a player for their summary over all raid days; a column's header sorts by it.`),
     el("p", {}, find));
-  const body = el("tbody", {}, rows.map(x => { const tr = linkRow([x.name, x.jobs.length ? el("span", { class: "marks" }, ...jobMarks(x.jobs)) : "–", String(x.ns.length), x.pulls ? num(x.pulls) : "–",
+  const trs = rows.map(x => { const tr = linkRow([x.name, x.jobs.length ? el("span", { class: "marks" }, ...jobMarks(x.jobs)) : "–", String(x.ns.length), x.pulls ? num(x.pulls) : "–",
       x.mr != null ? el("span", {}, x.mr.toFixed(2), gradeChip(grade("mistakes", x.mr))) : "–", x.wr != null ? el("span", {}, pct(x.wr), gradeChip(grade("wipes", x.wr))) : "–",
       x.lastMr != null ? x.lastMr.toFixed(2) : "–", `${dayName(x.last.r.day)} · ${x.last.r.group}`],
-    playerHref(x.name), 2); tr.dataset.name = x.name.toLowerCase(); tr.lastChild.className = ""; return tr; }));
+    playerHref(x.name), 2); tr.dataset.name = x.name.toLowerCase(); tr.lastChild.className = ""; return tr; });
+  const body = el("tbody", {}, trs);
   find.addEventListener("input", () => { const q = find.value.trim().toLowerCase(); for (const tr of body.children) tr.hidden = !!q && !tr.dataset.name.includes(q); });
-  app.append(el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, ["Player", "Jobs", "Nights", "Pulls", "Mistakes/pull", "Wipes", "Latest night: mistakes/pull", "Latest night"].map((h, i) => el("th", { class: i >= 2 && i < 7 ? "num" : null }, h)))), body)));
+  const night = x => `${x.last.r.day} ${x.last.r.group}`;
+  const head = sortHead([["Player", x => x.name], ["Jobs", x => x.jobs.map(j => JOB[j] || j).join(" ")], ["Nights", x => x.ns.length, true], ["Pulls", x => x.pulls || null, true],
+    ["Mistakes/pull", x => x.mr, true], ["Wipes", x => x.wr, true], ["Latest night: mistakes/pull", x => x.lastMr, true], ["Latest night", night, false, true]],
+    rows.map((x, i) => ({ x, tr: trs[i] })), body, PLAYERS_SORT);
+  app.append(el("div", { class: "table-wrap" }, el("table", {}, head, body)));
+}
+// the Players table's order, kept for the visit: the column and its direction (latest night first by default)
+const PLAYERS_SORT = { col: 7, desc: true };
+// headers that sort a table's rows: cols [label, key(x), numeric, first click descending]; numbers sort high to low
+// first, text A to Z; empty values always last, ties by the first column. state {col, desc} is changed in place
+function sortHead(cols, rows, body, state) {
+  const ths = cols.map(([label, , numeric], i) => el("th", { class: numeric ? "num" : null },
+    el("button", { type: "button", class: "sort", on: { click: () => { state.desc = state.col === i ? !state.desc : cols[i][2] || !!cols[i][3]; state.col = i; apply(); } } },
+      label, el("span", { class: "arrow", "aria-hidden": "true" }))));
+  const cmp = (a, b) => typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), "en", { numeric: true });
+  function apply() {
+    const [, key] = cols[state.col], [, first] = cols[0];
+    const sorted = [...rows].sort((a, b) => { const va = key(a.x), vb = key(b.x);
+      if (va == null || vb == null) return (va == null) - (vb == null);
+      return (state.desc ? -1 : 1) * cmp(va, vb) || cmp(first(a.x), first(b.x)); });
+    body.append(...sorted.map(r => r.tr));
+    ths.forEach((th, i) => { th.setAttribute("aria-sort", i === state.col ? (state.desc ? "descending" : "ascending") : "none");
+      th.querySelector(".arrow").textContent = i === state.col ? (state.desc ? " ▼" : " ▲") : ""; });
+  }
+  apply();
+  return el("thead", {}, el("tr", {}, ths));
 }
 function notFound() {
   crumbs([["Raid days", "#/"], ["Not found", null]]);
