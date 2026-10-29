@@ -41,7 +41,7 @@ PAGE_FILES = ["index.html", "style.css", "app.js"]
 # what goes into public.json, unencrypted: a whitelist, so a new key stays behind the passphrase until it is added
 # here. The rotation and gear pages read only these (benchmark: only its clears, from public FFLogs reports); our
 # players' figures on those pages (`ours`) stay locked
-PUBLIC_KEYS = {"generated": None, "rotations": None, "gear": None, "benchmark": ["pools"]}
+PUBLIC_KEYS = {"generated": None, "rotations": None, "gear": None, "job_icons": None, "benchmark": ["pools"]}
 # what the staff's pages load first for every report (Supabase's progress table), a small part of the full record:
 # group-level figures, mistakes by mechanic and pulls; the full record (report_full) follows when a page needs it
 PROGRESS_KEYS = ["code", "group", "day", "start", "pulls_total", "kills", "best", "longest", "clean2", "party", "hp", "lost_total", "lost_dd", "echo",
@@ -296,6 +296,8 @@ def finish(site, bench):
     for v in site["rotations"].values():   # how many of our players are at each GCD: not shown, and the rotations are public
         for x in v["rotations"].values(): x.pop("players", None)
     site["gear"] = S.gear()             # the best-in-slot sets (tools/gear/sheets.py)
+    import gamedata                      # every job's icon, for the job columns (the rotations' own are only their jobs')
+    site["job_icons"] = {j: u for j in gamedata.ABBR if (u := gamedata.job_icon(j))}
     site["strategies"] = C.strategy_dates()   # when each mechanic's strategy began to be blamed, for the charts
     site["ours"] = ours_by_job(site["reports"], site["rotations"])   # our players' figures on the rotation pages, without names
     site["generated"] = datetime.datetime.now().isoformat(timespec="minutes")

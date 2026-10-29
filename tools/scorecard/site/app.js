@@ -373,11 +373,11 @@ function playerFocus(r, entries, name) {
     const rot = e.rotation;
     if (!rot) continue;
     for (const c of rot.checks.filter(c => c.cost >= 40).slice(0, 2))
-      items.push({ title: `${JOB[e.job] || e.job}: ${c.label}`, detail: `${checkRate(c)} for clearers; worth about ${num(Math.round(c.cost))} DPS.`, links: jumpTo("Rotation") });
+      items.push({ title: [jobMark(e.job), ` ${c.label}`], detail: `${checkRate(c)} for clearers; worth about ${num(Math.round(c.cost))} DPS.`, links: jumpTo("Rotation") });
     const o = rot.opener;
     if (o && o.dmg && o.dmg.vs <= -0.05) {
       const miss = o.skills.filter(s => s.fewer).map(s => s.name), late = o.skills.filter(s => s.late != null && s.late > 0).map(s => s.name);
-      items.push({ title: `${JOB[e.job] || e.job} opener`, detail: `${signed(o.dmg.vs)} damage against ${opRef(o).who} over 0:00–0:20${miss.length ? `; fewer ${miss.join(", ")} than ${opRef(o).whose} opener` : ""}${late.length ? `; ${late.join(", ")} late` : ""}.`, links: jumpTo("Opener") });
+      items.push({ title: [jobMark(e.job), " opener"], detail: `${signed(o.dmg.vs)} damage against ${opRef(o).who} over 0:00–0:20${miss.length ? `; fewer ${miss.join(", ")} than ${opRef(o).whose} opener` : ""}${late.length ? `; ${late.join(", ")} late` : ""}.`, links: jumpTo("Opener") });
     }
   }
   for (const b of (r.burst ? r.burst.buffs : []).filter(b => b.player === name && ((b.delay || 0) >= 1.5 || b.skipped >= 2)))
@@ -1045,7 +1045,7 @@ function groupPage(day, group) {
     rows.push(el("tr", { class: "role" }, el("td", { colspan: head.length }, role)));
     for (const p of ps) {
       const vsG = p.vs ? grade("damage", p.vs[0]) : null;
-      rows.push(linkRow([p.name, JOB[p.job] || p.job, pullsCell(p, r.players),
+      rows.push(linkRow([p.name, jobMark(p.job), pullsCell(p, r.players),
         el("span", {}, p.mrate.toFixed(2), gradeChip(grade("mistakes", p.mrate))),
         ((p.mdeath_w ?? p.mdeath ?? 0) / p.pulls).toFixed(2), ((p.mdd_w ?? p.mdd ?? 0) / p.pulls).toFixed(2),
         el("span", {}, pct(p.wrate), gradeChip(grade("wipes", p.wrate))),
@@ -1158,17 +1158,17 @@ function playerPage(day, group, name) {
   // their other raid days, in order: the same page on the day before and after
   const nights = reports().filter(x => (x.names || (x.players || []).map(q => q.name)).includes(name)).sort((a, c) => a.day.localeCompare(c.day) || a.group.localeCompare(c.group));
   const at = nights.findIndex(x => x.code === r.code), night = x => x && [`${dayName(x.day)} (${x.group})`, `#/day/${x.day}/${encodeURIComponent(x.group)}/${encodeURIComponent(name)}`];
-  app.append(el("h1", {}, name), el("p", { class: "lede" }, `${entries.map(e => JOB[e.job] || e.job).join(" / ")} · ${group} · ${dayName(day)} · ${p.pulls} pulls`),
+  app.append(el("h1", {}, name), el("p", { class: "lede" }, ...jobMarks(entries.map(e => e.job)), ` · ${group} · ${dayName(day)} · ${p.pulls} pulls`),
     nights.length > 1 ? pager(night(nights[at - 1]), night(nights[at + 1])) : "", echoNote(r));
   app.append(tiles([
     ["Mistakes per pull", p.mrate.toFixed(2), `${p.mdeath || 0} deaths · ${p.mdd || 0} Damage Downs${p.mhit ? ` · ${p.mhit} survived` : ""} in ${p.pulls} pulls` +
       (p.mconf && p.mistakes ? `; by confidence: ${confText(p.mconf)}` : ""), grade("mistakes", p.mrate)],
     ["Wipes caused", pct(p.wrate), `${p.wipes} of ${p.pulls} pulls` + (p.wconf && p.wipes ? `; by confidence: ${confText(p.wconf)}` : ""), grade("wipes", p.wrate)],
-    ...entries.map(e => [`${JOB[e.job] || e.job} vs clears`, e.vs ? signed(e.vs[0]) : "–", e.vs ? `${e.vs[1]} clearer${e.vs[1] > 1 ? "s" : ""} on the job${e.vs[2] ? ", some with The Echo (damage ÷1.2)" : ""}${e.vs[1] < 3 ? " · thin data" : ""}` : "no comparison", e.vs ? grade("damage", e.vs[0]) : null]),
+    ...entries.map(e => [[jobMark(e.job), " vs clears"], e.vs ? signed(e.vs[0]) : "–", e.vs ? `${e.vs[1]} clearer${e.vs[1] > 1 ? "s" : ""} on the job${e.vs[2] ? ", some with The Echo (damage ÷1.2)" : ""}${e.vs[1] < 3 ? " · thin data" : ""}` : "no comparison", e.vs ? grade("damage", e.vs[0]) : null]),
     ["Uptime 0:00–2:00", p.uptime != null ? `${p.uptime.toFixed(1)}%` : "–", `clearers ${b.pools.clears.role_uptime[p.role].toFixed(1)}%`, grade("uptime", p.uptime_diff)],
     ...entries.map(e => { const d = e.rotation && e.rotation.opener && e.rotation.opener.dmg;
       const R = opRef(e.rotation && e.rotation.opener);
-      return [`${JOB[e.job] || e.job} opener vs ${R.short}`, d ? signed(d.vs) : "–", d ? `nDPS 0:00–0:20, ${d.n} pulls${d.best ? ` · ${signed(d.vs_best)} vs ${R.whose} opener` : ""}${d.echo_corrected ? " · some clears with The Echo (÷1.2)" : ""}${d.players != null && d.players < 5 ? ` · ${d.players} other players, thin data` : ""}` : "no comparison", d ? grade("damage", d.vs) : null]; }),
+      return [[jobMark(e.job), ` opener vs ${R.short}`], d ? signed(d.vs) : "–", d ? `nDPS 0:00–0:20, ${d.n} pulls${d.best ? ` · ${signed(d.vs_best)} vs ${R.whose} opener` : ""}${d.echo_corrected ? " · some clears with The Echo (÷1.2)" : ""}${d.players != null && d.players < 5 ? ` · ${d.players} other players, thin data` : ""}` : "no comparison", d ? grade("damage", d.vs) : null]; }),
     deathTile(r, p),
   ]));
   app.append(heading("h2", "Work on this", "Their most important points, in order: mechanics whose mistakes lost pulls, their most frequent other mistake, the costliest rotation issues against clearers on the job, a weak opener, and a raid buff they press late or skip. Drill and Brief open the trainer on that mechanic."),
@@ -1193,7 +1193,7 @@ function playerPage(day, group, name) {
       const tip = bar => [`Pull ${bar.c.n}`, [[num(bar.c.rdps), "rDPS", true], [`${bar.c.uptime}%`, "uptime"],
         ...(e.ceiling ? [[num(top(bar.c)), "ceiling"], [`${Math.round(100 * bar.c.rdps / top(bar.c))}%`, "of the ceiling"]] : []),
         ...(e.ceiling && bar.c.given ? [[num(bar.c.given), "of it from buffs on others"]] : [])]];
-      return card(`${JOB[e.job] || e.job} rDPS on clean pulls`, info("0:00–2:00 of every pull with no death or Damage Down before 2:00; lines are other clearers' averages on the job." +
+      return card([jobMark(e.job), " rDPS on clean pulls"], info("0:00–2:00 of every pull with no death or Damage Down before 2:00; lines are other clearers' averages on the job." +
           (e.ceiling ? " Ticks: the ceiling, the best rotation without raid buffs at their GCD (the same every pull, from the optimizer, with our strategy's runs), plus what that pull's raid buffs gave the other players, which rDPS credits to them." + offlineNote(e.job) : "")),
         columnChart(bars, { yFmt: v => kfmt(v), refs, barTip: tip }),
         () => tableOf(["Pull", "rDPS", "Uptime", ...(e.ceiling ? ["Ceiling", "Of ceiling", "Buffs on others"] : [])],
@@ -1207,7 +1207,7 @@ function playerPage(day, group, name) {
       const seen = new Set(seenWindows().map(w => w.name));
       const rows = (e.phases || []).filter(ph => seen.has(ph.window)).map(ph => ({ label: ph.window, v: ph.n >= MIN_PHASE && ph.vs ? ph.vs[0] : null, thin: ph.vs && ph.vs[1] < 3,
         empty: ph.n >= MIN_PHASE ? `no ${JOB[e.job] || e.job} clearers` : ph.n ? "1 clean sample" : "no clean sample", tip: ph.n >= MIN_PHASE && ph.vs ? phaseTip(ph) : null }));
-      return card(`${JOB[e.job] || e.job} damage by phase`, info("nDPS against clearers on the job, from pulls where they were alive through the phase. The first phase is compared with clears that move through Paradeigma I."),
+      return card([jobMark(e.job), " damage by phase"], info("nDPS against clearers on the job, from pulls where they were alive through the phase. The first phase is compared with clears that move through Paradeigma I."),
         divergingBars(rows), () => tableOf(["Phase", "Samples", "nDPS", "vs clearers", "Uptime", "Uptime vs clearers"],
           (e.phases || []).map(ph => [ph.window, String(ph.n), ph.n ? num(ph.ndps) : "–", ph.vs ? signed(ph.vs[0]) : "–",
             ph.n ? `${ph.uptime.toFixed(1)}%` : "–", ph.uptime_diff != null ? `${ph.uptime_diff >= 0 ? "+" : "−"}${Math.abs(ph.uptime_diff).toFixed(1)}` : "–"])), divLegend());
@@ -1240,7 +1240,7 @@ function playerPage(day, group, name) {
           el("p", { class: "summary" }, dmgText),
           diffs.length ? el("ul", { class: "diffs" }, ...diffs.map(x => el("li", {}, x))) : el("p", { class: "note" }, `Same skills and cooldown timings as ${groups ? "our groups'" : "the clears'"} opener; only the order differs, which does not matter.`),
           el("div", { class: "table-wrap" }, tableOf(["#", groups ? "Our groups' opener" : "Clears' opener", "At", "Their usual opener", "At"], side, [2, 4])));
-        return card(el("span", {}, `${JOB[e.job] || e.job} opener`, gradeChip(d ? grade("damage", d.vs) : null)), `${groups
+        return card(el("span", {}, jobMark(e.job), " opener", gradeChip(d ? grade("damage", d.vs) : null)), `${groups
             ? `${o.change}, so the opener is compared within our groups: ${o.pulls} pulls against the ${o.basis === "damage" ? "highest-damage" : "most played"} opener of our other ${JOB[e.job] || e.job}s (${o.clears} of ${o.clears_all} players play it; their own left out${o.clears_all < 5 ? "; thin data" : ""}).`
             : `${o.pulls} pulls against the ${o.basis === "damage" ? "highest-damage" : "most played"} clear opener (${o.clears} of ${o.clears_all} clears play it).`} Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s${e.rotation.clear_gcd ? `, clears' ${e.rotation.clear_gcd.toFixed(2)} s` : ""}. · marks an oGCD; red: not in the other opener.`,
           () => body(), () => tableOf(["Skill", "Clears' casts", "Theirs", "Clears' first", "Their first"],
@@ -1260,7 +1260,7 @@ function playerPage(day, group, name) {
     right.append(heading("h2", "Rotation", "Simple rotation mistakes against clearers on the job, measured over the same stretch of each pull (0:00 until they died or the pull was lost) so mechanics that cost everyone time cancel out; 0:00–0:55 is compared with clears that move through Paradeigma I. Cost is the damage the difference is worth, from their own hits. GCD gaps are split by what filled them; burst windows count GCDs started inside their own damage buffs."),
       el("div", { class: "grid wide" }, ...rotEntries.map(e => {
         const r = e.rotation, costly = r.checks.filter(c => c.cost > 1).slice(0, 6), g = rotGain(r);
-        return card(gainTitle(`${JOB[e.job] || e.job} rotation`, g), `${r.pulls} pulls, ${r.alive_min.toFixed(0)} min alive; against ${r.clears} clearers. Usual GCD ${r.gcd ? r.gcd.toFixed(2) + " s" : "–"}.${gainNote(g, "all costed checks")}`,
+        return card(gainTitle([jobMark(e.job), " rotation"], g), `${r.pulls} pulls, ${r.alive_min.toFixed(0)} min alive; against ${r.clears} clearers. Usual GCD ${r.gcd ? r.gcd.toFixed(2) + " s" : "–"}.${gainNote(g, "all costed checks")}`,
           costly.length ? hbarChart(costly.map(c => ({ label: c.label, value: c.cost })), { fmt: v => `${num(Math.round(v))} DPS` })
             : () => el("div", { class: "empty" }, "Nothing they do notably more often than the clearers."),
           () => tableOf(["Check", "Them", "Clearers", "Cost"], r.checks.map(c => [c.label, rate(c, c.ours), rate(c, c.clears), costText(c)])));
@@ -1272,7 +1272,7 @@ function playerPage(day, group, name) {
     right.append(heading("h2", "Abilities", "Casts per minute of every damaging skill against clearers on the job, over the same stretch of each pull as the rotation checks (0:00–0:55 against clears that move through Paradeigma I). GCD skills are compared at the player's own GCD speed (a slower GCD from gear fits fewer casts, which is no mistake). Worth is the damage the difference in casts comes to, at their own average damage per cast (DoT ticks included); positive means fewer casts than the clearers. It overlaps with the GCD gaps above: those say when time was lost, this says which casts it cost."),
       el("div", { class: "grid wide" }, ...abEntries.map(e => {
         const A = e.rotation.abilities, short = A.filter(a => a.worth > 1).slice(0, 8), g = abGain(e.rotation);
-        return card(gainTitle(`${JOB[e.job] || e.job} casts against clearers`, g), `Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s, clearers' ${e.rotation.clear_gcd ? e.rotation.clear_gcd.toFixed(2) : "–"} s; GCD skills compared at their speed.${gainNote(g, "worth of every skill, extra casts offsetting missing ones")}`,
+        return card(gainTitle([jobMark(e.job), " casts against clearers"], g), `Their GCD ${e.rotation.gcd ? e.rotation.gcd.toFixed(2) : "–"} s, clearers' ${e.rotation.clear_gcd ? e.rotation.clear_gcd.toFixed(2) : "–"} s; GCD skills compared at their speed.${gainNote(g, "worth of every skill, extra casts offsetting missing ones")}`,
           short.length ? hbarChart(short.map(a => ({ label: `${a.name} ${a.ours.toFixed(1)} vs ${a.clears.toFixed(1)}/min`, value: a.worth })), { fmt: v => `${num(Math.round(v))} DPS` })
             : () => el("div", { class: "empty" }, "They cast every skill at least as often as the clearers."),
           () => tableOf(["Skill", "", "Them /min", "Clearers /min", "Worth"], A.map(a => [a.name, a.gcd ? "GCD" : "oGCD", a.ours.toFixed(2), a.clears.toFixed(2),
@@ -1368,7 +1368,7 @@ function pullPage(day, group, n) {
     el("thead", {}, el("tr", {}, ["Player", "Job", "Mistakes", "Died", "Damage", "Rotation loss", "Main rotation issue"]
       .map((h, i) => el("th", { class: i === 4 || i === 5 ? "num" : null }, h)))),
     el("tbody", {}, ps.map(({ p: pl, x }) => el("tr", {},
-      el("td", {}, el("a", { href: `#/day/${day}/${group}/${encodeURIComponent(pl.name)}` }, pl.name)), el("td", {}, JOB[pl.job] || pl.job),
+      el("td", {}, el("a", { href: `#/day/${day}/${group}/${encodeURIComponent(pl.name)}` }, pl.name)), el("td", {}, jobMark(pl.job)),
       el("td", { class: "wrap" }, x.mistakes.join("; ") || "–"), el("td", { class: "wrap" }, x.died ? `${mmss(x.died.t)} ${x.died.how}` : "–"),
       el("td", { class: "num" }, x.dmg != null ? signed(x.dmg) : "–"), el("td", { class: "num" }, x.loss != null ? `${num(x.loss)} DPS` : "–"),
       el("td", { class: "wrap muted" }, x.loss > 0 ? shortCheck(x.top) : "–")))))));
@@ -1398,8 +1398,14 @@ const rotsOf = job => ((DATA.rotations || {})[job] || {}).rotations;
 const fightOf = job => ((DATA.rotations || {})[job] || {}).fight;
 const jobOf = code => Object.keys(JOB).find(j => JOB[j] === code) || code;
 const jobName = job => job.replace(/([a-z])([A-Z])/g, "$1 $2");
-const jobIcon = (job, cls = "job-icon") => { const src = ((DATA.rotations || {})[job] || {}).job_icon;   // decorative: the name is beside it
+const jobSrc = job => (DATA.job_icons || {})[job] || ((DATA.rotations || {})[job] || {}).job_icon;
+const jobIcon = (job, cls = "job-icon") => { const src = jobSrc(job);   // decorative: the name is beside it
   return src ? el("img", { class: cls, src, alt: "", draggable: "false" }) : null; };
+// the job's icon in place of its name (tables, tiles, titles), named on hover and for screen readers; the short name
+// where there is no icon. Chart labels, tooltips and sentences keep the short name
+const jobMark = job => { const src = jobSrc(job), code = JOB[job] || job;
+  return src ? el("img", { class: "job-icon mark", src, alt: code, title: jobName(job), draggable: "false" }) : code; };
+const jobMarks = jobs => jobs.flatMap((j, i) => [i ? " " : "", jobMark(j)]);
 const rotHref = (job, key) => `#/rotations${job ? `/${JOB[job] || job}` : ""}${key ? `/${key}` : ""}`;
 const speedStat = job => ["BlackMage", "Summoner", "RedMage", "Pictomancer", "WhiteMage", "Scholar", "Astrologian", "Sage"].includes(job) ? "Spell Speed" : "Skill Speed";
 const rotLabel = x => `${x.gcd.toFixed(2)} s GCD${x.crit != null ? ` · ${Math.round(100 * x.crit)}% crit` : ""}`;
@@ -2101,11 +2107,11 @@ function playerSummary(name) {
   const far = pulls.reduce((a, q) => !a || q.dur > a.dur ? q : a, null);
   const farMech = far && Object.entries(B.mech_start).filter(([m, t]) => m !== "other" && t <= far.dur).sort((a, c) => c[1] - a[1])[0];
   const last = rs[rs.length - 1];
-  app.append(el("h1", {}, name), el("p", { class: "lede" }, `${jobs.map(([j]) => JOB[j] || j).join(" / ")} · ${rs.length} night${rs.length > 1 ? "s" : ""}, ${dayName(rs[0].day)} to ${dayName(last.day)}. Latest: `,
+  app.append(el("h1", {}, name), el("p", { class: "lede" }, ...jobMarks(jobs.map(([j]) => j)), ` · ${rs.length} night${rs.length > 1 ? "s" : ""}, ${dayName(rs[0].day)} to ${dayName(last.day)}. Latest: `,
     el("a", { href: `#/day/${last.day}/${encodeURIComponent(last.group)}/${encodeURIComponent(name)}` }, `${dayName(last.day)} ${last.group}`), "."));
   app.append(tiles([
     ["Pulls", num(P), `${rs.length} night${rs.length > 1 ? "s" : ""} · ${(sum(pulls.map(q => q.dur)) / 3600).toFixed(1)} hours in combat`],
-    ["Jobs", jobs.map(([j]) => JOB[j] || j).slice(0, 3).join(" / "), jobs.map(([j, n]) => `${JOB[j] || j} ${n} pulls`).join(" · ")],
+    ["Jobs", el("span", { class: "marks" }, ...jobMarks(jobs.map(([j]) => j).slice(0, 4))), jobs.map(([j, n]) => `${JOB[j] || j} ${n} pulls`).join(" · ")],
     ["Furthest seen", far ? mmss(far.dur) : "–", far ? `${far.kill ? "kill" : farMech ? farMech[0] : "opener"} · ${dayName(far.r.day)} ${far.r.group}, pull ${far.n}` : ""],
     ["Mistakes per pull", P ? (M / P).toFixed(2) : "–", `${minutes ? (M / minutes).toFixed(3) : "–"} per minute in pulls, all nights`, P ? grade("mistakes", M / P) : null],
     ["Wipes caused", P ? pct(W / P) : "–", blamedWipes ? `${pct(W / blamedWipes)} of the blamed wipes in their pulls (a fair share: 12.5%)` : "of their pulls", P ? grade("wipes", W / P) : null],
@@ -2238,7 +2244,7 @@ function summaryDamage({ app, entries }) {
     const drawn = es.flatMap(e => [val(e, median), val(e, xs => Math.max(...xs)), ceil(e)]).concat(clears ? [clears] : []).filter(v => v != null);
     const lo = Math.floor(Math.min(...drawn) / 1000) * 1000 - 1000, hi = lo + 4 * Math.ceil((Math.max(...drawn) - lo) / 4000) * 1000;
     const spreads = es.map(e => spreadOf(e.clean_pulls.map(c => c.rdps))).filter(v => v != null);
-    return card(`${JOB[job] || job} rDPS on clean pulls`, info(`0:00–2:00 of their pulls with no death or Damage Down before 2:00, night by night: the median and the best pull${es.some(ceil) ? ", and their ceiling (the optimizer's best rotation without raid buffs at their GCD, plus the buffs they gave others)" : ""}${clears ? "; the line is the clearers' average on the job" : ""}. Spread: how far a night's clean pulls scatter around their mean (standard deviation over the mean), from nights with three or more.`),
+    return card([jobMark(job), " rDPS on clean pulls"], info(`0:00–2:00 of their pulls with no death or Damage Down before 2:00, night by night: the median and the best pull${es.some(ceil) ? ", and their ceiling (the optimizer's best rotation without raid buffs at their GCD, plus the buffs they gave others)" : ""}${clears ? "; the line is the clearers' average on the job" : ""}. Spread: how far a night's clean pulls scatter around their mean (standard deviation over the mean), from nights with three or more.`),
       lineChart(pts(e => val(e, median)), { yFmt: kfmt, yMin: lo, yMax: hi, name: "median", refs: clears ? [{ value: clears, label: "clears avg" }] : [],
         extra: [{ points: pts(e => val(e, xs => Math.max(...xs))), name: "best", cls: "x-min", color: "#9b6cf2" }, ...(es.some(ceil) ? [{ points: pts(ceil), name: "ceiling", cls: "x-dd" }] : [])] }),
       () => tableOf(["Night", "Clean pulls", "Median", "Best", "Ceiling", "Median of ceiling", "Spread"], es.map(e => { const m = val(e, median), c = ceil(e), sp = spreadOf(e.clean_pulls.map(x => x.rdps));
@@ -2266,14 +2272,14 @@ function summaryRotation({ app, name, rs, entries }) {
     const cost = (e, l) => { const c = e.rotation.checks.find(x => x.label === l); return c && c.cost > 1 ? c.cost : 0; };
     const pts = f => es.map(e => ({ x: nightLabel(e.r), y: f(e), day: e.r.day }));
     const dps = v => `${num(Math.round(v))} DPS`;
-    cards.push(card(`${JOB[job] || job} rotation loss`, info("What the costed rotation checks against clearers on the job add up to, night by night (GCD gaps, cooldowns held, lost procs, missed DoT ticks, positionals, combos, gauge overcaps), with their two costliest checks over all nights on their own."),
+    cards.push(card([jobMark(job), " rotation loss"], info("What the costed rotation checks against clearers on the job add up to, night by night (GCD gaps, cooldowns held, lost procs, missed DoT ticks, positionals, combos, gauge overcaps), with their two costliest checks over all nights on their own."),
       lineChart(pts(e => sum(e.rotation.checks.map(c => c.cost > 1 ? c.cost : 0))), { yFmt: dps, name: "all checks", extra: top.map((l, k) => ({ points: pts(e => cost(e, l)), name: l, cls: k ? "x-dd" : "x-min", color: k ? null : "#9b6cf2" })) }),
       () => tableOf(["Night", "All checks", ...top], es.map(e => [nightLabel(e.r), dps(sum(e.rotation.checks.map(c => c.cost > 1 ? c.cost : 0))), ...top.map(l => dps(cost(e, l)))]))));
   }
   const op = entries.filter(e => e.rotation && e.rotation.opener && e.rotation.opener.dmg);
   if (op.length >= 2) cards.push(card("Opener against clearers", info("Their opener damage (nDPS over 0:00–0:20, tinctures removed) against the clears on the job, night by night (jobs with fewer than three clears: against our other players)."),
     lineChart(op.map(e => ({ x: `${nightLabel(e.r)} ${JOB[e.job] || e.job}`, y: e.rotation.opener.dmg.vs, day: e.r.day })), { yFmt: v => signed(v), yMin: Math.min(-0.15, ...op.map(e => e.rotation.opener.dmg.vs)) - 0.02, yMax: Math.max(0.1, ...op.map(e => e.rotation.opener.dmg.vs)) + 0.02, refs: [{ value: 0, label: "clears" }] }),
-    () => tableOf(["Night", "Job", "Opener nDPS", "Against", "Difference"], op.map(e => [nightLabel(e.r), JOB[e.job] || e.job, num(e.rotation.opener.dmg.ndps), num(e.rotation.opener.dmg.clears), signed(e.rotation.opener.dmg.vs)]))));
+    () => tableOf(["Night", "Job", "Opener nDPS", "Against", "Difference"], op.map(e => [nightLabel(e.r), jobMark(e.job), num(e.rotation.opener.dmg.ndps), num(e.rotation.opener.dmg.clears), signed(e.rotation.opener.dmg.vs)]))));
   const buffs = rs.flatMap(r => (r.burst ? r.burst.buffs : []).filter(b => b.player === name).map(b => ({ ...b, r })));
   if (buffs.length) {
     const bursts = [...new Set(buffs.map(b => b.burst))].sort((a, c) => a - c), keys = [...new Set(buffs.map(b => `${b.r.code}|${b.buff}`))];
@@ -2355,7 +2361,7 @@ function acrossNights(app, name) {
   app.append(el("div", { class: "table-wrap", style: "margin-top:12px" }, el("table", {},
     el("thead", {}, el("tr", {}, ["Day", "Group", "Job", "Pulls", "Mistakes/pull", "Per minute", "Wipes", "vs Clears", "Uptime", "Rotation loss", "Opener"].map((h, i) => el("th", { class: i >= 3 ? "num" : null }, h)))),
     el("tbody", {}, [...hist].reverse().map(q => { const rep = findGroup(q.day, q.group), mins = rep ? sum(rep.pulls.filter(x => x.players.includes(name)).map(x => Math.min(x.dur, x.wipe ? x.wipe.t + 2 : x.dur) / 60)) : 0;
-      return linkRow([dayName(q.day), q.group, JOB[q.job] || q.job, rep ? pullsCell(q, rep.players) : String(q.pulls), el("span", {}, q.mrate.toFixed(2), gradeChip(grade("mistakes", q.mrate))),
+      return linkRow([dayName(q.day), q.group, jobMark(q.job), rep ? pullsCell(q, rep.players) : String(q.pulls), el("span", {}, q.mrate.toFixed(2), gradeChip(grade("mistakes", q.mrate))),
         mins ? ((q.mistakes_w ?? q.mistakes) / mins).toFixed(3) : "–", el("span", {}, pct(q.wrate), gradeChip(grade("wipes", q.wrate))),
         q.vs ? el("span", {}, signed(q.vs[0]), gradeChip(grade("damage", q.vs[0]))) : "–", q.uptime != null ? el("span", {}, `${q.uptime.toFixed(1)}%`, gradeChip(grade("uptime", q.uptime_diff))) : "–",
         rotLoss(q) != null ? `${num(Math.round(rotLoss(q)))} DPS` : "–", opener(q) != null ? signed(opener(q)) : "–"], `#/day/${q.day}/${q.group}/${encodeURIComponent(name)}`, 3); })))));
@@ -2373,7 +2379,7 @@ function playersPage() {
   const find = el("input", { type: "search", class: "filter", placeholder: "Find a player", "aria-label": "Find a player", autocomplete: "off" });
   app.append(el("h1", {}, "Players"), el("p", { class: "lede" }, `${rows.length} players over ${days().length} raid days, the most recent first. Mistakes and wipes per pull count each mistake in full or the player's share of it, as on the scorecard. Pick a player for their summary over all raid days.`),
     el("p", {}, find));
-  const body = el("tbody", {}, rows.map(x => { const tr = linkRow([x.name, x.jobs.map(j => JOB[j] || j).join(" / ") || "–", String(x.ns.length), x.pulls ? num(x.pulls) : "–",
+  const body = el("tbody", {}, rows.map(x => { const tr = linkRow([x.name, x.jobs.length ? el("span", { class: "marks" }, ...jobMarks(x.jobs)) : "–", String(x.ns.length), x.pulls ? num(x.pulls) : "–",
       x.mr != null ? el("span", {}, x.mr.toFixed(2), gradeChip(grade("mistakes", x.mr))) : "–", x.wr != null ? el("span", {}, pct(x.wr), gradeChip(grade("wipes", x.wr))) : "–",
       x.lastMr != null ? x.lastMr.toFixed(2) : "–", `${dayName(x.last.r.day)} · ${x.last.r.group}`],
     playerHref(x.name), 2); tr.dataset.name = x.name.toLowerCase(); tr.lastChild.className = ""; return tr; }));

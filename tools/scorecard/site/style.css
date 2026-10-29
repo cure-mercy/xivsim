@@ -100,6 +100,11 @@ tr.moving td{ background: var(--series-wash); }
 .chart .hit.link:hover, .chart .hit.link:focus-visible{ fill: var(--surface-2); }
 /* job icons: in the rotations table's Job column, and larger before a job page's title */
 .job-icon{ width: 24px; height: 24px; margin: -4px 8px -4px 0; vertical-align: middle; }   /* inline: the name keeps the row's baseline */
+/* a job's icon in place of its name: table cells, tiles, titles; several in a row sit close together */
+.job-icon.mark{ width: 22px; height: 22px; margin: -4px 0; }
+.tile .value .job-icon.mark{ width: 30px; height: 30px; margin: 0; }
+.tile .label .job-icon.mark{ width: 16px; height: 16px; margin: -3px 0; }
+.marks{ white-space: nowrap; }
 h1 .job-icon.big{ width: 40px; height: 40px; margin: -4px 10px -2px 0; }
 .theme{ font: inherit; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
 
