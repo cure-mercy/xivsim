@@ -105,6 +105,10 @@ tr.moving td{ background: var(--series-wash); }
 .tile .value .job-icon.mark{ width: 30px; height: 30px; margin: 0; }
 .tile .label .job-icon.mark{ width: 16px; height: 16px; margin: -3px 0; }
 .marks{ white-space: nowrap; }
+/* the Players list's job entries: equal widths (the widest, "−10%†" and its dot, needs 82 px), icons in columns;
+   four to a line, a fifth job wraps under the first */
+.marks .jv{ display: inline-block; width: 6.1em; }
+.marks.jvs{ display: inline-block; white-space: normal; max-width: calc(4 * 6.1em); }
 h1 .job-icon.big{ width: 40px; height: 40px; margin: -4px 10px -2px 0; }
 .theme{ font: inherit; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
 
