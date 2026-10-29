@@ -15,11 +15,12 @@ site/data.json holds player names and who caused which mistake, so it is git-ign
 
 --publish writes a copy of the site for public hosting into DIR (default: stats/ at the repository root, which
 the GitHub Pages workflow deploys like the rest of the repo): the page files and public.json (what the rotation and
-gear pages need, PUBLIC_KEYS, open to everyone). The rest goes to Supabase when .supabase holds its keys (supa.py,
-ACCESS_CONCEPT.md step 2: accounts linked to players), with config.json telling the page where to log in; without it,
-to data.enc.json, encrypted with a passphrase (encrypt_data.js, needs Node; read from SCORECARD_PASSPHRASE or asked
-for twice). The plaintext data.json is never copied there, and nothing is published if a player's name turns up in
-public.json. To stop publishing, delete DIR; to move host, upload DIR (or serve site/ with its plaintext data behind
+gear pages need, PUBLIC_KEYS, open to everyone). The rest goes to Supabase when .supabase holds its keys (supa.py:
+staff accounts an admin approved), with config.json telling the page where to log in. When a passphrase is set
+(SCORECARD_PASSPHRASE, or .PUBLISH_KEY at the repository root), it also goes to data.enc.json, encrypted with it
+(encrypt_data.js, needs Node), for staff who open the site with the passphrase instead of an account. Without
+Supabase, data.enc.json is the only way in, and the passphrase is asked for twice when neither is set. The plaintext
+data.json is never copied there, and nothing is published if a player's name turns up in public.json. To stop publishing, delete DIR; to move host, upload DIR (or serve site/ with its plaintext data behind
 the new host's own login).
 
 The worker (worker.py) builds the reports the admin page lists, with the same functions; site_lock() keeps it and a
@@ -41,12 +42,11 @@ PAGE_FILES = ["index.html", "style.css", "app.js"]
 # here. The rotation and gear pages read only these (benchmark: only its clears, from public FFLogs reports); our
 # players' figures on those pages (`ours`) stay locked
 PUBLIC_KEYS = {"generated": None, "rotations": None, "gear": None, "benchmark": ["pools"]}
-# what every linked user sees of every report (Supabase's progress table): group-level figures and pulls, no names.
-# Also a whitelist. MECHANIC_KEYS (mistakes by mechanic) are left out on the latest raid day, whose groups only their
-# own players see in full (ACCESS_CONCEPT.md, decision 6)
-PROGRESS_KEYS = ["code", "group", "day", "start", "pulls_total", "kills", "best", "longest", "clean2", "party", "hp", "lost_total", "lost_dd", "echo"]
+# what the staff's pages load first for every report (Supabase's progress table), a small part of the full record:
+# group-level figures, mistakes by mechanic and pulls; the full record (report_full) follows when a page needs it
+PROGRESS_KEYS = ["code", "group", "day", "start", "pulls_total", "kills", "best", "longest", "clean2", "party", "hp", "lost_total", "lost_dd", "echo",
+                 "causes", "wipe_causes", "lost_causes", "lost_unattributed"]
 PROGRESS_PULL_KEYS = ["n", "at", "dur", "boss", "kill", "first", "deaths", "hp", "echo"]
-MECHANIC_KEYS = ["causes", "wipe_causes", "lost_causes", "lost_unattributed"]
 
 
 def plain(v):
@@ -156,36 +156,29 @@ def leaked_names(site, text):
     return sorted(n for n in names if n and whole(n))
 
 
-def progress_of(r, latest):
-    """A report's progress fragment: PROGRESS_KEYS, and per pull PROGRESS_PULL_KEYS plus counts that need no names (how
-    many players were in it, their mistakes' shares added up). Mistakes and wipes by mechanic only on earlier days."""
-    by_mech = r["day"] != latest
+def progress_of(r):
+    """A report's progress fragment: PROGRESS_KEYS, its players' names (which reports a player page needs), and per pull
+    PROGRESS_PULL_KEYS, how many players were in it, its mistakes and their shares added up, and how it ended."""
     out = {k: r.get(k) for k in PROGRESS_KEYS}
+    out["names"] = sorted({p["name"] for p in r["players"]})
     out["player_pulls"] = sum(p["pulls"] for p in {p["name"]: p for p in reversed(r["players"])}.values())   # as app.js stats(): each name once, its first entry
-    if by_mech: out.update({k: r.get(k) for k in MECHANIC_KEYS})
     out["pulls"] = []
     for q in r["pulls"]:
         x = {k: q.get(k) for k in PROGRESS_PULL_KEYS}
         x["np"], x["m"] = len(q.get("players") or []), round(sum(m.get("share", 1) for m in q.get("mistakes") or []), 4)
-        if q.get("wipe"): x["wipe"] = {k: q["wipe"].get(k) for k in (("t", "mechanic", "label") if by_mech else ("t",))}
-        if by_mech: x["mistakes"] = [{k: m.get(k) for k in ("mechanic", "label", "share")} for m in q.get("mistakes") or []]
+        if q.get("wipe"): x["wipe"] = {k: q["wipe"].get(k) for k in ("t", "mechanic", "label")}
+        x["mistakes"] = [{k: m.get(k) for k in ("mechanic", "label", "share")} for m in q.get("mistakes") or []]
         out["pulls"].append(x)
     return out
 
 
 def fragments(site):
-    """The site data split by who may read it (ACCESS_CONCEPT.md): rows for Supabase's tables."""
+    """The site's private part as rows for Supabase's tables (staff read them all; ACCESS_CONCEPT.md)."""
     reports = sorted(site["reports"].values(), key=lambda r: (r["day"], r["group"]))
-    latest = reports[-1]["day"] if reports else None
-    players = {}
-    for r in reports:   # newest last, so a renamed character keeps its latest name
-        for x in r.get("roster", []): players[x["id"]] = dict(id=x["id"], name=x["name"], world=x["world"])
     _, private = split_public(site)
     return dict(
         reports=[dict(code=r["code"], day=r["day"], group_name=r["group"]) for r in reports],
-        players=list(players.values()),
-        report_players=[dict(report_code=r["code"], player_id=x["id"]) for r in reports for x in r.get("roster", [])],
-        progress={r["code"]: progress_of(r, latest) for r in reports},
+        progress={r["code"]: progress_of(r) for r in reports},
         full={r["code"]: r for r in reports},
         meta={k: v for k, v in private.items() if k != "reports"},   # strategies, the whole benchmark, ours
     )
@@ -200,19 +193,26 @@ def check_public(site):
     return text
 
 
+def passphrase(ask):
+    """The passphrase for data.enc.json: SCORECARD_PASSPHRASE, else .PUBLISH_KEY at the repository root (git-ignored),
+    else asked for twice when ask (no Supabase: the passphrase is the only way in). None: no data.enc.json."""
+    pw, key = os.environ.get("SCORECARD_PASSPHRASE"), HERE.parent.parent / ".PUBLISH_KEY"
+    if not pw and key.exists(): pw = key.read_text(encoding="utf-8").strip()
+    if not pw and ask:
+        pw = getpass.getpass("Passphrase for the published data: ")
+        if pw != getpass.getpass("Again: "): raise SystemExit("the passphrases differ; nothing published")
+    if pw and len(pw) < 12: raise SystemExit("use a passphrase of at least 12 characters (several words is best); nothing published")
+    return pw or None
+
+
 def publish(out):
     """Copy the page files and the public data to out, and the rest to Supabase (with config.json for the page) when
-    .supabase is set up, or else to data.enc.json, encrypted; never the private part in plaintext."""
+    .supabase is set up, and to data.enc.json, encrypted, when there is a passphrase; never the private part in plaintext."""
     import supa
     site = json.loads(DATA.read_text(encoding="utf-8"))
     public_text = check_public(site)
     cfg = supa.config()
-    if not cfg:
-        pw = os.environ.get("SCORECARD_PASSPHRASE")
-        if not pw:
-            pw = getpass.getpass("Passphrase for the published data: ")
-            if pw != getpass.getpass("Again: "): raise SystemExit("the passphrases differ; nothing published")
-        if len(pw) < 12: raise SystemExit("use a passphrase of at least 12 characters (several words is best); nothing published")
+    pw = passphrase(ask=not cfg)
     out = Path(out); out.mkdir(parents=True, exist_ok=True)
     for f in PAGE_FILES: shutil.copyfile(HERE / "site" / f, out / f)
     page = (out / "index.html").read_text(encoding="utf-8")   # version the files so browsers fetch the new ones
@@ -221,18 +221,20 @@ def publish(out):
         page = page.replace(f'"{f}"', f'"{f}?v={v}"')
     (out / "index.html").write_text(page, encoding="utf-8")
     (out / "data.json").unlink(missing_ok=True)
+    rest = []
     if cfg:
         supa.upload(fragments(site))
-        (out / "config.json").write_text(json.dumps(supa.page_config(cfg)), encoding="utf-8")   # the public URL and anon key
-        (out / "data.enc.json").unlink(missing_ok=True)
-        rest = f"config.json (Supabase at {cfg['url']})"
-    else:
+        (out / "config.json").write_text(json.dumps(supa.page_config(cfg, passphrase=bool(pw))), encoding="utf-8")   # the public URL and key
+        rest.append(f"config.json (Supabase at {cfg['url']})")
+    else: (out / "config.json").unlink(missing_ok=True)
+    if pw:
         _, private = split_public(site)
         env = dict(os.environ, SCORECARD_PASSPHRASE=pw)   # the private part goes to the encryption on stdin, never to a file
         subprocess.run(["node", str(HERE / "encrypt_data.js"), "-", str(out / "data.enc.json")], env=env, check=True,
                        input=json.dumps(private, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-        (out / "config.json").unlink(missing_ok=True)
-        rest = "data.enc.json"
+        rest.append("data.enc.json (passphrase)")
+    else: (out / "data.enc.json").unlink(missing_ok=True)
+    rest = ", ".join(rest)
     (out / "public.json").write_text(public_text, encoding="utf-8")
     print(f"published to {out}: {', '.join(PAGE_FILES)}, public.json ({len(public_text.encode()) // 1024} KB), {rest}")
 
@@ -329,11 +331,14 @@ def main():
             try: add_report(site, fflogs.report_code(link), names[i].strip() if i < len(names) else None, a.refresh, bench)
             except ValueError as e: raise SystemExit(f"{fflogs.report_code(link)}: {e}; nothing written")
         finish(site, bench)
+        import supa
         if a.publish: publish(a.publish)
         elif a.upload:
-            import supa
             if not supa.config(): raise SystemExit("no Supabase keys (see supa.py); nothing uploaded")
             supa.upload(fragments(site))
+        if (a.publish or a.upload) and supa.config():   # what reached Supabase, for the admin page's audit log
+            supa.audit("command-line build", None, {k: v for k, v in dict(added=[fflogs.report_code(l) for l in a.links], removed=a.remove,
+                       reanalysed=a.reanalyse or None, published=a.publish, uploaded=a.upload or None).items() if v}, by="command line")
 
 
 if __name__ == "__main__":

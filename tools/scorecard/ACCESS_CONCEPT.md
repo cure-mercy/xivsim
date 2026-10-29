@@ -1,8 +1,8 @@
 # Concept: public rotations and gear, then accounts linked to players
 
-Status: draft, 2026-10-26. Step 1 built 2026-10-28. Step 2 built 2026-10-28 and tested against a local Supabase in
-WSL; the hosted project, the Discord application and the first admin are still to be set up (scorecard README,
-"Publishing" → "Setting up Supabase"). Where the build differs from this plan, see "Step 2 as built" below.
+Status: draft, 2026-10-26. Step 1 built 2026-10-28. Step 2 built 2026-10-28, live on Pages and Supabase since
+2026-10-29. **Changed 2026-10-29: staff only** (see "Change: staff only" below): accounts are no longer linked to
+players, so the access rules of step 2 below (and decisions 1 and 6) no longer apply.
 
 ## Goal
 
@@ -212,6 +212,24 @@ test account and checks that `report_full` returns no rows to either.
 - Not built: an admin command that removes a player completely. Unlinking and deleting an account exist; the player's
   name stays in the full records of the reports they played in.
 
+## Change: staff only (2026-10-29)
+
+The site is for Syncademy staff, not for every player, so the per-player visibility of step 2 is gone:
+
+- **Roles** are `pending`, `staff` and `admin` (`profiles.role`). Anyone can log in with Discord; the account is
+  `pending` and sees only the open pages until an admin approves it as staff. Staff see every report in full, mistakes
+  by mechanic included, on every raid day. Admins also get the admin page. Nobody changes their own role, so an admin
+  can't lock themselves out.
+- **Removed:** linking accounts to characters (`players`, `report_players`, `user_players`, `request_link`, `linked()`,
+  `my_report()`), the "Not your group" page, and leaving out the latest raid day's mistakes by mechanic. The progress
+  table stays as the part of each report the pages load first, now with names and mistakes.
+- **The passphrase** is a second way in, with staff's view and no admin page: `data.enc.json`, published next to
+  `config.json` when `.PUBLISH_KEY` (or `SCORECARD_PASSPHRASE`) holds it. It shows the data as of the last publish.
+- **Audit log** (`audit_log`): logins, account and role changes, the report list, FFLogs searches, and what the worker
+  and the command line did. Triggers write the page's entries; nobody can change them from the page; only admins read
+  them. Passphrase use leaves no entry.
+- The migration is `supabase/migrations/20261029000000_staff.sql`, on top of the step-2 ones.
+
 ## Things to keep in mind
 
 - **The old encrypted file stays in git history.** Anyone who has the passphrase now, or guesses it later, can
@@ -222,9 +240,9 @@ test account and checks that `report_full` returns no rows to either.
   show only boss HP and pull lengths, not mistakes by cause.
 - **Rotations are built from our players' gear.** For a job only one of our players plays, the conversion
   reflects that player's substats. This is harmless, but it is the only player-derived value in `public.json`.
-- **Personal data.** Step 2 stores Discord IDs, and it links them to characters and their mistakes. The site needs a
-  short privacy note, plus a way for users to unlink themselves and delete their account. An admin should also be
-  able to remove a player completely.
+- **Personal data.** The site stores Discord IDs, names and email addresses of the accounts, and the audit log keeps
+  logins and admin actions with names, also after an account is deleted. The account page says so and lets users
+  delete their account. Player names stay in the reports, as before.
 
 ## Decisions for you
 

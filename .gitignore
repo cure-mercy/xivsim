@@ -9,3 +9,4 @@ tools/gear/.cache/
 tests/blame_cases.json
 .supabase
 .supabase.local
+.PUBLISH_KEY
