@@ -617,7 +617,7 @@ which the import ignores):
 | Source | Gives the site |
 |---|---|
 | Kills logs, one sheet per progression season, a tab per duty, a column per raid date (`K` kill, `-` progress, `0` absent) | Dated clears and progress nights for the Wednesday/Sunday series: the history the study history sheet lacks, and the input for the progress-speed part of the strength score |
-| Duty star ratings: a staff survey (2025; 26 Extreme and 24 Savage answers, votes 0–5) turned into 1–5 stars (0.8 × mean + 1) for 117 duties | `duties.stars` on the 1–5 scale; the decimal means can rank "hardest cleared" finer. Ultimates, Unreals, normal, alliance and BLU duties have no rating |
+| Duty star ratings: a staff survey (2025; 26 Extreme and 24 Savage answers, votes 0–5) turned into 1–5 stars (0.8 × mean + 1) for 117 duties | The history behind the stars and the decimal means, which can rank "hardest cleared" finer. `duties.stars` itself comes from the published "Star Ranking Overview" thread in `#course-calendar` (last edited April 2026), which supersedes the sheets; duties not listed there have no stars |
 | The rotation working sheet, seasons 1–11 | The rotation plans, with planned against actual weeks |
 | Community Choice vote sheets (four voting days per weekend; votes and unique voters per category) | What a Community Choice slot became |
 | The duplicate checker's duty list | Name aliases for `duties` |
