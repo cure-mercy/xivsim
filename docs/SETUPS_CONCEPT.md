@@ -546,11 +546,15 @@ messages, Manage Roles and Manage Threads; for now the bot needs none of them.
 
 Filling in attendance and kills from FFLogs reports is left out for now, perhaps for good (decision 8).
 
-## Monthly study feats (later)
+## Monthly study feats
+
+Staff named this the most pressing part (2026-10-29), so it has a concept of its own:
+[STUDY_FEATS_CONCEPT.md](STUDY_FEATS_CONCEPT.md), with the full chain of rules, checks against the workbook, and a
+first phase that works on a workbook export before the rest of the site exists. The summary below is from the first
+reading of the guides.
 
 The credits move to the site (decision 9): rank, Exp, level, study group Exp, streaks and freezes, cakeday points and
-raid activity are imported into `credits` and shown on a member's page, where staff edit them by hand, as they do in
-the sheet today. Computing them is a project of its own after the rest works (decision 20).
+raid activity are imported into `credits` and shown on a member's page.
 
 The credits workbook's formulas and the Study Feats, Study Groups and Cleanup guides describe that monthly update. All
 of it follows from data the site would already hold (participation days, clears, badges, members' dates):
@@ -748,7 +752,7 @@ Answered on 2026-10-29; the sections above follow them.
 | 16 | The screenshot channel | `#roster-history`; today the bot's OCR fills a Google sheet and staff count by hand; the site's bot reacts ✅ under a screenshot once it is confirmed |
 | 17 | Follow-ups | Prepared texts only |
 | 18 | The cheat sheet's other duties | In-game tasks stay manual; the site writes their texts |
-| 20 | Study feats | A deferred project |
+| 20 | Study feats | A deferred project; since 2026-10-29 staff's first priority, see STUDY_FEATS_CONCEPT.md |
 
 ### Still open
 
