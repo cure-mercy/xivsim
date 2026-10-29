@@ -26,7 +26,7 @@ the new host's own login).
 The worker (worker.py) builds the reports the admin page lists, with the same functions; site_lock() keeps it and a
 command-line build from writing data.json at the same time.
 """
-import argparse, contextlib, datetime, getpass, hashlib, json, os, shutil, socket, subprocess, sys, time
+import argparse, base64, contextlib, datetime, getpass, hashlib, json, os, shutil, socket, subprocess, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -298,6 +298,9 @@ def finish(site, bench):
     site["gear"] = S.gear()             # the best-in-slot sets (tools/gear/sheets.py)
     import gamedata                      # every job's icon, for the job columns (the rotations' own are only their jobs')
     site["job_icons"] = {j: u for j in gamedata.ABBR if (u := gamedata.job_icon(j))}
+    # FFLogs' "Unknown" job (a player it could not tell the job of): the game's "Any" icon with a question mark
+    # (job_unknown.png, drawn by scratch/icons/draw_unknown.py)
+    site["job_icons"]["Unknown"] = "data:image/png;base64," + base64.b64encode((HERE / "job_unknown.png").read_bytes()).decode()
     site["strategies"] = C.strategy_dates()   # when each mechanic's strategy began to be blamed, for the charts
     site["ours"] = ours_by_job(site["reports"], site["rotations"])   # our players' figures on the rotation pages, without names
     site["generated"] = datetime.datetime.now().isoformat(timespec="minutes")
