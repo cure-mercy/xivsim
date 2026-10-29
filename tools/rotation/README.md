@@ -23,6 +23,7 @@ python tools/rotation/dps.py --job rpr --site [--gcds 2.40]   # ...and save ceil
 python tools/rotation/dps.py --job drg --site --offline       # ...from the scorecard's cached events, when FFLogs is down
 python tools/rotation/dps.py --job nin --site --restarts      # ...with polish's restarts (~0-1% more, minutes a search)
 python tools/rotation/dps.py --job smn --ceilings-only        # ...only the players' ceilings (pooled and per night), rotations kept
+python tools/rotation/dps.py --job auto --ceilings-only --reports CODE   # ...only what those reports touch (the worker's call)
 ```
 
 | `--job` | Job | Default GCD | Slot | Best over the phase | Standing still | Search |

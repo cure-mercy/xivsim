@@ -65,15 +65,15 @@ def clears(job):
 SITE = HERE.parent / "scorecard" / "site" / "data.json"
 
 
-def ours(job):
-    """Detailed logs of our players on the job, for their pulls that were clean through 2:00, with the scorecard's
-    0:00-2:00 rDPS of each pull attached."""
+def ours(job, names=None):
+    """Detailed logs of our players on the job (only these names, if given), for their pulls that were clean through
+    2:00, with the scorecard's 0:00-2:00 rDPS of each pull attached."""
     reports = json.loads(SITE.read_text())["reports"]
     out = []
     for r in reports.values():
         fights = json.loads((fflogs.CACHE / f"report_{r['code']}.json").read_text())["fights"]
         for p in r["players"]:
-            if p["job"] != job: continue
+            if p["job"] != job or names is not None and p["name"] not in names: continue
             for c in p.get("clean_pulls") or []:
                 fid = fights[c["n"] - 1]["id"]
                 got = [x for x in player_log(r["code"], fid, job) if x["name"] == p["name"] and x["casts"]]
@@ -138,7 +138,7 @@ def ours_offline(job, own=lambda p, h: 1.0):
 CUT = {"Damage Down", "Weakness", "Brink of Death"}   # a player's own state that lowers their hits: their pull ends there
 
 
-def ours_more(job, own=lambda p, h: 1.0, until=120):
+def ours_more(job, own=lambda p, h: 1.0, until=120, names=None):
     """Our players' other pulls on the job, the ones not clean through 2:00, from the acts caches (from_acts, so without
     crit flags: dps.flag_hits sets them), each cut at the player's own first death or Damage Down and at `until`: more
     hits for measuring their crit / direct-hit gain than the clean pulls alone. Pulls with The Echo are left out."""
@@ -149,7 +149,7 @@ def ours_more(job, own=lambda p, h: 1.0, until=120):
         fights, echo = rep["fights"], {str(i) for i in rep.get("echo_pulls", [])}
         pulls = json.loads((ACTS / f"acts_{r['code']}.json").read_text(encoding="utf-8"))
         for p in r["players"]:
-            if p["job"] != job: continue
+            if p["job"] != job or names is not None and p["name"] not in names: continue
             clean = {c["n"] for c in p.get("clean_pulls") or []}
             for d in p.get("pull_detail") or []:
                 fid = str(fights[d["n"] - 1]["id"])

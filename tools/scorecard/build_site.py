@@ -3,6 +3,7 @@
     python tools/scorecard/build_site.py <report link> [<report link> ...] [--refresh] [--names "G1,G2,..."]
     python tools/scorecard/build_site.py --remove <report code>
     python tools/scorecard/build_site.py --reanalyse              (after a classifier or label change)
+    python tools/scorecard/build_site.py --ceilings               (after tools/rotation/dps.py --ceilings-only)
     python tools/scorecard/build_site.py [links ...] --publish [DIR]
     python tools/scorecard/build_site.py --upload                 (Supabase only, no page files)
     python -m http.server -d tools/scorecard/site 8000          then open http://localhost:8000
@@ -293,6 +294,16 @@ def add_report(site, code, group, refresh, bench):
     return site["reports"][code]
 
 
+def apply_ceilings(site):
+    """Each player's rotation ceiling from tools/rotation/.cache/ceilings.json (S.ceiling_for: the night's, else their
+    pooled one), without analysing anything again: after dps.py --ceilings-only."""
+    ceil = S.ceilings()
+    for r in site["reports"].values():
+        for p in r["players"]:
+            c = S.ceiling_for(ceil, p["job"], p["name"], r["code"])
+            p.update(ceiling=c.get("ceiling"), ceiling_gcd=c.get("gcd"), ceiling_key=c.get("rotation_key"))
+
+
 def finish(site, bench):
     """Everything derived from the whole set of reports and the parts that come from the other tools; then write."""
     site["benchmark"] = benchmark_summary(bench, list(site["reports"]))
@@ -322,6 +333,8 @@ def main():
     ap.add_argument("--refresh", action="store_true", help="refetch reports instead of using the cache")
     ap.add_argument("--names", help="comma-separated group names for the links, in order")
     ap.add_argument("--remove", nargs="+", metavar="CODE", help="remove these reports from the site data")
+    ap.add_argument("--ceilings", action="store_true", help="take the players' rotation ceilings again from tools/rotation's "
+                    "ceilings.json, without analysing (after dps.py --ceilings-only)")
     ap.add_argument("--reanalyse", action="store_true", help="analyse every report already on the site again (after a classifier or label change)")
     ap.add_argument("--publish", nargs="?", const=str(PUBLISH_DIR), metavar="DIR",
                     help=f"also write the copy for public hosting (default {PUBLISH_DIR}); the private part goes to Supabase, or encrypted")
@@ -337,6 +350,7 @@ def main():
             print(f"removed {code}" if site["reports"].pop(code, None) else f"{code} was not in the data", file=sys.stderr)
         names = a.names.split(",") if a.names else []
         links = list(a.links)
+        if a.ceilings: apply_ceilings(site)
         if a.reanalyse:   # every report already on the site, from the cache, keeping its group name
             given = {fflogs.report_code(l) for l in links}
             links += [c for c in sorted(site["reports"], key=lambda c: (site["reports"][c]["day"], site["reports"][c]["group"])) if c not in given]

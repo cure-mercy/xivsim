@@ -163,6 +163,13 @@ def ceilings():
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
 
 
+def ceiling_for(ceil, job, name, code):
+    """A player's ceiling for one night (report code): the night's own (its conversion and GCD, dps.py night_rows),
+    else theirs pooled over their nights; {} when they have none. ceil: ceilings()."""
+    c = ceil.get(job, {}).get(name, {})
+    return c.get("nights", {}).get(code) or c
+
+
 def rotations():
     """The optimized rotations behind the ceilings, {job: {fight, rotations: {key: {gcd, crit, potency, dps, ...,
     rotation}}, icons: {action: data URI}, job_icon, role}}, one per GCD, as tools/rotation/dps.py --site saved them;
@@ -668,10 +675,7 @@ def analyse(group, data, bench):
     import checks                               # rotation checks against the clears (imported here: it imports this module)
     rotation = checks.report(data, lives)
     ceil = ceilings()
-    # the night's own ceiling (its conversion and GCD, dps.py night_rows), else the player's pooled over their nights
-    def night_ceil(job, name):
-        c = ceil.get(job, {}).get(name, {})
-        return c.get("nights", {}).get(data["code"]) or c
+    night_ceil = lambda job, name: ceiling_for(ceil, job, name, data["code"])
     # opener damage (first OPENER_S seconds, alive throughout) against the clears' median on the job, or our other
     # players' when a kit change leaves too few clears (checks.KIT_CHANGES)
     odps, oref = collections.defaultdict(list), checks.clear_opener_dps()

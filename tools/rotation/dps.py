@@ -1,6 +1,6 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
-    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch|nin|smn|dnc] [--clears] [--site [--gcds 2.30,2.40] | --ceilings-only] [--offline]
+    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch|nin|smn|dnc] [--clears] [--site [--gcds 2.30,2.40] | --ceilings-only [--reports CODE,...]] [--offline]
                                  [--no-polish] [--restarts]
 
 Per player, from their clean pulls (alive through 2:00):
@@ -30,7 +30,9 @@ the Paradeigma I slot of the job's role with the most running before Palladion (
 variant with the most, so the rotation holds whichever the player is given.
 
 --site writes each of our players' ceiling to .cache/ceilings.json (pooled over their nights, and per night from that
-night's own pulls where it has NIGHT_PULLS or more: gear changes over the season; --ceilings-only writes just these), and the optimized rotations behind them, one per GCD
+night's own pulls where it has NIGHT_PULLS or more: gear changes over the season; --ceilings-only writes just these,
+and with --reports only what those reports touch: their players' nights in them and those players' pooled ceilings;
+--job auto runs each job those reports have, one process each, as the scorecard's worker does after a build), and the optimized rotations behind them, one per GCD
 (plus any --gcds), to .cache/rotations.json with the fight's timeline (mechanics, runs, out of reach), where the
 scorecard's build_site.py picks both up. The site's rotations are a second search per GCD, over the whole phase (to
 the clears' median kill, FULL), shown and scored up to where our groups' progress reaches, Palladion taking Athena away
@@ -41,7 +43,7 @@ is the median of our players' conversions on the job, each moved to its GCD (the
 their other substats), so GCDs compare with each other. For a job none of our players plays (Ninja), they convert at the
 benchmark clears' players on it since the job's CONVERT_SINCE instead, at the GCDs those play, and the site says so.
 """
-import argparse, collections, json, re, statistics as st, sys, time
+import argparse, collections, json, re, statistics as st, subprocess, sys, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -471,7 +473,7 @@ def show(rows, title):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--job", default="blm", choices=sorted(JOBS))
+    ap.add_argument("--job", default="blm", choices=sorted(JOBS) + ["auto"], help="auto: with --reports, every job those reports have")
     ap.add_argument("--clears", action="store_true", help="also the benchmark clears' players (tincture hits are kept)")
     ap.add_argument("--width", type=int, default=None, help="search width (default: the job's SWEEP_WIDTH)")
     ap.add_argument("--site", action="store_true", help=f"save our players' ceilings and the optimized rotations for the scorecard site "
@@ -485,16 +487,33 @@ def main():
                     "(logs.ours_offline, flag_hits): for when FFLogs is down; 'logged' then misses the hits left out")
     ap.add_argument("--ceilings-only", action="store_true", help="save our players' ceilings (pooled and per night) for the "
                     "scorecard site without searching the site's rotations again (those stay as they are)")
+    ap.add_argument("--reports", help="with --ceilings-only: only these reports (comma-separated codes): the nights of their players "
+                    "on the job, and those players' pooled ceilings; everyone else's stay as saved")
     ap.add_argument("--no-polish", action="store_true", help="skip the local search on each search's best rotation (polish.py)")
     ap.add_argument("--restarts", action="store_true", help="polish with restarts (the rest of the fight searched afresh from "
                     "points along the rotation): ~0-1%% more, 2-15 minutes a whole-phase search")
     a = ap.parse_args()
+    codes = set(a.reports.split(",")) if a.reports else None
+    if codes and not a.ceilings_only: ap.error("--reports goes with --ceilings-only")
+    if a.job == "auto":   # each job of the reports in a process of its own, as a run per job always was
+        if not codes: ap.error("--job auto needs --reports")
+        site, key = json.loads(logs.SITE.read_text())["reports"], {name: k for k, (_, name) in JOBS.items()}
+        for k in sorted({key[p["job"]] for c in codes if c in site for p in site[c]["players"] if p["job"] in key}):
+            print(f"=== {k}", flush=True)
+            subprocess.run([sys.executable, __file__, "--job", k, "--ceilings-only", "--reports", a.reports] + ["--offline"] * a.offline, check=True)
+        return
     global POLISH, RESTARTS
     POLISH, RESTARTS = not a.no_polish, a.restarts
     job, jobname = JOBS[a.job]
     calibrate.use(a.job)
-    pulls = flag_hits(job, logs.ours_offline(jobname, getattr(job, "own_factor", lambda p, h: 1.0))) if a.offline else logs.ours(jobname)
-    more = flag_hits(job, logs.ours_more(jobname, getattr(job, "own_factor", lambda p, h: 1.0)))   # for the crit / DH gain
+    names = None
+    if codes:   # only the players on the job in these reports (all their pulls, for their pooled ceiling)
+        site = json.loads(logs.SITE.read_text())["reports"]
+        names = {p["name"] for c in codes if c in site for p in site[c]["players"] if p["job"] == jobname}
+        if not names: print(f"no {jobname} in {', '.join(sorted(codes))}"); return
+    own = getattr(job, "own_factor", lambda p, h: 1.0)
+    pulls = flag_hits(job, [p for p in logs.ours_offline(jobname, own) if names is None or p["name"] in names]) if a.offline else logs.ours(jobname, names)
+    more = flag_hits(job, logs.ours_more(jobname, own, names=names))   # for the crit / DH gain
     rows = player_rows(job, pulls, a.width, more)
     show(rows, f"Our players on {jobname}, clean pulls, 0:00-2:00 (DPS)")
     print("  gain / unbuf: average hit over plain hit, all hits / hits under no crit or direct-hit raid buff;\n"
@@ -502,13 +521,20 @@ def main():
           "  logged: their damage with others' buffs divided out; ceiling: best unbuffed rotation at their GCD, at unbuf\n"
           "  (a raid buff's credit for the others' damage, which rDPS includes, is not in it: the scorecard site adds it).")
     if a.site or a.ceilings_only:   # each player's pooled ceiling, and one per night (night_rows) the site prefers
-        nights = night_rows(job, pulls, a.width, more)
+        nights = night_rows(job, [p for p in pulls if not codes or p["code"] in codes], a.width,
+                            [p for p in more if not codes or p["code"] in codes])
         for r in nights: print(f"  {r['name']:20} {r['code']}  {r['pulls']:3} pulls  {r['gcd']:.2f}  dmg/pot {r['k']:6.2f}  ceiling {r['ceiling']:8,.0f}")
         saved = json.loads(SITE_FILE.read_text()) if SITE_FILE.exists() else {}
-        saved[jobname] = {r["name"]: dict(ceiling=round(r["ceiling"]), gcd=r["gcd"], pulls=r["pulls"], rotation_key=r["key"],
-                                          nights={n["code"]: dict(ceiling=round(n["ceiling"]), gcd=n["gcd"], pulls=n["pulls"], rotation_key=n["key"])
-                                                  for n in nights if n["name"] == r["name"]})
-                          for r in rows}
+        night = lambda n: dict(ceiling=round(n["ceiling"]), gcd=n["gcd"], pulls=n["pulls"], rotation_key=n["key"])
+        new = {r["name"]: dict(ceiling=round(r["ceiling"]), gcd=r["gcd"], pulls=r["pulls"], rotation_key=r["key"],
+                               nights={n["code"]: night(n) for n in nights if n["name"] == r["name"]}) for r in rows}
+        if codes:   # merged in: these players' other nights stay, and so does everyone else
+            cur = saved.get(jobname, {})
+            for name, x in new.items():
+                x["nights"] = {**{c: v for c, v in cur.get(name, {}).get("nights", {}).items() if c not in codes}, **x["nights"]}
+                cur[name] = x
+            new = cur
+        saved[jobname] = new
         SITE_FILE.parent.mkdir(exist_ok=True)
         SITE_FILE.write_text(json.dumps(saved, indent=1, ensure_ascii=False))
         print(f"\nsaved {len(rows)} ceilings ({len(nights)} nights) to {SITE_FILE}")

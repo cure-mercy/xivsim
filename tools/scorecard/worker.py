@@ -10,12 +10,14 @@ Every POLL seconds it reads the list and, for each row:
   pulls). FFLogs has no webhooks or subscriptions, so this is polled. When it has grown, the report is downloaded and
   analysed again. Watching stops at live_until, which the database caps at 12 hours after it was set, and earlier when
   the log has had nothing new for IDLE_STOP.
-After any change it writes data.json (build_site.finish) and uploads what changed (supa.upload). A failed build puts
+After a build it refreshes the rotation ceilings of the built reports' players (refresh_ceilings: tools/rotation/dps.py
+for just those reports, then build_site.apply_ceilings). After any change it writes data.json (build_site.finish) and
+uploads what changed (supa.upload). A failed build puts
 its error on the row for the admin page. Every SEARCH_POLL seconds it also answers the admin page's searches for a raid
 day's P12S reports on FFLogs (report_searches, see search). The keys come from .supabase (or SCORECARD_SUPABASE), as for
 supa.py.
 """
-import argparse, datetime, json, sys, time, traceback
+import argparse, datetime, json, subprocess, sys, time, traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -28,6 +30,9 @@ IDLE_STOP = 90 * 60  # s without a new event in a live log before watching stops
 SEARCH_POLL = 5      # s between looks for a search the admin page asked for
 ZONE = 54            # Anabaseios, the zone FFLogs files P12S reports under
 UTC = datetime.timezone.utc
+DPS = Path(__file__).resolve().parents[1] / "rotation" / "dps.py"
+CEILINGS_TIMEOUT = 30 * 60   # s for dps.py's refresh of a build's ceilings (about 4 minutes for a report's jobs in WSL)
+CEILINGS_DUE = set()         # reports built while watched live, whose ceilings wait for the watch to end (lost on a restart)
 
 
 def when(s):
@@ -89,11 +94,39 @@ def step(bench):
                 patch(code, state="error", message=(str(ex) if plain else f"{type(ex).__name__}: {ex}")[:500], **({"segments": log["segments"]} if log else {}))
                 supa.audit("build failed", code, dict(why=why, message=str(ex)[:300]), by="worker")
                 if not plain: traceback.print_exc()
+        # ceilings for what was built, except reports still watched live (rebuilt every few minutes while they grow): those
+        # wait in CEILINGS_DUE and are refreshed once, when the watch has ended
+        live_now = {r["code"] for r in rows if r["live_until"] and when(r["live_until"]) > now}
+        CEILINGS_DUE.update(c for c in done if c in live_now)
+        due = sorted({c for c in done if c not in live_now} | {c for c in CEILINGS_DUE if c not in live_now})
+        due = [c for c in due if c in site["reports"]]
+        CEILINGS_DUE.difference_update(set(due) | {c for c in CEILINGS_DUE if c not in site["reports"]})
+        if due and refresh_ceilings(site, bench, due): done += [c for c in due if c not in done]   # written and uploaded below
         if done:
             build_site.finish(site, bench)
             supa.upload(build_site.fragments(site))
         for code in gone: supa.call("DELETE", f"/rest/v1/report_sources?code=eq.{supa.q(code)}")
     return done
+
+
+def refresh_ceilings(site, bench, codes):
+    """The rotation ceilings of these reports' players, without the rest: dps.py --job auto --ceilings-only --reports
+    re-measures their nights in these reports and their pooled ceilings (each job in its own process; everyone else's
+    stay as saved), and apply_ceilings puts them on the site without analysing again. dps.py reads data.json, so that
+    is written first. A failure leaves the ceilings as they were and goes into the audit log. Returns whether it worked."""
+    build_site.finish(site, bench)
+    t0 = time.time()
+    try:
+        subprocess.run([sys.executable, str(DPS), "--job", "auto", "--ceilings-only", "--reports", ",".join(codes)],
+                       check=True, timeout=CEILINGS_TIMEOUT, capture_output=True, text=True)
+    except Exception as e:
+        tail = (getattr(e, "stderr", None) or "").strip().splitlines()[-3:]
+        print(f"ceilings for {', '.join(codes)} failed: {e}", *tail, sep="\n", file=sys.stderr)
+        supa.audit("ceilings failed", ",".join(codes), dict(message=" | ".join([str(e)] + tail)[:300]), by="worker")
+        return False
+    build_site.apply_ceilings(site)
+    supa.audit("ceilings refreshed", ",".join(codes), dict(seconds=round(time.time() - t0)), by="worker")
+    return True
 
 
 def search(day, names):
