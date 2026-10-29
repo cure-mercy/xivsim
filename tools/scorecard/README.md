@@ -278,14 +278,14 @@ wipe called) counted after it when there are more of them; Raid leader focus lea
 | Page | What it shows |
 |---|---|
 | Players | Every player across the raid days, the most recent first, with a search box: jobs, nights, pulls, mistakes and wipes per pull over all of them, mistakes per pull on their latest night, which links to their page there. On the hosted site it reads each report's `people` (`build_site.progress_of`), so it needs no full records |
-| Raid days | Tiles: pulls, best pull, furthest seen (the longest pull, the mechanic it reached, its day, group and pull), latest day, mistakes per pull; the burndown; trends across days (how far pulls got, pulls clean through each mechanic, mistakes per pull and per minute, damage lost to mistakes, party DPS against the clears) and a table of days |
-| Day | The day's groups side by side, each group's boss HP checkpoints, and heatmaps of all mistakes and of what wiped each group (rows named by mechanic, see below) |
+| Raid days | Tiles: pulls, best pull, furthest seen (the longest pull, the mechanic it reached, its day, group and pull), latest day, mistakes per pull; the burndown; trends across days (how far pulls got, pulls clean through each mechanic, mistakes per pull and per minute, damage lost to mistakes, party DPS against the clears, pull pacing), the night in thirds and a table of days |
+| Day | The day's groups side by side, their boss HP checkpoints in one chart (a block of rows per mechanic, a row per group), and heatmaps of all mistakes and of what wiped each group (rows named by mechanic, see below) |
 | Group | The player scorecard; every pull's length with its first mistake and what lost it; boss HP checkpoints; damage lost to deaths, by player and by cause; every player's damage per phase against clearers; heatmaps of mistakes and wipes by player |
 | Rotations | The optimizer's rotations (`#/rotations`, linked in the header): a chart and a table of every job it covers, then each job's GCDs and each GCD's rotation on the fight timeline (see Rotation ceiling) |
 | Gear | The best-in-slot sets (`#/gear`, linked in the header): a table of each job's set and, per job, the set drawn like the game's character window with its DPS per GCD tier (see Best-in-slot gear) |
 | Player | Mistakes per pull and wipes (each counting the player's share of the mistake, with their counts by confidence), damage and opener damage against clearers, uptime, what one death of theirs costs (time dead plus the full Weakness at their rDPS, as boss HP, kill time and against the group's mistake budget); damage per phase; mistakes by cause (one bar each: dark red for the mistake that lost the pull, red for other deaths, orange for Damage Downs; wipes put on them without a recorded mistake of theirs count only in Wipes caused); rDPS on every clean pull, with the rotation ceiling for jobs the optimizer covers and how far their pulls are from it, linking to its rotation (see below); every mistake with its pull, time and confidence; every death with its pull and time, the hit that killed them, the classifier's cause and the culprit (self, another player, or none found) with its confidence, marked when it decided the wipe or came after it, or saved the pull: in green, a death before the pull was lost holding what would otherwise have lost it, so far a Superchain I tower held in its Strong Soul's place (`death_list` on each pull, `saved`), and a ↗ link to FFLogs' Deaths view for them over the whole mechanic it happened in, or on to the death when that came later (from the report's `start_ms` and `actors` and the benchmark's `mech_end`); the player across raid days (mistakes per pull and per minute in pulls) |
 
-The player page's "What their mistakes cost" card (boss HP lost to deaths they caused, by cause) is hidden for now: set `SHOW_MISTAKE_COST` in `site/app.js` to `true` to bring it back.
+The player page's "What their mistakes cost" card (boss HP lost to deaths they caused, by cause) and the group page's "What each player's mistakes cost" are hidden for now: set `SHOW_MISTAKE_COST` in `site/app.js` to `true` to bring them back.
 
 Wherever a mistake is named (the mistake and wipe heatmaps, Raid leader focus, a player's Work on this, Mistakes by cause and top issues), it starts with the major mechanic it happened in, in the short form of How far pulls get, then the mistake: "SC I: Orange cone overlap", "Para II: Soul tower in the wrong quadrant". A mistake that happens in several mechanics gets a row for each (Trinity of Souls in Para I, Dialogos and SC I). Labels that already name the mechanic don't repeat it. The stored labels are unchanged; the names are made when the page draws (`causeName` in `site/app.js`).
 
@@ -489,6 +489,14 @@ uptime in the phase against clearers of the role.
   mechanic, as on tomestone.gg; above it the pull count, hours in combat and best pull. Pulls with The Echo are drawn
   but not counted for the best.
 - **How far pulls get** (overview): the share of each day's pulls that reached each mechanic.
+- **Pull pacing** (overview, and an In combat tile on day and group pages): time in combat against the raid time (a
+  group's first pull to the end of its last; a day adds its groups up), the median reset between pulls (one pull's end to
+  the next one's start; breaks of 5 minutes or more, `BREAK_S`, left out of it and counted apart) and pulls per hour,
+  from the pulls' start times (`at`). Our share went from 23-46% on the first raid day to 52-61% by 28 Oct.
+- **Through the night** (overview): each group's pulls of a night in thirds by pull order, all nights together:
+  mistakes per player per minute in pulls (counted as the trend charts count them), with the average pull and mistakes
+  per pull. Over the first nine raid days the first third had the most (0.23 against 0.13 in the last), in the early
+  and the later raid days alike: warming up costs pulls.
 - **Where pulls ended** (group page): pulls that ended between each pair of mechanics, by pull length; the longest
   bar is the wall.
 - **Their top issues** (player page, Across raid days): their three most frequent mistakes and their costliest
