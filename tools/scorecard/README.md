@@ -160,8 +160,8 @@ the browser and never reaches the server.
 - **Reports.** Add a report by its FFLogs link or code, with its group name (G1, G2, …; empty takes the day's next
   free one). For each report there are buttons to rename its group, rebuild it from a fresh download, watch it live,
   or remove it. Each row shows the state the worker reports: queued, building, ok, or error with FFLogs' message.
-  The list refreshes every 15 seconds, except while a field is being edited. It sits beside the search on wide screens,
-  shows the two newest raid days (and anything queued, building or failed), older ones behind a button, and links each
+  The list refreshes every 15 seconds, except while a field is being edited. The list and the search are tabs, the
+  list open first. It shows the two newest raid days (and anything queued, building or failed), older ones behind a button, and links each
   built report to its page on the site.
 - **Accounts.** Logins waiting for approval (approve as staff, or remove), and staff and admins (make or remove admin,
   revoke staff access, remove the account).
