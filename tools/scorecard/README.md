@@ -169,7 +169,11 @@ the browser and never reaches the server.
 
 The analysis runs in Python, not in the browser or the database, so the page only edits a list (`report_sources`).
 `worker.py` builds what the list asks for. It reads the list every 30 seconds, analyses new, renamed and rebuilt
-reports with the same functions as `build_site.py`, removes what was removed, writes `data.json` and uploads. A
+reports with the same functions as `build_site.py`, removes what was removed, writes `data.json` and uploads. After a
+build it refreshes the rotation ceilings of the built reports' players (`refresh_ceilings`: `dps.py --job auto
+--ceilings-only --reports`, about 4 minutes for a report in WSL, then `build_site.apply_ceilings`; the audit log says
+"ceilings refreshed" or "ceilings failed"). A report watched live waits until its watch ends and is refreshed once then
+(the worker keeps that in memory, so a restart in between leaves it on the pooled ceilings until its next build). A
 build from the command line also keeps the list in step: reports it adds appear there, and reports it removes leave.
 `site_lock()` (`site/.build.lock`) keeps the worker and a command-line build from writing `data.json` at the same time.
 
@@ -460,7 +464,7 @@ formulas; our Black Mages' gear falls 0.38% per 0.01 s). The range is the same o
 players plays (Ninja) gets its rotations too, at the GCDs of the benchmark clears' players on it since the job's
 `CONVERT_SINCE`, and expected DPS converts at theirs; the pages say so, and no player page links there.
 
-**Refreshing them**: after a raid day, `python tools/rotation/dps.py --job blm --ceilings-only` for each job gives its players' ceilings for the new nights (seconds a job); `python tools/rotation/dps.py --job blm --site` (and `--job rpr`, `--job drg`, ...; `--offline`
+**Refreshing them**: the worker refreshes a built report's ceilings itself (see The admin page and the worker); by hand, `python tools/rotation/dps.py --job auto --ceilings-only --reports <code>,<code>` redoes only what those reports touch (their players' nights in them and those players' pooled ceilings, every job of theirs in its own process), and `build_site.py --ceilings` puts `ceilings.json` on the site without analysing again; `--job blm --ceilings-only` alone redoes a whole job; `python tools/rotation/dps.py --job blm --site` (and `--job rpr`, `--job drg`, ...; `--offline`
 converts from the acts caches when FFLogs is down, and the pages say so; `--gcds 2.30,2.40` adds GCDs none of our
 players has; `2.48/2.15` names the hasted GCD where a tier holds two, as Samurai's, Viper's and Black Mage's can, and
 `-cNN` the crit rate in percent it is searched at, `2.45-c28`, for Monk, whose chakra comes from crits), then
