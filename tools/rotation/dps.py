@@ -1,6 +1,6 @@
 """Turns the optimizer's potency into DPS for each of our players on a job, comparable with the scorecard's 0:00-2:00 rDPS.
 
-    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch|nin|smn|dnc] [--clears] [--site [--gcds 2.30,2.40]] [--offline]
+    python tools/rotation/dps.py [--job blm|rpr|mnk|brd|drg|rdm|vpr|sam|pct|mch|nin|smn|dnc] [--clears] [--site [--gcds 2.30,2.40] | --ceilings-only] [--offline]
                                  [--no-polish] [--restarts]
 
 Per player, from their clean pulls (alive through 2:00):
@@ -29,7 +29,8 @@ it. The rotation stays the one unbuffed optimum. 0:00-2:00 is played with our st
 the Paradeigma I slot of the job's role with the most running before Palladion (R1 / R2, or M1 / M2) and each mechanic's
 variant with the most, so the rotation holds whichever the player is given.
 
---site writes each of our players' ceiling to .cache/ceilings.json, and the optimized rotations behind them, one per GCD
+--site writes each of our players' ceiling to .cache/ceilings.json (pooled over their nights, and per night from that
+night's own pulls where it has NIGHT_PULLS or more: gear changes over the season; --ceilings-only writes just these), and the optimized rotations behind them, one per GCD
 (plus any --gcds), to .cache/rotations.json with the fight's timeline (mechanics, runs, out of reach), where the
 scorecard's build_site.py picks both up. The site's rotations are a second search per GCD, over the whole phase (to
 the clears' median kill, FULL), shown and scored up to where our groups' progress reaches, Palladion taking Athena away
@@ -307,6 +308,36 @@ def player_rows(job, pulls, width, more=()):
     return rows
 
 
+NIGHT_PULLS = 3   # a night's own ceiling needs this many clean pulls; with fewer the player's pooled one stands for it
+
+
+def night_rows(job, pulls, width, more=()):
+    """Per player and night (report code), the ceiling at that night's own conversion and GCD: gear changes over the
+    season (a player 16% behind the clears one night and 5% the next), so one conversion pooled over all their nights
+    fits none of them. Nights with fewer than NIGHT_PULLS clean pulls (or 10 plain hits) are left out."""
+    by, extra = collections.defaultdict(list), collections.defaultdict(list)
+    for p in pulls: by[p["name"], p["code"]].append(p)
+    for p in more: extra[p["name"], p["code"]].append(p)
+    rows, keys, keep = [], [], job.SPEED
+    skip, sure = getattr(job, "AUTO_CRIT", ()), no_sure(job)
+    for (name, code), ps in sorted(by.items()):
+        hits = [h for p in ps for h in calibrate.plain_hits(p, WINDOW + 5)]
+        if len(ps) < NIGHT_PULLS or len(hits) < 10: continue
+        k = st.median(v / m for _, _, v, m in hits)
+        e0 = crit_gain(ps + extra[name, code], unbuffed=True, skip=skip, sure=sure)
+        et0, ec0 = tick_gain(ps, unbuffed=True) or e0, sure_gain(job, ps, k, unbuffed=True)
+        own = natural_crit(ps, skip, sure) if hasattr(job, "CRIT") else None
+        speed = player_speed(job, ps)
+        gcd = calibrate.gcd_at(job, speed)
+        keys.append(ceiling_key(job, gcd, own, speed=speed))
+        rows.append(dict(name=name, code=code, pulls=len(ps), gcd=gcd, k=k, e0=e0, et0=et0, ec0=ec0,
+                         key=rot_key(round(gcd, 2), round(own, 2) if own is not None else None, calibrate.hasted_label(job, speed))))
+    job.SPEED = keep
+    ceilings(job, width, keys)
+    for r, key in zip(rows, keys): r["ceiling"] = convert(_ceiling[key], r["k"], r["e0"], r["et0"], r["ec0"])
+    return rows
+
+
 CAST_NOTE = re.compile(r"(\d+(?:\.\d+)?)s cast")     # a hard cast in the history's note: "2.00s cast"
 DASH_NOTE = re.compile(r"dash (\d+(?:\.\d+)?)s")        # running a dash saved (Red Mage): "dash 1.30s"
 
@@ -452,6 +483,8 @@ def main():
                     "can drop them once no set is at that GCD (scratch/gear/rerun_all.py)")
     ap.add_argument("--offline", action="store_true", help="our players' logs from the scorecard's acts caches, not FFLogs "
                     "(logs.ours_offline, flag_hits): for when FFLogs is down; 'logged' then misses the hits left out")
+    ap.add_argument("--ceilings-only", action="store_true", help="save our players' ceilings (pooled and per night) for the "
+                    "scorecard site without searching the site's rotations again (those stay as they are)")
     ap.add_argument("--no-polish", action="store_true", help="skip the local search on each search's best rotation (polish.py)")
     ap.add_argument("--restarts", action="store_true", help="polish with restarts (the rest of the fight searched afresh from "
                     "points along the rotation): ~0-1%% more, 2-15 minutes a whole-phase search")
@@ -468,12 +501,18 @@ def main():
           "  rDPS/best: scorecard median / best of the clean pulls; replay: their casts through the model, at gain;\n"
           "  logged: their damage with others' buffs divided out; ceiling: best unbuffed rotation at their GCD, at unbuf\n"
           "  (a raid buff's credit for the others' damage, which rDPS includes, is not in it: the scorecard site adds it).")
-    if a.site:
+    if a.site or a.ceilings_only:   # each player's pooled ceiling, and one per night (night_rows) the site prefers
+        nights = night_rows(job, pulls, a.width, more)
+        for r in nights: print(f"  {r['name']:20} {r['code']}  {r['pulls']:3} pulls  {r['gcd']:.2f}  dmg/pot {r['k']:6.2f}  ceiling {r['ceiling']:8,.0f}")
         saved = json.loads(SITE_FILE.read_text()) if SITE_FILE.exists() else {}
-        saved[jobname] = {r["name"]: dict(ceiling=round(r["ceiling"]), gcd=r["gcd"], pulls=r["pulls"], rotation_key=r["key"])
+        saved[jobname] = {r["name"]: dict(ceiling=round(r["ceiling"]), gcd=r["gcd"], pulls=r["pulls"], rotation_key=r["key"],
+                                          nights={n["code"]: dict(ceiling=round(n["ceiling"]), gcd=n["gcd"], pulls=n["pulls"], rotation_key=n["key"])
+                                                  for n in nights if n["name"] == r["name"]})
                           for r in rows}
         SITE_FILE.parent.mkdir(exist_ok=True)
         SITE_FILE.write_text(json.dumps(saved, indent=1, ensure_ascii=False))
+        print(f"\nsaved {len(rows)} ceilings ({len(nights)} nights) to {SITE_FILE}")
+    if a.site:
         conv = rows
         if not rows:     # none of our players on the job: the rotations convert at the benchmark clears' players instead
             since = getattr(job, "CONVERT_SINCE", job.LOGS_SINCE)
@@ -488,7 +527,7 @@ def main():
         rots = json.loads(ROT_FILE.read_text()) if ROT_FILE.exists() else {}
         rots[jobname] = mine
         ROT_FILE.write_text(json.dumps(rots, indent=1, ensure_ascii=False))
-        print(f"\nsaved {len(rows)} ceilings to {SITE_FILE} and {len(rots[jobname]['rotations'])} rotations to {ROT_FILE}")
+        print(f"saved {len(rots[jobname]['rotations'])} rotations to {ROT_FILE}")
     if a.clears:
         days = {(k["code"], k["fight"]): k["day"] for k in json.loads(logs.BENCH.read_text())["kills"]}
         cl = [p for p in logs.clears(jobname) if days[(p["code"], p["fight"])] >= job.LOGS_SINCE]
