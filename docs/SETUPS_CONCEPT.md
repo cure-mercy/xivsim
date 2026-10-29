@@ -757,7 +757,18 @@ Answered on 2026-10-29; the sections above follow them.
 ### Still open
 
 - **5. The bot application** and who is on its team: after the site has been pitched to the server owner.
-- **6. The hosting provider** for the server. The bots' rented server from the handover is a candidate.
+- **6. The hosting provider** for the server. The bots' rented server from the handover is a candidate. Options
+  compared on 2026-10-29, for one host with the site, the database (self-hosted Supabase: 4 GB RAM minimum, 8 GB
+  recommended), the worker and the Discord jobs:
+
+  | Host | Plan | Per month | Notes |
+  |---|---|---|---|
+  | Strato (where the bots' VM already is) | VPS L: 4 vCores, 8 GB, 240 GB NVMe | €20 incl. VAT | German provider; root and Docker; same account and Ko-fi payment as the bots' VM |
+  | netcup | VPS 1000 G12.5: 4 vCores, 8 GB, 128 GB | about €17 incl. VAT (12-month term) | German provider, data centres in Nuremberg, Vienna, Amsterdam |
+  | Hetzner Cloud | CPX32: 4 vCPU, 8 GB | €36 excl. VAT | EU plans not orderable at the time; prices rose up to threefold in 2026 |
+  | Supabase Pro (Frankfurt) plus a small VPS | managed database, auth, daily backups, no pausing | about €23 plus about €10 | No database upkeep; two providers |
+
+  On one host, the backups have to leave the machine: a nightly dump to separate storage.
 - **19. The existing data**: Crystal Exarch's saved texts and images, the Django application's database, and the other
   code base's database (a dump from February 2026 is in the Drive). Who owns that code now, per the handover sheet,
   and is any of it still maintained?
