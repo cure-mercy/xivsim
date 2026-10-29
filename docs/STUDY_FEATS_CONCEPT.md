@@ -75,8 +75,8 @@ those rules now point at `#REF!` and no longer work.
 | Badges | All Extremes of an expansion: +6. All its Savage: +12. Both: an Expansion badge (+6), and the two reset to be earned again in the next tier. Story arc: Zodiark (all ARR–EW Extremes, +6), Hydaelyn (all ARR–EW Savage, +12), Starbird (both, +6), each with a unique freeze. BLU: a mask badge per expansion (+9) and the Morbol combo for ARR and HW (+6). Earned in the course or in a study group |
 | Cakeday | The *n*th anniversary of the first `#campus` post gives 3·*n* Exp ("active players") |
 | Promotions | See below |
-| Demotion | A student inactive for more than half a year becomes a Visitor and gets the old rank back on returning; a DM explains it |
-| Inactive | No participation for 9 months and no study group points: marked inactive |
+| Demotion | An Initiate with at most one participation in the last six months and no study group Exp becomes a Visitor (the Demotion Guide, May 2026); a DM explains it, and the old rank comes back on returning. An older helper sheet (2023) applied it to every student rank |
+| Inactive | No participation for 9 months and no study group points: marked inactive. The June 2026 update neither listed their cakedays nor updated their profiles, though the sheet still adds their cakeday Exp |
 | Alumni cleanup | The `@Alumni` role is removed by rank and months away (Cleanup guide) |
 | Study group Exp | Decision 24 in SETUPS_CONCEPT.md: the Drive guide's per-expansion amounts or the archive guide's 2/4/6 for 2–4/5–8/9–12 kills |
 
@@ -229,6 +229,52 @@ Phase 1 changes the data model of SETUPS_CONCEPT.md a little:
 - A `feat_rules` table holds the thresholds.
 - A `feat_roles` table maps each feat to its Discord role.
 
+## Phase 0 as built (2026-10-29)
+
+`#/feats` on the MVP branch (`claude/setups-mvp-712822`, not merged), described in `tools/scorecard/README.md` under
+"Study feats (phase 0)". A staff member picks a credits workbook export; the browser reads it and shows the month's
+posts, promotion candidates with each criterion, the members' month, the cells to change in the sheet, the role
+changes per member, and the rows that don't add up. Each open question below is a setting on the page, defaulting to
+what the sheet does today.
+
+Checked on real data:
+
+- **The export of 29 October.** Exp is recomputed from its parts, and it equals the sheet's for every member. The
+  exception is the one with the 1969 cakeday.
+- **The copy staff made on 8 June 2026.** Its month was replayed:
+  - Every member promoted that day meets the criteria for their new rank.
+  - 61 of the 76 members on that update's profile list come out as level-ups, and 12 of the other 15 had badges or
+    study group Exp entered during the update.
+- **Dormant members.** The June update skipped the cakedays and profiles of members away for over a year (83 that
+  month). So the page leaves out members without a participation for 9 months, the workflow's "inactive", and still
+  counts their Exp.
+
+What the earlier code left behind:
+
+- **The Django application and the other code base aren't reachable.** Neither repository is public any more.
+- **The February 2026 database dump.** It holds the sheets' data, not study feats: members, characters, monthly
+  credits, duty clears with a reclear tier. Its duty list says which duties count toward a badge:
+  - All Extremes and Savage turns of each expansion count, the Second Coil included.
+  - Unreals, Urth's Fount, Cape Westwind and The Great Hunt (Extreme) don't.
+  - Clear kinds: MIL, MIL Echo, Sync, Sync Echo, Normal MIL, Progress, eligible for reclear.
+
+  That is the list phase 1 needs to find badges from clears. The dump also holds an API keys table, and like the
+  service account file it sits in a shared Drive folder.
+- **A role list from December 2024** in the same Drive folder. It answers most of question 7:
+  - a role per study level ("[Level 24] Natural Snake"; past 48 "[Level Cap] Sun" and "Star");
+  - Exp as digit roles ("x 1k", "x 600", "x 10", "x 3");
+  - regular and unique streak freeze count roles;
+  - badge roles per expansion with a count (Extremes, Raid, Composite);
+  - story arc, BLU, cakeday (1–5) and anniversary roles.
+
+Not in phase 0:
+
+- Badges, which the export can't show as new. Staff add them to the post by hand.
+- Staff ranks.
+- The anniversary event.
+- The weekly average of the monthly update. Participations ÷ (raid days ÷ 4) gives 192 for March 2026, where the April
+  post says 196.67, so its definition is a question.
+
 ## Questions for staff
 
 1. **Exactly 75%**: tier 6 (as the sheet computes) or tier 5 (as the post says, "over 75%")? It happens about 3 times a
@@ -238,14 +284,14 @@ Phase 1 changes the data model of SETUPS_CONCEPT.md a little:
    matches all 37 promotions checked.
 4. **Streaks**: does a month with 1 participation use a freeze (as the new workflow's filter says), and do `SG`, `B`
    and `BT` months count as active, as weak, or not at all? What do `B` and `BT` mean?
-5. **Cakeday**: only for members active that month ("all the following active players") or for everyone, as the
-   formula does?
+5. **Cakeday**: the formula counts it for everyone; the June update listed it only for members active in roughly the
+   last 9 months. Is "not marked inactive" the rule?
 6. **The join date**: is the first post in `#campus` the cakeday on purpose, or would Discord's server join date (which
    the bot can read) do? It's the one input that needs a manual search today.
-7. **Profiles**: which Discord roles make up a profile? Rank, level, badges, the streak freeze count and the separator
-   roles; is that the full list? This becomes the `feat_roles` table.
-8. **Promotion dates after June 2026**: were there promotions on the Promotion Mondays since July, and where are their
-   dates kept?
-9. **The Django application**: does it still run, and does it compute anything this concept should match (its
-   streak list, for example)? This is part of decision 19.
-10. **Phase 0 first?** It helps with the next Promotion Monday, before anything else of the site exists.
+7. **Profiles**: is the December 2024 role list (above) still the current set, and what are the Dawntrail badge roles
+   called? This becomes the `feat_roles` table.
+8. **Promotion dates**: the column keeps only the latest promotion, so earlier ones are lost (several June promotions
+   now show a later date). Should the site keep each promotion with its date?
+9. **The Django application**: does it still run, and who has its code? This is part of decision 19.
+10. **The weekly average** in the monthly update: how is it counted?
+11. **Phase 0 on the next Promotion Monday** (9 November): run it next to the usual update and compare?
