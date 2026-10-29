@@ -599,6 +599,79 @@ the staff templates, role changes, and the monthly update post.
 Each step works on its own: after step 1 staff post entries from the site, after step 2 they look things up there.
 Step 5 could come right after step 1 if prepared entries matter more than setups.
 
+## From the staff Drive (2026-10-29)
+
+The staff Google Drive (about 40 documents read: events, staff meetings, difficulty rankings, the staff members'
+folders) adds the following. The file ids are in the git-ignored `scratch/setups/drive-survey.md`.
+
+**Infrastructure.** A handover sheet (May 2026) assigns the bot's GitHub repository, its rented server, Ko-fi, the
+Discord server and the Drive to new owners. A second code base exists as well: a repository with a server, a database
+and a bot that imports both sheets, calculates badges and writes the badge roles, last used for a sheet integrity
+check in September 2026. A PostgreSQL dump of its database from February 2026 is in the Drive. The archive server's
+bot hosting ended in August 2026, and the `sync.guide` domain with its link shortener in October 2026, so links in the
+staff guides may be dead. The rented server could be where the site's server runs (decision 6).
+
+**Data the import can use** (from the live sheets; the Drive also holds about a dozen dev copies and snapshots,
+which the import ignores):
+
+| Source | Gives the site |
+|---|---|
+| Kills logs, one sheet per progression season, a tab per duty, a column per raid date (`K` kill, `-` progress, `0` absent) | Dated clears and progress nights for the Wednesday/Sunday series: the history the study history sheet lacks, and the input for the progress-speed part of the strength score |
+| Duty star ratings: a staff survey (2025; 26 Extreme and 24 Savage answers, votes 0–5) turned into 1–5 stars (0.8 × mean + 1) for 117 duties | `duties.stars` on the 1–5 scale; the decimal means can rank "hardest cleared" finer. Ultimates, Unreals, normal, alliance and BLU duties have no rating |
+| The rotation working sheet, seasons 1–11 | The rotation plans, with planned against actual weeks |
+| Community Choice vote sheets (four voting days per weekend; votes and unique voters per category) | What a Community Choice slot became |
+| The duplicate checker's duty list | Name aliases for `duties` |
+| The credits sheet's hidden `Setup` tab | The couples and friends list |
+
+The Drive connector can read these sheets directly, so later imports can pull from Drive instead of `.xlsx` exports
+(read-only, through a Google service account or the staff account; not in the MVP).
+
+**Calendar and plans.**
+- A weekslot can be extended (`4(e)`, `2(2xe)`: the same duties another week) or split (`3.1`, `3.2`: one duty over
+  several weeks), and each season part gives each day a theme (for example "Friday: ARR & ShB"). `plan_slots` needs an
+  "extend" action besides "done", and the plan keeps planned and actual weeks.
+- Community Choice weekends follow a four-day vote; a CC slot can link to its vote sheet.
+- Raiding Seminars run six days over three weekends with fixed topics (fundamentals, basic mechanics, callouts,
+  positioning, timelines, modern savage), which can pre-fill the seminar entries.
+- The anniversary is around 27 November: an extended weekend with community events and a 24-hour raiding marathon
+  (duties earn medals, the medal total unlocks tiers of an anniversary badge). Special series, outside the plans.
+- Staff meeting, October 2025: current-content Extremes start synced and move to MIL if the group clears easily.
+
+**Setups and raid leading.**
+- Setups are made the day before (Tuesday for Wednesday, Thursday for Friday), by named setup creators with backups.
+- The staff meeting of October 2025 discussed an "anchor list" of players who need a strong group around them, a
+  raid-leader avoidance list, and a review of the couples and friends list. None of it is decided (decision 21).
+- The same meeting proposed that only active raiders make setups and calendar posts, which narrows decision 7
+  (decision 22).
+- The raid lead opens a private Party Finder named like `Syncademy <duty> Group N` 10–15 minutes before the start and
+  says so in the course thread; the site can prepare that line per group.
+- The screenshot post names the group number and difficulty, and leads sometimes note weak or exceptional players.
+  So informal ratings already happen; the rating option on the event page gives them a place.
+- A trainee is briefed before their first night on what they do (lead, explain, open the party, post the screenshot).
+  A separate Mentor role for staff who support weaker players is planned.
+
+**Participation and linkshells.**
+- Confirmed: backups present at the start count; three active strikes bench a member; 3 participations remove the
+  first strike, 5 the second.
+- The per-world linkshells are to be retired; only the cross-world linkshell stays. The "third participation →
+  linkshell invite" follow-up may then apply to the cross-world linkshell only, or go (decision 23).
+- How revokes are handled was on the agenda for a later meeting (October 2025) and may change.
+
+**Study feats** (the deferred project) gets its missing numbers:
+
+| Part | Rule |
+|---|---|
+| Raid activity | Per Syncademy month, against the month's raid days (without Sprout Monday and other events): over 75% +6 Exp, ≥ 62.5% +5, ≥ 50% +4, ≥ 37.5% +3, ≥ 25% +2, at least 2 participations +1 |
+| Cakeday | +3 Exp per year of membership |
+| Badges | Extreme Trials +6, Savage +12, Expansion +6; story-arc badges for all ARR–EW Extremes, all ARR–EW Savage, and both; BLU expansion badges and a BLU combo badge; Dawntrail badges for its trials and its raid tier. Ultimates, BLU and Dawntrail Extremes are not yet counted by the badge script |
+| Promotions | Six student ranks above Initiate with their own thresholds (participations over 3, 6 or 12 months, activity, badges with Savage ones, months since the last promotion, study group Exp), and two staff ranks |
+| Demotion | Any student rank inactive for more than half a year is demoted, and gets the old rank back on returning |
+| Study groups | The Drive guide gives up to +3 Exp for all Extremes of an expansion and up to +6 for a whole Savage tier, with smaller amounts for at least a third of the bosses; the archive guide gives 2/4/6 Exp for 2–4/5–8/9–12 kills. Which one is current is decision 24 |
+| Profiles | Exp and level are shown in members' Discord profiles; a monthly list says whose to update |
+
+`badges` needs kinds for story-arc, BLU and Dawntrail badges, and `members` keeps the previous rank for a demotion
+that is undone.
+
 ## MVP (started 2026-10-29)
 
 While the server owner considers the site, the first build covers what needs neither the bot nor the server:
@@ -680,6 +753,14 @@ Answered on 2026-10-29; the sections above follow them.
 ### Still open
 
 - **5. The bot application** and who is on its team: after the site has been pitched to the server owner.
-- **6. The hosting provider** for the server.
-- **19. Crystal Exarch's data**: whether the server owner can hand over the Django application's database and the
-  bot's saved texts and images, once the site is approved.
+- **6. The hosting provider** for the server. The bots' rented server from the handover is a candidate.
+- **19. The existing data**: Crystal Exarch's saved texts and images, the Django application's database, and the other
+  code base's database (a dump from February 2026 is in the Drive). Who owns that code now, per the handover sheet,
+  and is any of it still maintained?
+- **21. Anchor and avoidance lists**: should the setup proposal know players who need a strong group around them, or
+  pairs a raid lead shouldn't get? Only if staff decide to keep such lists; they are personal data.
+- **22. Who may make setups and calendar posts**: all staff (decision 7), or only staff who raid actively, as proposed
+  in October 2025?
+- **23. Linkshell invites**: with the per-world linkshells retired, does the third participation still lead to an
+  invite (to the cross-world linkshell), or does the follow-up go?
+- **24. Study group Exp**: the Drive guide (per expansion and Savage tier) or the archive guide (per kill count)?
