@@ -196,7 +196,7 @@ def find_reports(start, end, encounter, difficulty, zone, users=()):
     # 25 a page: 100 with the players is past the query size FFLogs allows
     q = '''query($z:Int,$u:Int,$s:Float,$e:Float,$p:Int,$enc:Int){reportData{reports(zoneID:$z,userID:$u,startTime:$s,endTime:$e,limit:25,page:$p){
         has_more_pages data{code title startTime endTime visibility owner{name} fights(encounterID:$enc){difficulty kill startTime friendlyPlayers}
-        masterData{actors(type:"Player"){id name server}}}}}}'''
+        masterData{actors(type:"Player"){id name server subType}}}}}}'''
     out = {}
     for z, u in [(zone, None)] + [(None, u) for u in sorted(set(users))]:
         page = 1
@@ -206,9 +206,10 @@ def find_reports(start, end, encounter, difficulty, zone, users=()):
                 f = [x for x in r["fights"] or [] if x["difficulty"] == difficulty]
                 if f and start <= r["startTime"] < end:
                     ids = {i for x in f for i in x["friendlyPlayers"] or []}   # in its P12S pulls, not the rest of the night
+                    # the Limit Break is a "Player" actor of its own ("Multiple Players", no server): not a player
                     out[r["code"]] = dict(code=r["code"], title=r["title"], start=r["startTime"], end=r["endTime"], owner=(r["owner"] or {}).get("name"),
                                           visibility=r["visibility"], pulls=len(f), kills=sum(1 for x in f if x["kill"]), at=[round((r["startTime"] + x["startTime"]) / 1000) for x in f],
-                                          players=sorted({(a["name"], a["server"] or "") for a in r["masterData"]["actors"] if a["id"] in ids}))
+                                          players=sorted({(a["name"], a["server"] or "") for a in r["masterData"]["actors"] if a["id"] in ids and a.get("subType") != "LimitBreak"}))
             if not d["has_more_pages"]: break
             page += 1
     return sorted(out.values(), key=lambda r: r["start"])

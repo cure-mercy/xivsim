@@ -152,7 +152,7 @@ the browser and never reaches the server.
 
 - **Find a raid day's reports on FFLogs.** Pick the day, and optionally characters to look for (`First Last`, or
   `First Last@World`, comma-separated). The worker lists that day's public P12S Savage reports, each with its pulls,
-  uploader and which of our players (anyone in a report on the site) were in its P12S pulls; characters looked for are
+  uploader and which of our players (anyone in a report on the site) were in its P12S pulls (of its players: FFLogs' Limit Break actor is left out); characters looked for are
   in bold, and those in none of them are named. A report already on the site or the list says so. One that repeats
   another's pulls (a second upload of the same night: half its pulls or more start within 5 seconds of the other's)
   says "same pulls as G3". The rest have a group field and an Add button, with Live ticked when the log's last pull is
