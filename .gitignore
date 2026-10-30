@@ -9,4 +9,5 @@ tools/gear/.cache/
 tests/blame_cases.json
 .supabase
 .supabase.local
+.discord_bot
 .PUBLISH_KEY
