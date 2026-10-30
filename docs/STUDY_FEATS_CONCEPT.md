@@ -70,15 +70,15 @@ those rules now point at `#REF!` and no longer work.
 |---|---|
 | Syncademy month | From a calendar month's second Monday to the day before the next one's |
 | Raid streak | Every 3 months in a row with at least 2 participations: 3 months +3, 6 +4, 9 +5, 12 +6, 15 +7, then +9 for every further 3 months (the post counts the "nth time"). Every 6 months of an ongoing streak add a streak freeze |
-| Streak freeze | A month with 0 or 1 participation uses one (regular before unique); the streak only ends when none are left. `SG`, `B` and `BT` months aren't active months (from the data, see below) |
+| Streak freeze | A month with 0 or 1 participation uses one (regular before unique); the streak only ends when none are left. `SG`, `B` and `BT` months aren't active months (from the data, see below). A cakeday while a streak runs adds a regular freeze, and regular freezes stop at 6; unique ones have no cap (the April 2022 announcement, confirmed by the sheet) |
 | Unique streak freeze | +1 for a promotion to Adept, Magister or Archon (the workflow says "Adept or higher", the template gives none for Prime and Eternal) and for each story-arc badge |
 | Badges | All Extremes of an expansion: +6. All its Savage: +12. Both: an Expansion badge (+6), and the two reset to be earned again in the next tier. Story arc: Zodiark (all ARR–EW Extremes, +6), Hydaelyn (all ARR–EW Savage, +12), Starbird (both, +6), each with a unique freeze. BLU: a mask badge per expansion (+9) and the Morbol combo for ARR and HW (+6). Earned in the course or in a study group |
-| Cakeday | The *n*th anniversary of becoming a Visitor gives 3·*n* Exp ("active players"). Not the server join: the time before finishing onboarding doesn't count (staff, 30 October 2026) |
+| Cakeday | The *n*th anniversary of becoming a Visitor gives 3·*n* Exp ("active players"). Not the server join: the time before finishing onboarding doesn't count (staff, 30 October 2026). Leaving and rejoining the server starts the count again (April 2022). Members marked inactive get no cakeday post and no profile update (staff, 30 October 2026) |
 | Promotions | See below |
 | Demotion | An Initiate with at most one participation in the last six months and no study group Exp becomes a Visitor (the Demotion Guide, May 2026); a DM explains it, and the old rank comes back on returning. An older helper sheet (2023) applied it to every student rank |
 | Inactive | No participation for 9 months and no study group points: marked inactive. The June 2026 update neither listed their cakedays nor updated their profiles, though the sheet still adds their cakeday Exp |
 | Alumni cleanup | The `@Alumni` role is removed by rank and months away (Cleanup guide) |
-| Study group Exp | Decision 24 in SETUPS_CONCEPT.md: the Drive guide's per-expansion amounts or the archive guide's 2/4/6 for 2–4/5–8/9–12 kills |
+| Study group Exp | Decision 24 in SETUPS_CONCEPT.md: the Drive guide's per-expansion amounts or the archive guide's 2/4/6 for 2–4/5–8/9–12 kills. The April 2022 announcement gives the Drive guide's version: Extremes 1/2/3 and Savage 2/4/6 Exp for taking part in up to a third, two thirds or all of the bosses killed, an Ultimate 4 |
 
 Promotion criteria (Promotion Monday template):
 
@@ -90,7 +90,7 @@ Promotion criteria (Promotion Monday template):
 | Archon | +24, unique freeze | ≥ 100 participations in the last 12 months, over 33% in at least 8 of them, over 50% in each of the last 2 months, ≥ 3 badges with ≥ 1 Savage |
 | Prime | +36 | ≥ 8 badges with ≥ 2 Savage, ≥ 15 months in tier 3 or higher averaging tier 4, 18 months since the last promotion, over 33% in each of the last 2 months |
 | Eternal | +48 | ≥ 16 badges with ≥ 4 Savage, ≥ 30 such months, 36 months since the last promotion, over 33% in each of the last 2 months |
-| Staff ranks | | A simulated student rank plus months on staff (two ranks) |
+| Staff ranks | | A simulated student rank until Prime and Eternal, which also need 24 and 60 months as a full staff member |
 
 Staff get their student ranks "simulated": staff are assessed by the same rules, and the post marks them so. A badge
 count includes Expansion badges as three: ARR's Extreme badge, its Coils badge and the full ARR badge make 3, not 2
@@ -132,6 +132,12 @@ Run on the workbook export of 29 October 2026 (1,224 members, 80 months) with th
   reproduces `S1`–`S6` for 1,169 members (95.5%). Without freezes it's 1,125. The other 55 have long streaks across
   months with one participation, or counts that predate the sheet's months. These are the cases staff would check once
   when the site takes over; they may be hand corrections or older rules.
+- **Streak freezes** (added 30 October): with the two freeze rules of the April 2022 announcement (a regular freeze
+  for a cakeday while a streak runs, at most 6 regular freezes), the replay gives the sheet's `SF` for 1,210 members
+  instead of 1,149, and for 148 of the 162 with a streak going instead of 84. `S1`–`S6` then match for 1,178. No
+  member has more than 6 regular freezes in the sheet, and 25 have exactly 6. Giving the cakeday freeze without a
+  running streak matches worse (1,130). In the checker the members whose streak counts differ from the replay drop
+  from 55 to 45.
 - **Promotions**: on the Promotion Mondays of March, April, May and June 2026, all 37 members promoted that day meet
   the criteria above, evaluated with the months up to that day. Only a handful of members who were not promoted meet
   them too (0–3 per rank and month; some may be staff, whose ranks are simulated).
@@ -147,7 +153,7 @@ Found along the way, each worth fixing whatever happens to the site:
 | One member's cakeday is `31.12.1969` instead of the placeholder `01.01.1970` | Cakeday points count 56 years: 4,788 Exp, and the level shows `#N/A` |
 | The tier 6 threshold is `≥ 75%`, the post says "over 75%" | 210 month cells sit at exactly 75% (12 of 16 raid days, for example). Staff confirmed the sheet: exactly 75% is tier 6, so the post's wording is what's off |
 | Cakeday years are 365-day blocks, not anniversaries | 3 members currently count a year early; the highlighting rules use 365, 730, 1095, 1460, 1826 days |
-| The BLU block has columns for the ARR and HW mask badges only | The SB (Red Mask) and ShB (Purple Mask) badges of the template aren't counted in Exp |
+| The BLU block has columns for the ARR and HW mask badges only | The SB (Red Mask) and ShB (Purple Mask) badges of the template, listed in the current post too, aren't counted in Exp |
 | The level table ends at 1344 Exp (level 56) | Fine for now (the highest real Exp is 1,035) |
 | The newest promotion date in the sheet is 8 June 2026 | Either nobody was promoted since, or the dates stopped being kept; promotions after June can't be checked |
 
@@ -230,6 +236,7 @@ Phase 1 changes the data model of SETUPS_CONCEPT.md a little:
   streak, freezes, badges earned, cakeday, Exp, level, rank before and after).
 - `badges` gets the story-arc, BLU and Dawntrail kinds.
 - `members` keeps the rank before a demotion.
+- `rank_changes` keeps every promotion and demotion with its date and who confirmed it (question 8).
 - A `feat_rules` table holds the thresholds.
 - A `feat_roles` table maps each feat to its Discord role.
 
@@ -279,6 +286,52 @@ Not in phase 0:
 - The weekly average of the monthly update. Participations ÷ (raid days ÷ 4) gives 192 for March 2026, where the April
   post says 196.67, so its definition is a question.
 
+## The April 2022 announcement
+
+"The Long Read - Study Trophies Rework" (a locked thread on the Syncademy server, 8 April 2022) introduced Study Exp,
+monthly activity tiers, raid streaks, streak freezes and Expansion badges. Read on 30 October 2026, against the sheet:
+
+Still true, and new to this concept:
+
+- **Cakeday freezes**: every cakeday gives a regular streak freeze. The sheet's `SF` shows it counts only while a
+  streak runs (see "Checked against the data"). The checker adds it.
+- **The freeze cap**: regular freezes stop at 6, unique ones have no cap. The sheet agrees, and the checker caps them.
+- **Rejoining**: a member who leaves and rejoins the server starts their cakeday count again.
+- **Study group Exp** as the Drive guide has it, plus 4 Exp for an Ultimate (see the rules table).
+- **Badge names**: ARR Comet (Extremes) and Dragon (Savage), HW Ishgard and Robot, SB Blood and Omega, ShB Wave and
+  Galaxy; Expansion badges use the MSQ symbols. Useful for question 7.
+- **Profiles**: the freeze count roles show only while a streak runs.
+
+Superseded since (the current post below and the sheet agree):
+
+- **Levels** were then 6 per moon tier at 6, 12, 18, 24, 30 Exp each. Today's tiers have 8 levels each.
+- **Activity tiers** were labelled 25/33/50/66/75% with "~4/~6/~8/~10/~12 of 16". Today they read 37.5% and 62.5%,
+  which are those counts.
+
+## The current post (September 2026)
+
+"Community Benefits - Details" (a thread on the Syncademy server, posted 15 September 2026) is the public description
+in force. It agrees with this concept on the month (2nd Monday to 2nd Monday), the activity tiers (25, 37.5, 50, 62.5,
+75%+), the raid streaks, and the freeze rules including the cakeday freeze and the cap of 6. It adds or settles:
+
+- **The level table**: tiers of 8 levels at 6, 12, 18, 24, 30, 36 Exp per level, up to level 48 at 1,008 Exp. These
+  are the thresholds the checker uses (its tests check 6, 48, 60, 144, 162, 288 and 1,008).
+- **Backups**: a member benched in a backup group of the preliminary setup who is still on voice at raid start gets
+  the participation.
+- **Badges**: EW is Moon (Extremes) and Panda (Savage). The story-arc badges each give a unique freeze. A study group
+  can earn badges for one expansion. BLU has badges for ARR, HW, SB and ShB: ARR and HW make the Morbol badge, SB and
+  ShB a combination badge not yet named. No Dawntrail badges are listed (question 7).
+- **Study group Exp**: for clearing at least two bosses and up to a third, two thirds or all of them, Extremes 1/2/3,
+  Savage 2/4/6, an Ultimate 4. This is the public rule for decision 24.
+- **Ranks**: the same criteria in short form ("2 months of high participation" for Adept). The role names are
+  "Archon Prime" and "Archon Eternal". An Initiate is made after the first participation.
+- **Staff ranks**: staff ranks are simulated until Prime and Eternal. Those also need 24 months as a full staff member
+  for Prime, and 60 in total for Eternal.
+- **Cakedays**: still "as a @Student" (question 13).
+- **The cross-world linkshell**: entry needs an active raid streak, more than one participation a week on average
+  over the last three months, and the top place on the waiting list (highest average over those three months). Each
+  linkshell has 64 slots, and members are checked periodically (decision 23 in SETUPS_CONCEPT.md).
+
 ## Answers from staff (30 October 2026)
 
 | Question | Answer | What it changes |
@@ -287,7 +340,9 @@ Not in phase 0:
 | 2. "Over 33% in the last 2 months": together or each? | Each month on its own | The checker tests each month. Taken to hold for "over 50%" (Magister, Archon) as well |
 | 3. An Expansion badge counts as three? | Yes: ARR's Extreme, Coils and the full ARR badge are 3 badges, not 2 | Nothing: the checker already counts this way |
 | 4. `SG`, `B`, `BT` months in streaks | `SG` means the member took part only in a study group that month. `B` and `BT`: not known, deduce them if possible | See below |
+| 5. Cakedays only for members not marked inactive? | Yes | The checker leaves members without a participation for 9 months out of the cakeday post and the profile updates as a fixed rule. Their Exp still counts their cakedays, as the sheet does |
 | 6. Is the `#campus` post the cakeday on purpose? | Yes: the cakeday counts from joining as a Visitor, not from joining the server, so the time before finishing onboarding doesn't count | See below |
+| 8. Keep each promotion with its date? | Yes | Phase 1 keeps a `rank_changes` table instead of one date column |
 | 11. Run phase 0 next to the update on 9 November? | Yes | See below |
 
 **Question 4, from the data.** The export of 29 October holds 21 `B` and 5 `BT` cells:
@@ -331,13 +386,13 @@ reads the month from the workbook as it stands, and an export taken afterwards a
 
 ## Questions still open
 
-5. **Cakeday**: the formula counts it for everyone; the June update listed it only for members active in roughly the
-   last 9 months. Is "not marked inactive" the rule?
 7. **Profiles**: is the December 2024 role list (above) still the current set, and what are the Dawntrail badge roles
-   called? This becomes the `feat_roles` table.
-8. **Promotion dates**: the column keeps only the latest promotion, so earlier ones are lost (several June promotions
-   now show a later date). Should the site keep each promotion with its date?
+   called? The current post lists badges up to EW only. This becomes the `feat_roles` table.
 9. **The Django application**: does it still run, and who has its code? This is part of decision 19.
 10. **The weekly average** in the monthly update: how is it counted?
 12. **`BT`**: does anyone remember what it stood for (perhaps from the time of the Azure & Omega chapter, 2022), and
     did such a month keep a streak going?
+13. **Cakedays for Visitors**: the public posts (2022 and September 2026) give cakedays to Students. The sheet counts cakeday Exp for
+    Visitors too (421 of them), and the checker lists an active Visitor's cakeday. Should Visitors get it?
+14. **One September streak** (row 124 of the export): a cakeday freeze would have carried this member's streak to 9
+    months in September, and the sheet ended it instead. Was the freeze missed, or does it not apply there?
