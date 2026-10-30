@@ -293,20 +293,35 @@ or the site reads the channel and matches the header (`#<number>:`) and the dest
 
 ## The setup process today
 
-From the Setup Creation guide and templates (the day before the raid):
+From the Setup Creation guide and templates (the day before the raid), and as the courses of October 2026 (#1408 to
+#1420) show it in `#course-organization`:
 
-1. Post "Setup Started" in `#course-organization` (`@Student I've started with the setup creation…`) and make a thread
-   of it named like `Course 814 - Wed. 03.01.2024`.
+1. Post "Setup Started" in `#course-organization` (`@Student I've started with the setup creation. Please ping me
+   here, if you sign up or revoke from now on =)`, from `#templates`) and make a thread of it named like
+   `Course 1420 - Fri. 30.10.2026`. While the setup is built, members post late signups, revokes and role changes in
+   the thread. The thread keeps the original message; the message in the channel is edited later.
 2. Copy the links of the two calendar posts and run `!parse_reactions` with them.
 3. Message every incomplete signup (roles but no confirmation; the confirmation is ✅ or a clock emoji for a specific
-   time) with the "Incomplete Signup" template.
+   time) with the "Incomplete Signup" template. In October 2026 staff pinged them in the course thread instead ("I see
+   you signed as a healer for tomorrow's raid, but you haven't reacted with the ✅", "You signed up with no roles for
+   TS2").
 4. Build balanced groups, **each with a raid leader in the first spot**, and copy them into the setup template.
-5. Screenshot the preliminary setup and post it in `#roster-history` as `03.01.2024 (BLU A1-4S & O12S)`.
-6. Edit the "Setup Started" message into the "Setup Template": time, both destinations with their knowledge
-   expectations, the image link, the notes.
-7. Post "Setup Completed" in the thread: a reminder that mentions the signed-up Initiates (or everyone), how late
-   signups and absences work, and that staff track late signups with reactions (`:marker_1:`/`:marker_2:` for the
-   series, 1️⃣–9️⃣ for the order).
+5. Screenshot the preliminary setup and post it in `#roster-history` (named like `Course_1420_-_Fri._30.10.2026.png`,
+   or a pasted `image.png`). The image is the helper's setup part: "Preliminary Setup" and the time on top, a column
+   per destination, its groups of 8 in a grid of two columns (Groups 1 and 2 left, 3 and 4 right) with the group's
+   name down the side, the backups below; each row has the role icons the player signed up with, then the name.
+6. Edit the "Setup Started" message into the "Setup Template": `@Student`, "Preliminary setup for 30th of October
+   2026", then by kind of night the time and a `:marker_1:`/`:marker_2:` **Destination** line each (parallel), the
+   timeslots with their clock and start (sequential), or the one destination with `:boss_icon:` (Sprout Monday), each
+   with its expansion emoji and knowledge marker; the image's link from `#roster-history` (Discord shows it
+   embedded); the notes (`:chain_1:` …); where to discuss (`#savage-content` or `#extreme-content`).
+7. Post "Setup Completed" in the thread: "As a reminder for everyone, this is the organisation thread for this
+   Wednesday's raid", where to see Server Time, that absences and late signups go in the thread, that staff track
+   late signups with reactions (`:marker_1:`/`:marker_2:` for the series or timeslot, 1️⃣–9️⃣ for the order, "Not your
+   group"), and that missing backups are found with the Alumni or a public call. Staff then react on the replies: a
+   late signup gets its marker and its number, a revoke its marker, ❌ and `g<n>_r` (the group it leaves), sometimes
+   the role emoji of the spot to fill. On raid day the raid leads post "Group 2 is up, password …" in the thread, and
+   backups are asked for there.
 
 The couples and friends list is kept in a sheet of its own and pasted into the helper's setup part. It moves to the
 site (`friends`, edited on `#/staff`).
