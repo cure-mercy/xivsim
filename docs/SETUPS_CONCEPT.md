@@ -743,7 +743,13 @@ proposal and the import have tests on made-up data; the README and this concept 
 - **OCR misreads.** A misread name either matches the right member on that world or none; it never silently becomes
   someone else, because a weak match counts as unknown and the raid lead confirms the list before it is saved.
 - **Testing against Discord.** Posting can't be tried on the real channel. A test server with a copy of the emojis
-  and a test channel, selected in the configuration, is where publishing and removal get tried first.
+  and a test channel, selected in the configuration, is where publishing and removal get tried first. Set up
+  2026-10-30: the server "SynClaudemy" with the channels the setup texts mention (`#course-calendar`,
+  `#course-organization`, `#roster-history`, `#savage-content`, `#extreme-content`) and the signup and entry emoji
+  under Syncademy's names, drawn from the game's icons on XIVAPI (roles 062581–062589, `:online:` 061505,
+  `:pve_mentor:` 061542, `:chain_1:`/`:chain_2:` the Bind signs, `:marker_1:`/`:marker_2:` Attack 1 and 2). The bot
+  is a bot user on the login's Discord application, so for testing only; the real server still needs decision 5. The
+  entries' expansion and lock emoji (`:msq_arr:` … `:msq_dt:`, `:msq_locked:`) and `:fox:` aren't copied yet.
 
 ## Decisions
 
