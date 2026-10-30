@@ -670,7 +670,7 @@ The Drive connector can read these sheets directly, so later imports can pull fr
 | Badges | Extreme Trials +6, Savage +12, Expansion +6; story-arc badges for all ARR–EW Extremes, all ARR–EW Savage, and both; BLU expansion badges and a BLU combo badge; Dawntrail badges for its trials and its raid tier. Ultimates, BLU and Dawntrail Extremes are not yet counted by the badge script |
 | Promotions | Six student ranks above Initiate with their own thresholds (participations over 3, 6 or 12 months, activity, badges with Savage ones, months since the last promotion, study group Exp), and two staff ranks |
 | Demotion | Any student rank inactive for more than half a year is demoted, and gets the old rank back on returning |
-| Study groups | The Drive guide gives up to +3 Exp for all Extremes of an expansion and up to +6 for a whole Savage tier, with smaller amounts for at least a third of the bosses; the archive guide gives 2/4/6 Exp for 2–4/5–8/9–12 kills. Which one is current is decision 24 |
+| Study groups | The Drive guide gives up to +3 Exp for all Extremes of an expansion and up to +6 for a whole Savage tier, with smaller amounts for at least a third of the bosses; the archive guide gives 2/4/6 Exp for 2–4/5–8/9–12 kills. The April 2022 announcement of Study Exp gives the Drive guide's version (Extremes 1/2/3, Savage 2/4/6 for up to a third, two thirds or all of the bosses, an Ultimate 4), and so does the public post of September 2026 (at least two bosses). Which one is current is decision 24 |
 | Profiles | Exp and level are shown in members' Discord profiles; a monthly list says whose to update |
 
 `badges` needs kinds for story-arc, BLU and Dawntrail badges, and `members` keeps the previous rank for a demotion
@@ -778,5 +778,8 @@ Answered on 2026-10-29; the sections above follow them.
 - **22. Who may make setups and calendar posts**: all staff (decision 7), or only staff who raid actively, as proposed
   in October 2025?
 - **23. Linkshell invites**: with the per-world linkshells retired, does the third participation still lead to an
-  invite (to the cross-world linkshell), or does the follow-up go?
+  invite (to the cross-world linkshell), or does the follow-up go? The public post of September 2026 sets other
+  criteria for the cross-world linkshell: an active raid streak, more than one participation a week on average over
+  three months, and the top of the waiting list by that average (64 slots per linkshell). The site can compute that
+  list.
 - **24. Study group Exp**: the Drive guide (per expansion and Savage tier) or the archive guide (per kill count)?
