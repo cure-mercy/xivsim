@@ -40,7 +40,7 @@ no participation for 6 months ─► demotion to Visitor
 
 | Input | Where | Kept by |
 |---|---|---|
-| Participations per month | Credits workbook, one column per Syncademy month; a number, `-` (none), `SG` (study group only), `B`/`BT` (rare, meaning unknown) | Staff, after each night's participation run |
+| Participations per month | Credits workbook, one column per Syncademy month; a number, `-` (none), `SG` (took part only in a study group), `B` ("Visitor backup after start", the sheet's legend), `BT` (5 cells, not in the legend) | Staff, after each night's participation run |
 | Raid days per month | Row 2 of the same column ("without Sprout Monday or other events") | Staff, by hand |
 | The last month to count | Cell `AI2` (a column letter, read by every formula with `INDIRECT`) | Staff, monthly |
 | Rank, date of the last promotion | Columns `L`, `M` | Staff |
@@ -48,7 +48,7 @@ no participation for 6 months ─► demotion to Visitor
 | Raid streaks | `S1`–`S6` (how often each streak length was reached), `CS` (current streak, e.g. `6-21`), cells coloured by streak | Staff, by hand |
 | Streak freezes | `SF` (regular), `UF` (unique) | Staff and the `!raidstreak_sf` / `!consume_sf` commands |
 | Study group Exp | `SG` | Staff, at a study group's finalization |
-| Cakeday | `BD`, the date of the member's first post in `#campus` (`01.01.1970` = unknown) | Staff, by searching Discord |
+| Cakeday | `BD`, the day the member became a Visitor, found as their first post in `#campus` (`01.01.1970` = unknown) | Staff, by searching Discord |
 
 ### The formulas
 
@@ -70,10 +70,10 @@ those rules now point at `#REF!` and no longer work.
 |---|---|
 | Syncademy month | From a calendar month's second Monday to the day before the next one's |
 | Raid streak | Every 3 months in a row with at least 2 participations: 3 months +3, 6 +4, 9 +5, 12 +6, 15 +7, then +9 for every further 3 months (the post counts the "nth time"). Every 6 months of an ongoing streak add a streak freeze |
-| Streak freeze | A month with 0 or 1 participation uses one (regular before unique); the streak only ends when none are left |
+| Streak freeze | A month with 0 or 1 participation uses one (regular before unique); the streak only ends when none are left. `SG`, `B` and `BT` months aren't active months (from the data, see below) |
 | Unique streak freeze | +1 for a promotion to Adept, Magister or Archon (the workflow says "Adept or higher", the template gives none for Prime and Eternal) and for each story-arc badge |
 | Badges | All Extremes of an expansion: +6. All its Savage: +12. Both: an Expansion badge (+6), and the two reset to be earned again in the next tier. Story arc: Zodiark (all ARR–EW Extremes, +6), Hydaelyn (all ARR–EW Savage, +12), Starbird (both, +6), each with a unique freeze. BLU: a mask badge per expansion (+9) and the Morbol combo for ARR and HW (+6). Earned in the course or in a study group |
-| Cakeday | The *n*th anniversary of the first `#campus` post gives 3·*n* Exp ("active players") |
+| Cakeday | The *n*th anniversary of becoming a Visitor gives 3·*n* Exp ("active players"). Not the server join: the time before finishing onboarding doesn't count (staff, 30 October 2026) |
 | Promotions | See below |
 | Demotion | An Initiate with at most one participation in the last six months and no study group Exp becomes a Visitor (the Demotion Guide, May 2026); a DM explains it, and the old rank comes back on returning. An older helper sheet (2023) applied it to every student rank |
 | Inactive | No participation for 9 months and no study group points: marked inactive. The June 2026 update neither listed their cakedays nor updated their profiles, though the sheet still adds their cakeday Exp |
@@ -85,14 +85,17 @@ Promotion criteria (Promotion Monday template):
 | To | Exp | Needs |
 |---|---|---|
 | Disciple | +3 | ≥ 5 participations in total and ≥ 3 in the current month, or ≥ 10 study group Exp |
-| Adept | +6, unique freeze | ≥ 20 participations in the last 3 months, over 33% in the last 2 months, 2 months since the last promotion; or ≥ 20 study group Exp |
-| Magister | +12, unique freeze | ≥ 45 participations in the last 6 months, over 33% in at least 4 of them, over 50% in the last 2 months, ≥ 2 badges |
-| Archon | +24, unique freeze | ≥ 100 participations in the last 12 months, over 33% in at least 8 of them, over 50% in the last 2 months, ≥ 3 badges with ≥ 1 Savage |
-| Prime | +36 | ≥ 8 badges with ≥ 2 Savage, ≥ 15 months in tier 3 or higher averaging tier 4, 18 months since the last promotion, over 33% in the last 2 months |
-| Eternal | +48 | ≥ 16 badges with ≥ 4 Savage, ≥ 30 such months, 36 months since the last promotion, over 33% in the last 2 months |
+| Adept | +6, unique freeze | ≥ 20 participations in the last 3 months, over 33% in each of the last 2 months, 2 months since the last promotion; or ≥ 20 study group Exp |
+| Magister | +12, unique freeze | ≥ 45 participations in the last 6 months, over 33% in at least 4 of them, over 50% in each of the last 2 months, ≥ 2 badges |
+| Archon | +24, unique freeze | ≥ 100 participations in the last 12 months, over 33% in at least 8 of them, over 50% in each of the last 2 months, ≥ 3 badges with ≥ 1 Savage |
+| Prime | +36 | ≥ 8 badges with ≥ 2 Savage, ≥ 15 months in tier 3 or higher averaging tier 4, 18 months since the last promotion, over 33% in each of the last 2 months |
+| Eternal | +48 | ≥ 16 badges with ≥ 4 Savage, ≥ 30 such months, 36 months since the last promotion, over 33% in each of the last 2 months |
 | Staff ranks | | A simulated student rank plus months on staff (two ranks) |
 
-Staff get their student ranks "simulated": staff are assessed by the same rules, and the post marks them so.
+Staff get their student ranks "simulated": staff are assessed by the same rules, and the post marks them so. A badge
+count includes Expansion badges as three: ARR's Extreme badge, its Coils badge and the full ARR badge make 3, not 2
+(staff, 30 October 2026). "Each of the last 2 months" holds for the 50% criteria too, read the same way as the 33%
+answer.
 
 ### The monthly workflow
 
@@ -103,7 +106,7 @@ application and bot commands) has these steps. The last column is what the site 
 |---|---|---|---|
 | 0 | Preparation | Fill missing Discord and Lodestone IDs and cakedays by command, copy the sheet, reload the Django application | Not needed: the member register is the database |
 | 1 | Study badges | Mark badges in the sheet from the study history; collect the IDs for the post | Computed from the recorded clears; staff confirm |
-| 2 | Cakedays | Search each player's first `#campus` post, update points, freezes and Exp roles, mark long-inactive players | Computed; the date is entered once per member, or taken from Discord's join date (question 6) |
+| 2 | Cakedays | Search each player's first `#campus` post, update points, freezes and Exp roles, mark long-inactive players | Computed; the date is entered once per member, or recorded when the member gets the Visitor role (question 6) |
 | 3 | Raid streaks | Colour cells, raise `S1`–`S6`, add freezes, add roles for new streaks | Computed |
 | 4 | Promotions | Check the criteria by eye with filters, set rank, colour rows, add unique freezes | Candidates computed; staff confirm each |
 | 5 | Raid activity | Edit the column limit in formulas and the ranges of conditional formatting rules, collect IDs by colour | Computed; nothing to edit |
@@ -134,14 +137,15 @@ Run on the workbook export of 29 October 2026 (1,224 members, 80 months) with th
   them too (0–3 per rank and month; some may be staff, whose ranks are simulated).
   - The promotion is checked as if the member had the rank below until that day.
   - An Expansion badge counts as three badges: its Extreme badge, its Savage badge, and itself.
-  - Whether "over 33% in the last 2 months" means both months together or each month made no difference here.
+  - Reading "over 33% in the last 2 months" as each month (staff's answer) keeps every promotion; it only drops two
+    members who would have met the criteria with both months together but weren't promoted (rerun 30 October).
 
 Found along the way, each worth fixing whatever happens to the site:
 
 | Finding | Effect |
 |---|---|
 | One member's cakeday is `31.12.1969` instead of the placeholder `01.01.1970` | Cakeday points count 56 years: 4,788 Exp, and the level shows `#N/A` |
-| The tier 6 threshold is `≥ 75%`, the post says "over 75%" | 210 month cells sit at exactly 75% (12 of 16 raid days, for example), and the sheet gives +6 |
+| The tier 6 threshold is `≥ 75%`, the post says "over 75%" | 210 month cells sit at exactly 75% (12 of 16 raid days, for example). Staff confirmed the sheet: exactly 75% is tier 6, so the post's wording is what's off |
 | Cakeday years are 365-day blocks, not anniversaries | 3 members currently count a year early; the highlighting rules use 365, 730, 1095, 1460, 1826 days |
 | The BLU block has columns for the ARR and HW mask badges only | The SB (Red Mask) and ShB (Purple Mask) badges of the template aren't counted in Exp |
 | The level table ends at 1344 Exp (level 56) | Fine for now (the highest real Exp is 1,035) |
@@ -234,8 +238,8 @@ Phase 1 changes the data model of SETUPS_CONCEPT.md a little:
 `#/feats` on the MVP branch (`claude/setups-mvp-712822`, not merged), described in `tools/scorecard/README.md` under
 "Study feats (phase 0)". A staff member picks a credits workbook export; the browser reads it and shows the month's
 posts, promotion candidates with each criterion, the members' month, the cells to change in the sheet, the role
-changes per member, and the rows that don't add up. Each open question below is a setting on the page, defaulting to
-what the sheet does today.
+changes per member, and the rows that don't add up. Each question still open below is a setting on the page,
+defaulting to what the sheet does today; the answered ones are fixed rules.
 
 Checked on real data:
 
@@ -275,23 +279,65 @@ Not in phase 0:
 - The weekly average of the monthly update. Participations ÷ (raid days ÷ 4) gives 192 for March 2026, where the April
   post says 196.67, so its definition is a question.
 
-## Questions for staff
+## Answers from staff (30 October 2026)
 
-1. **Exactly 75%**: tier 6 (as the sheet computes) or tier 5 (as the post says, "over 75%")? It happens about 3 times a
-   month (210 month cells over 80 months).
-2. **"Over 33% in the last 2 months"**: both months together, or each month? The data so far can't tell them apart.
-3. **Badge count for promotions**: does an Expansion badge count as three (its two badges and itself)? That reading
-   matches all 37 promotions checked.
-4. **Streaks**: does a month with 1 participation use a freeze (as the new workflow's filter says), and do `SG`, `B`
-   and `BT` months count as active, as weak, or not at all? What do `B` and `BT` mean?
+| Question | Answer | What it changes |
+|---|---|---|
+| 1. Tier 6 at exactly 75%? | Yes, exactly 75% gets the top tier | Nothing: the sheet already does this. The post's "over 75%" is the wording to fix |
+| 2. "Over 33% in the last 2 months": together or each? | Each month on its own | The checker tests each month. Taken to hold for "over 50%" (Magister, Archon) as well |
+| 3. An Expansion badge counts as three? | Yes: ARR's Extreme, Coils and the full ARR badge are 3 badges, not 2 | Nothing: the checker already counts this way |
+| 4. `SG`, `B`, `BT` months in streaks | `SG` means the member took part only in a study group that month. `B` and `BT`: not known, deduce them if possible | See below |
+| 6. Is the `#campus` post the cakeday on purpose? | Yes: the cakeday counts from joining as a Visitor, not from joining the server, so the time before finishing onboarding doesn't count | See below |
+| 11. Run phase 0 next to the update on 9 November? | Yes | See below |
+
+**Question 4, from the data.** The export of 29 October holds 21 `B` and 5 `BT` cells:
+
+- **`B`**: the sheet's own legend (below the member rows, next to "SG = Study Group") says "B = Visitor backup after
+  start". 20 members have one. For 19 of them it's their first entry (13 have nothing else), and none sits next to an
+  active month. So a `B` never changed a streak, and it doesn't add to participations or activity tiers either.
+- **`BT`**: not in the legend. It occurs for two Magisters, once in the middle of an active stretch (spring 2022) and
+  four months in a row (late 2022 to early 2023), and not since.
+- **For streaks**, the sheet's `S1`–`S6` of those two members rule out counting `BT` as an active month: that would give
+  one of them a 9-month streak the sheet doesn't have. Whether a `BT` month bridges a streak or uses a freeze can't be
+  told: both readings give the sheet's numbers.
+- **`SG` months** aren't active months either: counted as active, the streak replay matches the sheet for 1,129 members
+  instead of 1,169.
+
+So for the rules: `SG`, `B` and `BT` are months without course participations. `SG` and `B` simply aren't active;
+`BT` stays a setting ("neither extend nor end a streak", the default, or "a weak month") until someone remembers what
+it stood for. With no `BT` since early 2023, it only matters when replaying old history.
+
+**Question 6, the join date.** Discord doesn't keep the date a member got a role: the member data has only the server
+join date, and the audit log keeps role changes for 45 days. So:
+
+- the dates in the `Cakeday` column are imported once, as they are;
+- in phase 1, the site records the date when staff make a new member a Visitor, and staff can correct it;
+- in phase 2, the bot records the day it sees the Visitor role given, and on its monthly run it can fill gaps from
+  the audit log, which still covers the month (this needs the View Audit Log permission).
+
+The manual search in `#campus` then ends for new members.
+
+**Question 11, 9 November.** Staff run the usual update, and phase 0 runs on a fresh export of the workbook taken
+before they change it. Then compare the results:
+
+- the level-up list;
+- the streak awards and freezes;
+- the cakedays;
+- the promotion candidates;
+- the post texts.
+
+Every difference is either a rule to settle or a slip in the sheet. Remember to export before the update: phase 0
+reads the month from the workbook as it stands, and an export taken afterwards already holds the update.
+
+## Questions still open
+
 5. **Cakeday**: the formula counts it for everyone; the June update listed it only for members active in roughly the
    last 9 months. Is "not marked inactive" the rule?
-6. **The join date**: is the first post in `#campus` the cakeday on purpose, or would Discord's server join date (which
-   the bot can read) do? It's the one input that needs a manual search today.
 7. **Profiles**: is the December 2024 role list (above) still the current set, and what are the Dawntrail badge roles
    called? This becomes the `feat_roles` table.
 8. **Promotion dates**: the column keeps only the latest promotion, so earlier ones are lost (several June promotions
    now show a later date). Should the site keep each promotion with its date?
 9. **The Django application**: does it still run, and who has its code? This is part of decision 19.
 10. **The weekly average** in the monthly update: how is it counted?
-11. **Phase 0 on the next Promotion Monday** (9 November): run it next to the usual update and compare?
+12. **`BT`**: does anyone remember what it stood for (perhaps from the time of the Azure & Omega chapter, 2022), and
+    did such a month keep a streak going?
