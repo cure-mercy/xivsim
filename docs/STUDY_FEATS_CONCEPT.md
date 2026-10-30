@@ -73,10 +73,10 @@ those rules now point at `#REF!` and no longer work.
 | Streak freeze | A month with 0 or 1 participation uses one (regular before unique); the streak only ends when none are left. `SG`, `B` and `BT` months aren't active months (from the data, see below). A cakeday while a streak runs adds a regular freeze, and regular freezes stop at 6; unique ones have no cap (the April 2022 announcement, confirmed by the sheet) |
 | Unique streak freeze | +1 for a promotion to Adept, Magister or Archon (the workflow says "Adept or higher", the template gives none for Prime and Eternal) and for each story-arc badge |
 | Badges | All Extremes of an expansion: +6. All its Savage: +12. Both: an Expansion badge (+6), and the two reset to be earned again in the next tier. Story arc: Zodiark (all ARR–EW Extremes, +6), Hydaelyn (all ARR–EW Savage, +12), Starbird (both, +6), each with a unique freeze. BLU: a mask badge per expansion (+9) and the Morbol combo for ARR and HW (+6). Earned in the course or in a study group |
-| Cakeday | The *n*th anniversary of becoming a Visitor gives 3·*n* Exp ("active players"). Not the server join: the time before finishing onboarding doesn't count (staff, 30 October 2026). Leaving and rejoining the server starts the count again (April 2022). Members marked inactive get no cakeday post and no profile update (staff, 30 October 2026) |
+| Cakeday | The *n*th anniversary of becoming a Visitor gives 3·*n* Exp ("active players"). Not the server join: the time before finishing onboarding doesn't count (staff, 30 October 2026). Leaving and rejoining the server starts the count again (April 2022). Members marked inactive get no cakeday post and no profile update (staff, 30 October 2026), and neither do demotion candidates. The posts go by calendar anniversaries, from the Promotion Monday up to the day before the next one; an anniversary on the next Promotion Monday is next month's (the October 2026 post) |
 | Promotions | See below |
-| Demotion | An Initiate with at most one participation in the last six months and no study group Exp becomes a Visitor (the Demotion Guide, May 2026); a DM explains it, and the old rank comes back on returning. An older helper sheet (2023) applied it to every student rank |
-| Inactive | No participation for 9 months and no study group points: marked inactive. The June 2026 update neither listed their cakedays nor updated their profiles, though the sheet still adds their cakeday Exp |
+| Demotion | An Initiate with at most one participation in the last six months and no study group Exp becomes a Visitor (the Demotion Guide, May 2026); a DM explains it, and the old rank comes back on returning. An older helper sheet (2023) applied it to every student rank. An Initiate whose first participation falls in those six months is new, not inactive: the October 2026 post lists such an Initiate's cakeday and level-up (question 15) |
+| Inactive | No participation and no study group month in the last 9 months: marked inactive (the October 2026 post lists exactly the members with a participation in that window). The June 2026 update neither listed their cakedays nor updated their profiles, though the sheet still adds their cakeday Exp |
 | Alumni cleanup | The `@Alumni` role is removed by rank and months away (Cleanup guide) |
 | Study group Exp | Decision 24 in SETUPS_CONCEPT.md: the Drive guide's per-expansion amounts or the archive guide's 2/4/6 for 2–4/5–8/9–12 kills. The April 2022 announcement gives the Drive guide's version: Extremes 1/2/3 and Savage 2/4/6 Exp for taking part in up to a third, two thirds or all of the bosses killed, an Ultimate 4 |
 
@@ -152,7 +152,7 @@ Found along the way, each worth fixing whatever happens to the site:
 |---|---|
 | One member's cakeday is `31.12.1969` instead of the placeholder `01.01.1970` | Cakeday points count 56 years: 4,788 Exp, and the level shows `#N/A` |
 | The tier 6 threshold is `≥ 75%`, the post says "over 75%" | 210 month cells sit at exactly 75% (12 of 16 raid days, for example). Staff confirmed the sheet: exactly 75% is tier 6, so the post's wording is what's off |
-| Cakeday years are 365-day blocks, not anniversaries | 3 members currently count a year early; the highlighting rules use 365, 730, 1095, 1460, 1826 days |
+| Cakeday years are 365-day blocks, not anniversaries | 3 members currently count a year early; the highlighting rules use 365, 730, 1095, 1460, 1826 days. The posts use calendar anniversaries, so the sheet's cakeday Exp runs a day or two ahead of them for some members (7 in the export of 29 October) |
 | The BLU block has columns for the ARR and HW mask badges only | The SB (Red Mask) and ShB (Purple Mask) badges of the template, listed in the current post too, aren't counted in Exp |
 | The level table ends at 1344 Exp (level 56) | Fine for now (the highest real Exp is 1,035) |
 | The newest promotion date in the sheet is 8 June 2026 | Either nobody was promoted since, or the dates stopped being kept; promotions after June can't be checked |
@@ -283,8 +283,6 @@ Not in phase 0:
 - Badges, which the export can't show as new. Staff add them to the post by hand.
 - Staff ranks.
 - The anniversary event.
-- The weekly average of the monthly update. Participations ÷ (raid days ÷ 4) gives 192 for March 2026, where the April
-  post says 196.67, so its definition is a question.
 
 ## The April 2022 announcement
 
@@ -331,6 +329,32 @@ in force. It agrees with this concept on the month (2nd Monday to 2nd Monday), t
 - **The cross-world linkshell**: entry needs an active raid streak, more than one participation a week on average
   over the last three months, and the top place on the waiting list (highest average over those three months). Each
   linkshell has 64 slots, and members are checked periodically (decision 23 in SETUPS_CONCEPT.md).
+
+## The monthly updates in `#announcements`
+
+Every month's update (read on 30 October 2026, back to 2019) gives the month's statistics, the Promotion Monday post,
+and since 2025 a link to a Study Feats thread. Compared with the export of 29 October:
+
+- **The statistics** (question 10): "participations on average per week" is the month's participations ÷ (raid days ÷
+  4), and "unique players" the members with at least one participation. For August, September and October 2026 both
+  match the sheet exactly; older months drift as the sheet was corrected and cleaned since. The checker now shows the
+  weekly figure on its Players tile.
+- **Promotion Monday, 12 October 2026**: the 12 members promoted (1 Magister, 2 Adepts, 9 Disciples) all meet the
+  criteria as the checker reads them, with "each of the last 2 months".
+- **The Study Feats thread of October 2026**, against the checker's month (matched by name; 11 of the 146 names in
+  the activity tiers aren't found in the sheet under that name):
+  - Activity tiers: the same number of members in each tier (13, 12, 12, 27, 27, 55).
+  - Cakedays: all 17 the same, after three changes the post showed: calendar anniversaries, the next Promotion
+    Monday counted as next month, and no cakeday for demotion candidates or for members without a participation or
+    study group month in 9 months (the checker had counted any study group Exp ever).
+  - Raid streaks: the same for most members. The post has six streak awards the replay doesn't: members whose
+    history the checker already flags as differing from the sheet's streak counts. The September case of question 14
+    is in the checker only.
+  - Level-ups: 73 of the post's 83 matched names agree. The other 10 are profiles one level behind: the post's "from"
+    level is lower than the Exp before the month gives, so staff caught up an earlier missed level. The checker can't
+    see the level a profile shows; phase 1 keeps it, and the bot can read it in phase 2.
+
+The thread and the comparison scripts are in `scratch/setups/feats/` (the thread holds real names and stays local).
 
 ## Answers from staff (30 October 2026)
 
@@ -389,10 +413,12 @@ reads the month from the workbook as it stands, and an export taken afterwards a
 7. **Profiles**: is the December 2024 role list (above) still the current set, and what are the Dawntrail badge roles
    called? The current post lists badges up to EW only. This becomes the `feat_roles` table.
 9. **The Django application**: does it still run, and who has its code? This is part of decision 19.
-10. **The weekly average** in the monthly update: how is it counted?
 12. **`BT`**: does anyone remember what it stood for (perhaps from the time of the Azure & Omega chapter, 2022), and
     did such a month keep a streak going?
 13. **Cakedays for Visitors**: the public posts (2022 and September 2026) give cakedays to Students. The sheet counts cakeday Exp for
     Visitors too (421 of them), and the checker lists an active Visitor's cakeday. Should Visitors get it?
 14. **One September streak** (row 124 of the export): a cakeday freeze would have carried this member's streak to 9
     months in September, and the sheet ended it instead. Was the freeze missed, or does it not apply there?
+15. **New Initiates and demotion**: the checker no longer counts an Initiate whose first participation falls in the
+    last six months as a demotion candidate (the October post lists one such Initiate's cakeday). Is that the rule?
+    It removes 21 to 42 candidates a month from the strict reading.
