@@ -110,7 +110,7 @@ application and bot commands) has these steps. The last column is what the site 
 | 3 | Raid streaks | Colour cells, raise `S1`–`S6`, add freezes, add roles for new streaks | Computed |
 | 4 | Promotions | Check the criteria by eye with filters, set rank, colour rows, add unique freezes | Candidates computed; staff confirm each |
 | 5 | Raid activity | Edit the column limit in formulas and the ranges of conditional formatting rules, collect IDs by colour | Computed; nothing to edit |
-| 6 | Update profiles | Look up each member in Server Settings → Members and change their roles (Exp, level, badges, freezes) | A list of role changes per member (phase 1); the bot makes them (phase 2) |
+| 6 | Update profiles | Look up each member in Server Settings → Members and change their roles (level, badges, cakeday, rank; Exp and freezes had roles until recently) | A list of role changes per member (phase 1); the bot makes them (phase 2) |
 | 7 | Consume streak freezes | Filter, `!consume_sf`, end streaks without freezes | Computed |
 | 8 | Post the monthly update | Write the Study Feats thread and Promotion Monday from templates | Generated text, split to Discord's length limit; posted by staff, later by the bot |
 | 9 | Mark insufficient participation | Grey out months with one participation | Not needed |
@@ -198,8 +198,7 @@ On or after Promotion Monday, a staff member opens the month:
    - The monthly statistics: unique players, average participations per week.
    - The demotion DMs.
    Each has a copy button.
-6. **Discord changes.** A list per member of the roles to add and remove: rank, level, badges, the streak freeze
-   count. Staff tick each change as done; the next month starts from what was ticked. With the bot (phase 2), one click
+6. **Discord changes.** A list per member of the roles to add and remove: rank, level, badges, cakeday. Staff tick each change as done; the next month starts from what was ticked. With the bot (phase 2), one click
    applies them, and the bot reads each member's current roles first, so it only changes what differs.
 
 ### Study groups
@@ -238,7 +237,7 @@ Phase 1 changes the data model of SETUPS_CONCEPT.md a little:
 - `members` keeps the rank before a demotion.
 - `rank_changes` keeps every promotion and demotion with its date and who confirmed it (question 8).
 - A `feat_rules` table holds the thresholds.
-- A `feat_roles` table maps each feat to its Discord role.
+- A `feat_roles` table maps each feat to its Discord role by role id: the badge roles share names ("x 1", "x 2"), so a name can't find them.
 
 ## Phase 0 as built (2026-10-29)
 
@@ -271,7 +270,7 @@ What the earlier code left behind:
 
   That is the list phase 1 needs to find badges from clears. The dump also holds an API keys table, and like the
   service account file it sits in a shared Drive folder.
-- **A role list from December 2024** in the same Drive folder. It answers most of question 7:
+- **A role list from December 2024** in the same Drive folder, since replaced (see "The server's roles" below):
   - a role per study level ("[Level 24] Natural Snake"; past 48 "[Level Cap] Sun" and "Star");
   - Exp as digit roles ("x 1k", "x 600", "x 10", "x 3");
   - regular and unique streak freeze count roles;
@@ -298,7 +297,7 @@ Still true, and new to this concept:
 - **Study group Exp** as the Drive guide has it, plus 4 Exp for an Ultimate (see the rules table).
 - **Badge names**: ARR Comet (Extremes) and Dragon (Savage), HW Ishgard and Robot, SB Blood and Omega, ShB Wave and
   Galaxy; Expansion badges use the MSQ symbols. Useful for question 7.
-- **Profiles**: the freeze count roles show only while a streak runs.
+- **Profiles**: the freeze count roles show only while a streak runs. These roles are gone today.
 
 Superseded since (the current post below and the sheet agree):
 
@@ -356,6 +355,32 @@ and since 2025 a link to a Study Feats thread. Compared with the export of 29 Oc
 
 The thread and the comparison scripts are in `scratch/setups/feats/` (the thread holds real names and stays local).
 
+## The server's roles (30 October 2026)
+
+Server Settings → Roles lists 226 roles. For study feats (a copy with role ids is in
+`scratch/setups/drive/roles_2026-10-30.json`):
+
+- **Levels**: "[Base Level] Grey Portal", then "[Level 1] Green Portal" to "[Level 8] Green Portal", and on in tiers of
+  eight: Yellow, Orange, Red, Purple, Blue up to "[Level 48] Blue Portal", then "[Level Cap] Star" and "[Level Cap]
+  Sun". The December 2024 names ("Natural Snake") are gone. The checker now writes these names.
+- **No Exp and no freeze roles.** The digit roles for Exp and the streak freeze count roles no longer exist; the
+  monthly update now points members to `/syncplate` in `#sync-plates` to see their achievements. The checker no
+  longer lists changes to them; the freeze counts still go into the sheet.
+- **Badges**: one role per badge and count, all named "x 1", "x 2", and so on, told apart by their icon and their
+  place under the section headers ("[DO NOT USE] HW Badges" and so on). Per expansion the order is Expansion badge
+  (MSQ symbol), Extremes, Savage. ARR goes up to x 4 (Expansion), x 5 (Comet), x 4 (Dragon); HW to x 4 each; SB to
+  x 3; ShB and EW to x 2. The story arc roles (Starbird, Zodiark, Hydaelyn) and the cakeday and anniversary roles
+  have no names at all.
+- **Dawntrail badges exist**: an Expansion role and two badge roles (Extremes: 24 members, Savage: none yet). Their
+  names don't show in the role list.
+- **BLU**: three roles, a combination badge and two masks; none for SB and ShB yet.
+- **Cakedays**: six roles, 1st to 6th year (230, 107, 74, 54, 23 and 12 members).
+- **Ranks**: each student and staff rank has a "(Supporter)" twin for server supporters, so a promotion swaps
+  "Adept (Supporter)" rather than "Adept" for them. Staff ranks have Prime and Eternal roles of their own ("Tutor
+  Prime"), as do the student ranks ("Archon Prime", "Archon Eternal").
+- **The staff tools** have roles too: "Feats Calculator", "Setup Creation", "Raid Participation", "Calendar
+  Maintenance", and bots per task ("Plates Bot", "Linkshell Bot" and others).
+
 ## Answers from staff (30 October 2026)
 
 | Question | Answer | What it changes |
@@ -410,8 +435,8 @@ reads the month from the workbook as it stands, and an export taken afterwards a
 
 ## Questions still open
 
-7. **Profiles**: is the December 2024 role list (above) still the current set, and what are the Dawntrail badge roles
-   called? The current post lists badges up to EW only. This becomes the `feat_roles` table.
+7. **Profiles**: the server's roles answer most of this (see "The server's roles"). Still open: what the Dawntrail
+   badges are called, and when a member gets "[Level Cap] Star" or "[Level Cap] Sun" past level 48.
 9. **The Django application**: does it still run, and who has its code? This is part of decision 19.
 12. **`BT`**: does anyone remember what it stood for (perhaps from the time of the Azure & Omega chapter, 2022), and
     did such a month keep a streak going?
