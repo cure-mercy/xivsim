@@ -11,4 +11,5 @@ tests/blame_cases.json
 .supabase.local
 .discord_bot
 .discord.json
+.google_drive.json
 .PUBLISH_KEY
