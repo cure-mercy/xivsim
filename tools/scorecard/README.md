@@ -43,7 +43,7 @@ deploy.
 ## Setup
 
 - Python 3.10 or newer, no extra packages. Node, only for `--publish` without Supabase. For accounts: Supabase keys in
-  `.supabase` and, for the admin page's builds, the worker in WSL (see Publishing).
+  `.supabase` and, for the admin page's builds, the worker on the Strato server (see The admin page and the worker).
 - An FFLogs API client in `.fflogs_v2` at the repository root (it is git-excluded), two lines:
 
   ```
@@ -192,11 +192,19 @@ limit: `live_until`, at most 12 hours after it was set (the database caps it). I
 nothing new in the log. A report that fails, for example a live log with no P12S pull yet, is tried again only when
 the log grows or an admin changes it.
 
-The worker runs in WSL (Ubuntu) as a systemd service. `worker.service` has the install commands. It needs the
-`.supabase` keys and the FFLogs client (`.fflogs_v2`), which it reads from the Windows checkout through `/mnt/c`.
-WSL stops its VM a little while after the last Windows-side process using it exits, and the worker and the local
-database stop with it. To keep them running, keep a WSL process open, for example a task at logon that runs
-`wsl.exe -d Ubuntu-26.04 --exec sleep infinity`.
+Since 1 November 2026 the worker runs on the Strato server (syncademy.net) as the systemd service `stats-worker`
+(`journalctl -u stats-worker -f`), apart from the Syncademy site there: its own user `statsworker`, a copy of `tools/`
+with its caches and `data.json` in `/srv/stats-worker/repo`, the `.supabase` keys and `.fflogs_v2` next to it, a venv
+with numpy, and a lower CPU priority so the ceilings refresh (about 4 minutes in WSL on 6 cores) doesn't slow the site.
+`scratch/stats-worker/deploy.sh` (run from WSL) sends `tools/` from main and restarts it; it keeps the server's caches
+unless given `--first`. The server's caches and `data.json` are then the newest copies: before a build or ceilings run
+from the command line here, fetch them with `scratch/stats-worker/pull.sh`, or the upload sends the older local data.
+
+`worker.service` is the unit for running it in WSL instead, with the install commands. It needs the `.supabase` keys and
+the FFLogs client (`.fflogs_v2`), which it reads from the Windows checkout through `/mnt/c`. WSL stops its VM a little
+while after the last Windows-side process using it exits, and the worker and the local database stop with it. To keep
+them running, keep a WSL process open, for example a task at logon that runs `wsl.exe -d Ubuntu-26.04 --exec sleep
+infinity`. Never run both: they share the report list and would build the same reports twice.
 
 ### Setting up Supabase
 
@@ -235,7 +243,8 @@ Discord login works locally only once a Discord application is set up (below). I
    in the format `supa.py` describes, and the staff passphrase in `.PUBLISH_KEY` (git-ignored). Then run
    `build_site.py --publish`, check with `supa.py probe`, and commit and push `stats/`.
 6. Log in on the site once, then run `supa.py admin <you>`.
-7. Install the worker in WSL (`worker.service`). It reads `.supabase` by default.
+7. Install the worker: on the server with `scratch/stats-worker/deploy.sh --first`, or in WSL (`worker.service`). It
+   reads `.supabase` by default.
 
 ### The passphrase
 
@@ -824,7 +833,7 @@ resumed. Run `build_site.py --reanalyse` afterwards so the site picks up the new
 |---|---|
 | `build_site.py` | The command: adds reports to the website's data (`site/data.json`); `--publish` writes the public copy to `stats/` (`public.json` open, the rest to Supabase and, with a passphrase, `data.enc.json`) |
 | `supa.py` | Uploads to Supabase, writes audit entries; `status`, `admin`, `staff`, `audit`, `probe` |
-| `worker.py`, `worker.service` | Builds what the admin page's report list asks for and watches live reports (runs in WSL) |
+| `worker.py`, `worker.service` | Builds what the admin page's report list asks for and watches live reports (runs on the Strato server as `stats-worker`) |
 | `supabase/` | The Supabase project: `config.toml` and the schema with its access rules, roles and audit log (`migrations/`) |
 | `scorecard.py` | The analysis: fetching, mistakes and wipes, damage against clearers, damage lost to deaths, damage per phase |
 | `classifier.py` | Mistake attribution, and the rule book of which rules apply from which raid day |
