@@ -1104,7 +1104,7 @@ BRIGHT_PRIORITY = ("H1", "T1", "T2", "H2")   # bright Souls' middle platforms, e
 
 
 def bright_seat_lp(s1, s2):
-    """The 2026-10-25 rule for the bright Souls' middle platforms (the raidplan then, briefs b238cf0): LP1 the northern,
+    """The 2026-10-25 rule for the bright Souls' middle platforms (the raidplan then, briefs 7968b05): LP1 the northern,
     LP2 the southern; both in one light party, the healer keeps theirs and the tank takes the other. s1, s2: their seats
     ("H1", "T2", ...). Whether each belongs on the northern one: (s1's, s2's)."""
     if s1[1] != s2[1]: return s1[1] == "1", s2[1] == "1"
