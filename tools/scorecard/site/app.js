@@ -2476,13 +2476,12 @@ function notFound() {
 // config.json names the project. Anyone can log in with Discord, but an account sees nothing until an admin approves
 // it as staff. Staff get every report's progress (the progress table) and a report's full record (report_full) when a
 // page needs it; admins also get the admin page. Row-level security in the database decides; the page only asks. Staff
-// can also open the site with the passphrase instead (data.enc.json, as of the last publish; config.json says whether
-// it is there).
+// can also open the site with the staff passphrase instead: the password of one shared staff account (supa.py
+// passphrase), whose email config.json gives; it reads the same live tables.
 const SUPABASE_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js";
 const SUPABASE_SRI = "sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R";
 let SB = null, CFG = null;
-let ME = null;               // the logged-in user: { id, name, role, staff, admin }; null when logged out
-let BY_PASSPHRASE = false;   // the data came from data.enc.json
+let ME = null;               // the logged-in user: { id, name, role, staff, admin, shared }; null when logged out
 const FULL = {};             // code -> the promise of its full record
 const sbCheck = ({ data, error }) => { if (error) throw new Error(error.message); return data; };
 function loadScript(src, integrity) {
@@ -2506,12 +2505,13 @@ async function loadMe() {
   const { data: { session } } = await SB.auth.getSession();
   if (!session) { ME = null; return; }
   const u = session.user;
-  const prof = await SB.from("profiles").select("display_name, role").eq("user_id", u.id).maybeSingle().then(sbCheck);
+  const prof = await SB.from("profiles").select("display_name, role, shared").eq("user_id", u.id).maybeSingle().then(sbCheck);
   const role = prof ? prof.role : "pending";
-  ME = { id: u.id, name: (prof && prof.display_name) || u.email || "you", role, staff: role === "staff" || role === "admin", admin: role === "admin" };
+  ME = { id: u.id, name: (prof && prof.display_name) || u.email || "you", role, staff: role === "staff" || role === "admin", admin: role === "admin",
+         shared: !!(prof && prof.shared) };
 }
 async function loadProgress() {   // every report's progress and the private site data, for staff
-  if (!ME || !ME.staff || BY_PASSPHRASE) return;
+  if (!ME || !ME.staff) return;
   const [prog, meta] = await Promise.all([SB.from("progress").select("doc").then(sbCheck), SB.from("site_meta").select("key, doc").then(sbCheck)]);
   DATA.reports = Object.fromEntries(prog.map(x => [x.doc.code, x.doc]));
   for (const k of Object.keys(FULL)) delete FULL[k];
@@ -2545,12 +2545,13 @@ function loginBox(msg) {
       el("div", { class: "actions" }, el("button", { type: "button", on: { click: go(false) } }, "Log in"), el("button", { type: "button", on: { click: go(true) } }, "Create account")), note);
   }
   if (msg) box.append(el("p", { class: "note" }, msg));
-  return el("div", {}, box, CFG && CFG.passphrase && !BY_PASSPHRASE ? [el("p", { class: "note" }, "Or open it with the staff passphrase:"), passphraseForm()] : "");
+  return el("div", {}, box, CFG && CFG.passphrase ? [el("p", { class: "note" }, "Or open it with the staff passphrase:"), passphraseForm()] : "");
 }
 const openPages = () => DATA && DATA.rotations ? [" The ", el("a", { href: "#/rotations" }, "rotations"), " and ", el("a", { href: "#/gear" }, "best-in-slot gear"), " are open to everyone."] : [];
 function gatePage() {   // a progress page for someone who isn't staff (yet)
   crumbs([["Raid progress", null]]);
   const app = document.getElementById("app");
+  if (!SB) { app.append(el("h1", {}, "Raid progress"), el("p", { class: "lede" }, "Raid progress isn't published on this copy of the site.", ...openPages())); return; }
   if (!ME) {
     app.append(el("h1", {}, "Raid progress"), el("p", { class: "lede" }, "Raid progress is for Syncademy staff. Log in with Discord, and an admin approves your account.", ...openPages()), loginBox());
     return;
@@ -2560,25 +2561,28 @@ function gatePage() {   // a progress page for someone who isn't staff (yet)
 }
 function waitPage(text) { document.getElementById("app").append(el("p", { class: "muted" }, text)); }
 function failPage(e) { document.getElementById("app").replaceChildren(el("h1", {}, "Cannot load this page"), el("p", { class: "lede" }, e.message || String(e))); }
-const forgetPassphrase = () => { try { for (const k of Object.keys(sessionStorage)) if (k.startsWith("p12s-key:")) sessionStorage.removeItem(k); } catch (e) {} };
 function accountBody(app) {
+  if (ME.shared) {   // everyone with the passphrase is this account: logging out ends only this browser's session
+    app.append(el("p", {}, "You opened the site with the staff passphrase. Everyone who has it shares this account, so it can't be deleted or changed here. "
+      + "It stays logged in in this browser until you log out; changing the passphrase logs everyone out. Logins with it go into the audit log, as this account."),
+      el("div", { class: "actions" }, el("button", { type: "button", on: { click: () => SB.auth.signOut({ scope: "local" }) } }, "Log out")));
+    return;
+  }
   app.append(el("h2", {}, "Your data"), el("p", { class: "lede" }, "This site stores your Discord user id, name and email address, as Discord sends them at login, and your role. "
     + "Logins and what admins do (approving accounts, changing roles, managing reports) go into an audit log that admins read. Deleting your account removes the account and its role; the audit log keeps its entries."),
-    el("div", { class: "actions" }, el("button", { type: "button", on: { click: () => { forgetPassphrase(); SB.auth.signOut(); } } }, "Log out"),
+    el("div", { class: "actions" }, el("button", { type: "button", on: { click: () => SB.auth.signOut() } }, "Log out"),
       el("button", { type: "button", class: "danger", on: { click: async () => {
         if (!confirm("Delete your account? This cannot be undone; you would start over as waiting for approval.")) return;
         try { sbCheck(await SB.rpc("delete_my_account")); } catch (e) { alert(e.message); return; }
-        forgetPassphrase(); await SB.auth.signOut(); } } }, "Delete my account")));
+        await SB.auth.signOut(); } } }, "Delete my account")));
 }
 const ROLE_TEXT = { admin: "Admin: you see every report and manage reports and accounts.", staff: "Staff: you see every report.",
   pending: "Waiting for an admin's approval as Syncademy staff." };
 function accountPage() {
   crumbs([["Account", null]]);
   const app = document.getElementById("app");
-  const lock = BY_PASSPHRASE ? el("p", {}, "Opened with the staff passphrase: the data as of the last publish. ",
-    el("button", { type: "button", class: "small", on: { click: lockAgain } }, "Lock")) : "";
-  if (!ME) { app.append(el("h1", {}, "Log in"), lock, el("p", { class: "lede" }, "Log in with your Discord account. Raid progress is for Syncademy staff: an admin approves new accounts.", ...openPages()), loginBox()); return; }
-  app.append(el("h1", {}, ME.name), el("p", { class: "lede" }, ROLE_TEXT[ME.role] || ME.role), lock);
+  if (!ME) { app.append(el("h1", {}, "Log in"), el("p", { class: "lede" }, "Log in with your Discord account. Raid progress is for Syncademy staff: an admin approves new accounts.", ...openPages()), loginBox()); return; }
+  app.append(el("h1", {}, ME.name), el("p", { class: "lede" }, ROLE_TEXT[ME.role] || ME.role));
   accountBody(app);
 }
 
@@ -2798,13 +2802,13 @@ function auditBox() {
   }
   more.addEventListener("click", () => load(false)); again.addEventListener("click", () => load(true));
   load(true);
-  return el("div", {}, el("p", { class: "lede" }, "Logins, accounts and their roles, changes to the report list, FFLogs searches, and what the worker and the command line built. Opening the site with the passphrase leaves no entry: it never reaches the server."),
+  return el("div", {}, el("p", { class: "lede" }, "Logins, accounts and their roles, changes to the report list, FFLogs searches, and what the worker and the command line built. Logins with the staff passphrase show as its shared account, not who it was."),
     el("p", {}, again), el("div", { class: "table-wrap" }, el("table", { class: "admin" },
       el("thead", {}, el("tr", {}, ["When", "Who", "What", "Target", "Details"].map(h => el("th", {}, h)))), body)), msg, el("p", {}, more));
 }
 function header() {   // the header's account button and admin link
   const btn = document.getElementById("lock"), adm = document.getElementById("nav-admin");
-  if (SB) { btn.hidden = false; btn.textContent = ME ? "Account" : BY_PASSPHRASE ? "Lock" : "Log in"; }
+  if (SB) { btn.hidden = false; btn.textContent = ME ? "Account" : "Log in"; }
   if (adm) adm.hidden = !(ME && ME.admin);
   if (ME && ME.admin) SB.from("profiles").select("user_id", { count: "exact", head: true }).eq("role", "pending")
     .then(({ count }) => pendingBadge(count || 0)).catch(() => {});
@@ -2828,7 +2832,7 @@ function route(keepScroll = false) {   // keepScroll: redraw the same page in pl
   navSection(parts[0]);
   if (SB && parts[0] === "account") { accountPage(); return; }
   if (SB && parts[0] === "admin") { adminPage(); return; }
-  if (LOCKED && !open) { SB ? gatePage() : lockedPage(); return; }
+  if (LOCKED && !open) { gatePage(); return; }
   if (SB && parts[0] === "player" && parts.length === 2) {   // the summary reads every report the player is in
     const missing = playerCodes(parts[1]).filter(c => !DATA.reports[c].players), h = location.hash;
     if (missing.length) { waitPage("Loading their reports…"); needFull(missing).then(() => { if (location.hash === h) route(true); }).catch(failPage); return; }
@@ -2901,80 +2905,27 @@ addEventListener("resize", () => {
 });
 addEventListener("hashchange", () => route());
 // ---------- data: plaintext data.json (private hosting), or public hosting: public.json (the rotation and gear
-// pages, open to everyone) and data.enc.json (everything else, behind a passphrase, fetched once a page needs it) ----------
-let LOCKED = false;   // public hosting, until data.enc.json is opened: only the rotation and gear pages draw
-const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-const b64e = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
-const sessionKeyName = env => `p12s-key:${env.salt}`;
-let envelopeP = null;
-function envelope() {   // data.enc.json, fetched once
-  return envelopeP = envelopeP || fetch("data.enc.json", { cache: "no-store" }).then(r => {
-    if (!r.ok) { envelopeP = null; throw new Error("The locked data is missing from this site."); }
-    return r.json();
-  });
-}
-async function deriveKey(pass, env) {   // must match encrypt_data.js
-  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey({ name: "PBKDF2", salt: b64d(env.salt), iterations: env.iterations, hash: "SHA-256" }, base,
-    { name: "AES-GCM", length: 256 }, true, ["decrypt"]);
-}
-async function openEnvelope(env, key) {
-  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64d(env.iv) }, key, b64d(env.data));
-  let stream = new Blob([plain]).stream();
-  if (env.compressed === "gzip") stream = stream.pipeThrough(new DecompressionStream("gzip"));
-  return JSON.parse(await new Response(stream).text());
-}
-function canDecrypt(env) {
-  if (!window.crypto || !crypto.subtle) throw new Error("This page has to be opened over https (or on localhost) to decrypt its data.");
-  if (env.compressed === "gzip" && !window.DecompressionStream) throw new Error("This browser is too old to open the data; please update it.");
-}
-function opened(data) {   // the private part goes over the public one (its benchmark is the whole one)
-  Object.assign(DATA, data); LOCKED = false; BY_PASSPHRASE = true;
-  document.getElementById("lock").hidden = false;
-  if (SB) header();
-}
-async function openRemembered() {   // with a key remembered earlier in this browser session, without asking
-  try { if (!Object.keys(sessionStorage).some(k => k.startsWith("p12s-key:"))) return; } catch (e) { return; }
-  let env = null;
-  try {
-    env = await envelope(); canDecrypt(env);
-    const raw = sessionStorage.getItem(sessionKeyName(env));
-    if (raw) opened(await openEnvelope(env, await crypto.subtle.importKey("raw", b64d(raw), "AES-GCM", true, ["decrypt"])));
-  } catch (e) { try { if (env) sessionStorage.removeItem(sessionKeyName(env)); } catch (e2) {} }
-}
-function lockedPage() {
-  crumbs([["Locked", null]]);
-  const form = passphraseForm();
-  const pub = DATA && DATA.rotations ? [" The ", el("a", { href: "#/rotations" }, "rotations"), " and ", el("a", { href: "#/gear" }, "best-in-slot gear"), " are open to everyone."] : [];
-  document.getElementById("app").append(el("h1", {}, "Locked"),
-    el("p", { class: "lede" }, "Raid progress is encrypted. Enter the passphrase to open it.", ...pub), form);
-  form.querySelector("input").focus();
-}
-function passphraseForm() {   // opens data.enc.json
-  envelope().catch(() => {});   // start the download while the passphrase is typed
+// pages, open to everyone) and Supabase (everything else, for staff) ----------
+let LOCKED = false;   // public hosting, until a staff login loads the rest: only the rotation and gear pages draw
+function passphraseForm() {   // logs in to the shared staff account, whose password the passphrase is
   const input = el("input", { type: "password", id: "pass", autocomplete: "current-password", required: true });
-  const remember = el("input", { type: "checkbox", id: "remember", checked: true });
   const msg = el("p", { class: "note", role: "status" });
-  const btn = el("button", { type: "submit", class: "primary" }, "Unlock");
-  const form = el("form", { class: "unlock" },
-    el("label", { for: "pass" }, "Passphrase"), input,
-    el("label", { class: "check" }, remember, " Remember for this browser session"), btn, msg);
+  const btn = el("button", { type: "submit", class: "primary" }, "Open");
+  const form = el("form", { class: "unlock" }, el("label", { for: "pass" }, "Passphrase"), input, btn, msg);
   form.addEventListener("submit", async e => {
-    e.preventDefault(); btn.disabled = true; msg.textContent = "Unlocking…";
-    let env;
-    try { env = await envelope(); canDecrypt(env); } catch (err) { msg.textContent = err.message || String(err); btn.disabled = false; return; }
+    e.preventDefault(); btn.disabled = true; msg.textContent = "Opening…";
     try {
-      const key = await deriveKey(input.value, env), data = await openEnvelope(env, key);
-      if (remember.checked) try { sessionStorage.setItem(sessionKeyName(env), b64e(await crypto.subtle.exportKey("raw", key))); } catch (e2) {}
-      opened(data); route();
-    } catch (err) { msg.textContent = "That passphrase does not open the data."; btn.disabled = false; input.select(); }
+      const { error } = await SB.auth.signInWithPassword({ email: CFG.passphrase, password: input.value });
+      if (error) throw error.code === "invalid_credentials" ? new Error("That passphrase does not open the site.") : error;
+      await loadMe(); await loadProgress();
+    } catch (err) { msg.textContent = err.message || String(err); btn.disabled = false; input.select(); return; }
+    header(); route();
   });
   return form;
 }
-function lockAgain() { forgetPassphrase(); location.reload(); }
 async function boot() {
   setupTheme();
-  document.getElementById("lock").addEventListener("click", () => SB && (ME || !BY_PASSPHRASE) ? (location.hash = "#/account") : lockAgain());
+  document.getElementById("lock").addEventListener("click", () => { location.hash = "#/account"; });
   try {
     let r = await fetch("data.json", { cache: "no-store" });
     if (r.ok) DATA = await r.json();
@@ -2983,15 +2934,11 @@ async function boot() {
       DATA = r.ok ? await r.json() : {};
       LOCKED = true;
       const cfg = await fetch("config.json", { cache: "no-store" }).then(x => x.ok ? x.json() : null).catch(() => null);
-      if (cfg && cfg.supabase_url) {   // staff accounts (ACCESS_CONCEPT.md), or the passphrase remembered in this browser session
+      if (cfg && cfg.supabase_url) {   // staff accounts (ACCESS_CONCEPT.md), the staff passphrase's among them
         await startAccounts(cfg);
-        if (!(ME && ME.staff) && cfg.passphrase) await openRemembered();
         header();
       }
-      else {   // the passphrase
-        if (!r.ok) await envelope().catch(() => { throw new Error("data.json is missing. Run tools/scorecard/build_site.py with report links, then serve this folder with python -m http.server."); });
-        await openRemembered();
-      }
+      else if (!r.ok) throw new Error("data.json is missing. Run tools/scorecard/build_site.py with report links, then serve this folder with python -m http.server.");
     }
     route();
   } catch (e) {

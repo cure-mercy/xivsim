@@ -17,17 +17,15 @@ site/data.json holds player names and who caused which mistake, so it is git-ign
 --publish writes a copy of the site for public hosting into DIR (default: stats/ at the repository root, which
 the GitHub Pages workflow deploys like the rest of the repo): the page files and public.json (what the rotation and
 gear pages need, PUBLIC_KEYS, open to everyone). The rest goes to Supabase when .supabase holds its keys (supa.py:
-staff accounts an admin approved), with config.json telling the page where to log in. When a passphrase is set
-(SCORECARD_PASSPHRASE, or .PUBLISH_KEY at the repository root), it also goes to data.enc.json, encrypted with it
-(encrypt_data.js, needs Node), for staff who open the site with the passphrase instead of an account. Without
-Supabase, data.enc.json is the only way in, and the passphrase is asked for twice when neither is set. The plaintext
+staff accounts an admin approved, and the shared one the staff passphrase opens: supa.py passphrase), with
+config.json telling the page where to log in. Without Supabase only the open pages are published. The plaintext
 data.json is never copied there, and nothing is published if a player's name turns up in public.json. To stop publishing, delete DIR; to move host, upload DIR (or serve site/ with its plaintext data behind
 the new host's own login).
 
 The worker (worker.py) builds the reports the admin page lists, with the same functions; site_lock() keeps it and a
 command-line build from writing data.json at the same time.
 """
-import argparse, base64, contextlib, datetime, getpass, hashlib, json, os, shutil, socket, subprocess, sys, time
+import argparse, base64, contextlib, datetime, hashlib, json, os, shutil, socket, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -39,7 +37,7 @@ HERE = Path(__file__).resolve().parent
 DATA = HERE / "site" / "data.json"
 PUBLISH_DIR = HERE.parent.parent / "stats"
 PAGE_FILES = ["index.html", "style.css", "app.js"]
-# what goes into public.json, unencrypted: a whitelist, so a new key stays behind the passphrase until it is added
+# what goes into public.json, open to everyone: a whitelist, so a new key stays behind the login until it is added
 # here. The rotation and gear pages read only these (benchmark: only its clears, from public FFLogs reports); our
 # players' figures on those pages (`ours`) stay locked
 PUBLIC_KEYS = {"generated": None, "rotations": None, "gear": None, "job_icons": None, "benchmark": ["pools"]}
@@ -202,26 +200,13 @@ def check_public(site):
     return text
 
 
-def passphrase(ask):
-    """The passphrase for data.enc.json: SCORECARD_PASSPHRASE, else .PUBLISH_KEY at the repository root (git-ignored),
-    else asked for twice when ask (no Supabase: the passphrase is the only way in). None: no data.enc.json."""
-    pw, key = os.environ.get("SCORECARD_PASSPHRASE"), HERE.parent.parent / ".PUBLISH_KEY"
-    if not pw and key.exists(): pw = key.read_text(encoding="utf-8").strip()
-    if not pw and ask:
-        pw = getpass.getpass("Passphrase for the published data: ")
-        if pw != getpass.getpass("Again: "): raise SystemExit("the passphrases differ; nothing published")
-    if pw and len(pw) < 12: raise SystemExit("use a passphrase of at least 12 characters (several words is best); nothing published")
-    return pw or None
-
-
 def publish(out):
     """Copy the page files and the public data to out, and the rest to Supabase (with config.json for the page) when
-    .supabase is set up, and to data.enc.json, encrypted, when there is a passphrase; never the private part in plaintext."""
+    .supabase is set up; never the private part."""
     import supa
     site = json.loads(DATA.read_text(encoding="utf-8"))
     public_text = check_public(site)
     cfg = supa.config()
-    pw = passphrase(ask=not cfg)
     out = Path(out); out.mkdir(parents=True, exist_ok=True)
     for f in PAGE_FILES: shutil.copyfile(HERE / "site" / f, out / f)
     page = (out / "index.html").read_text(encoding="utf-8")   # version the files so browsers fetch the new ones
@@ -229,21 +214,15 @@ def publish(out):
         v = hashlib.sha256((HERE / "site" / f).read_bytes()).hexdigest()[:10]
         page = page.replace(f'"{f}"', f'"{f}?v={v}"')
     (out / "index.html").write_text(page, encoding="utf-8")
-    (out / "data.json").unlink(missing_ok=True)
-    rest = []
+    for f in ("data.json", "data.enc.json"): (out / f).unlink(missing_ok=True)   # data.enc.json: the passphrase's copy until 2026-11-02
     if cfg:
         supa.upload(fragments(site))
-        (out / "config.json").write_text(json.dumps(supa.page_config(cfg, passphrase=bool(pw))), encoding="utf-8")   # the public URL and key
-        rest.append(f"config.json (Supabase at {cfg['url']})")
-    else: (out / "config.json").unlink(missing_ok=True)
-    if pw:
-        _, private = split_public(site)
-        env = dict(os.environ, SCORECARD_PASSPHRASE=pw)   # the private part goes to the encryption on stdin, never to a file
-        subprocess.run(["node", str(HERE / "encrypt_data.js"), "-", str(out / "data.enc.json")], env=env, check=True,
-                       input=json.dumps(private, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
-        rest.append("data.enc.json (passphrase)")
-    else: (out / "data.enc.json").unlink(missing_ok=True)
-    rest = ", ".join(rest)
+        shared = supa.shared_account(cfg)
+        (out / "config.json").write_text(json.dumps(supa.page_config(cfg, passphrase=shared)), encoding="utf-8")   # the public URL and key
+        rest = f"config.json (Supabase at {cfg['url']}, {'with' if shared else 'no'} staff passphrase)"
+    else:
+        (out / "config.json").unlink(missing_ok=True)
+        rest = "no config.json (no .supabase: only the open pages)"
     (out / "public.json").write_text(public_text, encoding="utf-8")
     print(f"published to {out}: {', '.join(PAGE_FILES)}, public.json ({len(public_text.encode()) // 1024} KB), {rest}")
 
@@ -337,7 +316,7 @@ def main():
                     "ceilings.json, without analysing (after dps.py --ceilings-only)")
     ap.add_argument("--reanalyse", action="store_true", help="analyse every report already on the site again (after a classifier or label change)")
     ap.add_argument("--publish", nargs="?", const=str(PUBLISH_DIR), metavar="DIR",
-                    help=f"also write the copy for public hosting (default {PUBLISH_DIR}); the private part goes to Supabase, or encrypted")
+                    help=f"also write the copy for public hosting (default {PUBLISH_DIR}); the private part goes to Supabase")
     ap.add_argument("--upload", action="store_true", help="also send the data to Supabase, without writing page files")
     ap.add_argument("--cached", action="store_true", help="use the cache only: skip parts a cached report is missing "
                     "(e.g. the rDPS raid buffs gave others) instead of fetching them, for when FFLogs is down")

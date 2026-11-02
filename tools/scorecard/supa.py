@@ -5,6 +5,7 @@ account commands.
     python tools/scorecard/supa.py admin <email | name>    make an account an admin (they must have logged in once)
     python tools/scorecard/supa.py staff <email | name>    approve an account as staff (as the admin page does)
     python tools/scorecard/supa.py audit [N]               the last N entries of the audit log (default 30)
+    python tools/scorecard/supa.py passphrase [off]        (re)makes the shared staff account the passphrase opens, or removes it
     python tools/scorecard/supa.py probe                   checks the row-level security with a throwaway account
 
 build_site.py --publish (and --upload, and worker.py) call upload(). The keys come from .supabase at the repository
@@ -26,8 +27,8 @@ SENT = HERE / ".cache" / "supabase_sent.json"
 
 
 def config():
-    """{url, anon, service, email_login} from the keys file, or None when there is none (the site then falls back
-    to the passphrase)."""
+    """{url, anon, service, email_login} from the keys file, or None when there is none (--publish then writes only the
+    open pages)."""
     f = Path(os.environ.get("SCORECARD_SUPABASE") or ROOT / ".supabase")
     if not f.exists(): return None
     kv = dict(l.strip().split("=", 1) for l in f.read_text().splitlines() if "=" in l and not l.lstrip().startswith("#"))
@@ -36,10 +37,10 @@ def config():
                 email_login=kv.get("SCORECARD_EMAIL_LOGIN") == "1")
 
 
-def page_config(cfg, passphrase=False):
-    """What the page needs to log in (published as config.json): the project's address and its public key, and whether
-    data.enc.json is there for the passphrase."""
-    return dict(supabase_url=cfg["url"], anon_key=cfg["anon"], email_login=cfg["email_login"], passphrase=passphrase)
+def page_config(cfg, passphrase=None):
+    """What the page needs to log in (published as config.json): the project's address and its public key, and the
+    shared staff account's email when there is one, which the passphrase is the password of (false otherwise)."""
+    return dict(supabase_url=cfg["url"], anon_key=cfg["anon"], email_login=cfg["email_login"], passphrase=passphrase or False)
 
 
 def _headers(key, token=None):
@@ -151,6 +152,44 @@ def set_role(who, role, cfg=None):
     print(f"{m[0]['name'] or m[0]['email']} is {'an admin' if role == 'admin' else role} now")
 
 
+# the staff passphrase: the password of one shared staff account (supabase/migrations/20261102000000_passphrase.sql)
+SHARED_EMAIL, SHARED_NAME = "staff-passphrase@syncademy.invalid", "Staff passphrase"
+
+
+def shared_account(cfg=None):
+    """The shared staff account's email, or None when there is none."""
+    rows = call("GET", "/rest/v1/profiles?select=user_id&shared=eq.true", cfg=cfg)
+    return SHARED_EMAIL if rows else None
+
+
+def passphrase_text():
+    """SCORECARD_PASSPHRASE, else .PUBLISH_KEY at the repository root (git-ignored)."""
+    pw, key = os.environ.get("SCORECARD_PASSPHRASE"), ROOT / ".PUBLISH_KEY"
+    if not pw and key.exists(): pw = key.read_text(encoding="utf-8").strip()
+    if not pw: raise SystemExit("no passphrase: put it in .PUBLISH_KEY at the repository root, or in SCORECARD_PASSPHRASE")
+    if len(pw) < 12: raise SystemExit("use a passphrase of at least 12 characters (several words is best)")
+    return pw
+
+
+def set_passphrase(off=False, cfg=None):
+    """Replace the shared staff account (ending every session it had) with one whose password is the passphrase, or
+    only remove it (off). Replacing is also how the passphrase changes: the account's password can't be (the migration)."""
+    pw = None if off else passphrase_text()
+    for r in call("GET", "/rest/v1/profiles?select=user_id&shared=eq.true", cfg=cfg):
+        call("DELETE", f"/auth/v1/admin/users/{r['user_id']}", cfg=cfg)
+    for u in users(cfg):   # an account left with the address but not marked shared (a make that stopped half way)
+        if u["email"] == SHARED_EMAIL: call("DELETE", f"/auth/v1/admin/users/{u['id']}", cfg=cfg)
+    if off:
+        audit("staff passphrase removed", SHARED_NAME, by="command line", cfg=cfg)
+        print("the staff passphrase account is gone: publish again so the page stops offering the passphrase")
+        return
+    u = call("POST", "/auth/v1/admin/users", dict(email=SHARED_EMAIL, password=pw, email_confirm=True,
+                                                   user_metadata=dict(full_name=SHARED_NAME)), cfg=cfg)
+    call("PATCH", f"/rest/v1/profiles?user_id=eq.{u['id']}", dict(role="staff", shared=True), cfg=cfg)
+    audit("staff passphrase set", SHARED_NAME, by="command line", cfg=cfg)
+    print(f"the staff passphrase opens {SHARED_EMAIL} (staff); earlier passphrase sessions have ended")
+
+
 def count(table, cfg=None):
     """Rows in a table (Content-Range of an exact count; a plain select stops at the project's max rows)."""
     cfg = cfg or config()
@@ -229,4 +268,5 @@ if __name__ == "__main__":
     elif cmd[0] in ("admin", "staff") and len(cmd) == 2: set_role(cmd[1], cmd[0], cfg)
     elif cmd[0] == "audit": show_audit(cmd[1] if len(cmd) > 1 else 30, cfg)
     elif cmd[0] == "probe": sys.exit(0 if probe(cfg) else 1)
+    elif cmd[0] == "passphrase" and cmd[1:] in ([], ["off"]): set_passphrase(off=cmd[1:] == ["off"], cfg=cfg)
     else: print(__doc__)

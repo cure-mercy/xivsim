@@ -2,7 +2,8 @@
 
 Status: draft, 2026-10-26. Step 1 built 2026-10-28. Step 2 built 2026-10-28, live on Pages and Supabase since
 2026-10-29. **Changed 2026-10-29: staff only** (see "Change: staff only" below): accounts are no longer linked to
-players, so the access rules of step 2 below (and decisions 1 and 6) no longer apply.
+players, so the access rules of step 2 below (and decisions 1 and 6) no longer apply. **Changed 2026-11-02:** the
+passphrase is the password of a shared staff account instead of the key to `data.enc.json`.
 
 ## Goal
 
@@ -223,11 +224,13 @@ The site is for Syncademy staff, not for every player, so the per-player visibil
 - **Removed:** linking accounts to characters (`players`, `report_players`, `user_players`, `request_link`, `linked()`,
   `my_report()`), the "Not your group" page, and leaving out the latest raid day's mistakes by mechanic. The progress
   table stays as the part of each report the pages load first, now with names and mistakes.
-- **The passphrase** is a second way in, with staff's view and no admin page: `data.enc.json`, published next to
-  `config.json` when `.PUBLISH_KEY` (or `SCORECARD_PASSPHRASE`) holds it. It shows the data as of the last publish.
+- **The passphrase** is a second way in, with staff's view and no admin page. Since 2026-11-02 it is the password of
+  one shared staff account (`supa.py passphrase`, migration `20261102000000_passphrase.sql`), so it reads the live
+  tables; nobody can delete that account or change its password or email from the page, and changing the passphrase
+  replaces the account. Until then it opened `data.enc.json`, the data as of the last publish.
 - **Audit log** (`audit_log`): logins, account and role changes, the report list, FFLogs searches, and what the worker
   and the command line did. Triggers write the page's entries; nobody can change them from the page; only admins read
-  them. Passphrase use leaves no entry.
+  them. Passphrase logins are entries of the shared account, without who it was.
 - The migration is `supabase/migrations/20261029000000_staff.sql`, on top of the step-2 ones.
 
 ## Things to keep in mind

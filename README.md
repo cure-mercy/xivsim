@@ -31,7 +31,7 @@ display shows every drill's panel at once), `color-scheme` on `:root` and `body{
 
 The trainer is published only through GitHub Pages. A push to `main` runs `.github/workflows/pages.yml`, which
 uploads the repository as it is, less `tests/`, `tools/` and `.gitignore`, and is live in about 30 s; `stats/` goes
-up with it (see tools/scorecard/README.md, Publishing with a passphrase). To check that a deploy is live, fetch a
+up with it (see tools/scorecard/README.md, Publishing). To check that a deploy is live, fetch a
 changed file from the site, e.g. `curl https://cure-mercy.github.io/xivsim/js/core.js`. One-time setup: in the
 repository's Settings → Pages, set Source to "GitHub Actions".
 

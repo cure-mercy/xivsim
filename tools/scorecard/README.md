@@ -31,7 +31,7 @@ a run you may want to undo.
 | `--refresh` | Downloads the reports again instead of using the cache. Use it for a log that was still being uploaded. |
 | `--reanalyse` | Analyses every report already on the site again from the cache. Needed after the classifier or the cause labels change, since the site stores what it was built with. |
 | `--remove CODE` | Removes a report from the site. |
-| `--publish [DIR]` | Also writes the copy for public hosting: rotations and gear open, the rest in Supabase behind a login (or behind a passphrase without Supabase; see Publishing). |
+| `--publish [DIR]` | Also writes the copy for public hosting: rotations and gear open, the rest in Supabase behind a login or the staff passphrase (see Publishing). |
 | `--upload` | Sends the data to Supabase without writing the page files. |
 | `--cached` | Uses the cache only: parts a cached report is missing (such as the rDPS raid buffs gave others) are left out instead of fetched. For when FFLogs is down; a normal run later fills them in. |
 
@@ -88,16 +88,18 @@ section).
 python tools/scorecard/build_site.py [<report link> ...] --publish
 ```
 
-This writes `stats/` at the repository root: the three page files, `public.json`, `config.json` and, with a
-passphrase, `data.enc.json`. It also sends the rest to Supabase.
+This writes `stats/` at the repository root: the three page files, `public.json` and `config.json`. It also sends
+the rest to Supabase. Without `.supabase` it writes only the open pages' files, and progress links say raid progress
+isn't published there.
 
-- `public.json` holds what the rotation and gear pages need, unencrypted: `rotations`, `gear` and the benchmark's
+- `public.json` holds what the rotation and gear pages need, open to everyone: `rotations`, `gear` and the benchmark's
   clears (`benchmark.pools`, from public FFLogs reports). It is a whitelist, `PUBLIC_KEYS` in `build_site.py`: a new
   key in the data stays private until it is added there. Before writing anything, `--publish` looks for every
   player's name (each report's players and actors, as whole names) in `public.json` and publishes nothing if one is
   there.
 - `config.json` tells the page where to log in: the project's address and its public (publishable) key, which is meant
-  to be public, and whether `data.enc.json` is there. Row-level security in the database decides what a logged-in
+  to be public, and the shared staff account's email address when the staff passphrase is set up (`passphrase`,
+  else `false`). Row-level security in the database decides what a logged-in
   account may read.
 - Supabase gets the private part (`build_site.fragments`, uploaded by `supa.py`). Staff and admins read all of it:
 
@@ -112,7 +114,7 @@ Only what changed since the last upload to that project is sent (hashes in `.cac
 removed with `--remove` is deleted from Supabase too, along with its progress and full record. `--upload` sends the
 data without writing `stats/`, for example after `--reanalyse`.
 
-`public.json`, `config.json` and `data.enc.json` go to Pages with a commit and push. The data in Supabase changes as
+`public.json` and `config.json` go to Pages with a commit and push. The data in Supabase changes as
 soon as it is uploaded. The published `index.html` loads `style.css` and `app.js` with a version stamp (`?v=` and a
 hash of the file), so browsers fetch new page files after a deploy instead of mixing a cached stylesheet with a new
 script. The page may be indexed by search engines (docs/ACCESS_CONCEPT.md, decision 4); only the open pages have anything
@@ -123,7 +125,7 @@ to index.
 | Who | Sees |
 |---|---|
 | Not logged in, or an account waiting for approval (`pending`) | The rotation and gear pages; a progress link shows the login, or that the account waits for approval, and the passphrase form |
-| Staff (`staff`), or anyone with the staff passphrase | Everything: every report in full, mistakes included |
+| Staff (`staff`), or anyone with the staff passphrase (a shared staff account) | Everything: every report in full, mistakes included |
 | Admin (`admin`) | Everything, plus the admin page |
 
 Anyone with a Discord account can log in; the account is `pending` until an admin approves it as staff on the admin
@@ -143,8 +145,8 @@ promoted, revoked or removed, changes to the report list (added, renamed, rebuil
 FFLogs searches, and what the worker built, removed or failed to build and what the command line uploaded or
 published. The database writes the entries for what happens on the page itself, with triggers
 (`supabase/migrations/20261029000000_staff.sql`); the worker and the command line write theirs with the service key.
-Nobody can change or delete entries from the page. Opening the site with the passphrase leaves no entry: it happens in
-the browser and never reaches the server.
+Nobody can change or delete entries from the page. Logins with the staff passphrase are entries like any other, as its
+shared account (`Staff passphrase`), so they don't say who it was.
 
 ### The admin page and the worker
 
@@ -241,31 +243,39 @@ Discord login works locally only once a Discord application is set up (below). I
 4. Apply the schema from WSL: `supabase login`, then `supabase link --project-ref <ref>`, then `supabase db push`.
 5. Put the project's URL, publishable (anon) key and secret (service_role) key in `.supabase` at the repository root,
    in the format `supa.py` describes, and the staff passphrase in `.PUBLISH_KEY` (git-ignored). Then run
-   `build_site.py --publish`, check with `supa.py probe`, and commit and push `stats/`.
+   `supa.py passphrase` and `build_site.py --publish`, check with `supa.py probe`, and commit and push `stats/`.
 6. Log in on the site once, then run `supa.py admin <you>`.
 7. Install the worker: on the server with `scratch/stats-worker/deploy.sh --first`, or in WSL (`worker.service`). It
    reads `.supabase` by default.
 
 ### The passphrase
 
-The staff passphrase is the other way in: no account, staff's view, no admin page. With a passphrase,
-`--publish` writes `data.enc.json` next to `config.json`. It holds the private part, compressed and encrypted with
-AES-256-GCM under a key derived from the passphrase (PBKDF2-SHA256, 600,000 rounds), which goes to `encrypt_data.js`
-(Node) on stdin, so no plaintext copy is written. The passphrase comes from `SCORECARD_PASSPHRASE`, else from
-`.PUBLISH_KEY` at the repository root (git-ignored); with neither, a publish to Supabase leaves `data.enc.json` out
-(and deletes an old one). It must be at least 12 characters. Anyone can download the file and try passphrases
-offline, so several unrelated words are best.
+The staff passphrase is the other way in: staff's view, no admin page, no account of one's own. It is the password of
+one shared staff account, `staff-passphrase@syncademy.invalid` (`Staff passphrase` on the admin page), so it reads the
+same live tables as a staff login: what the worker builds shows up at once, with no publish. The page offers it
+below the Discord login and sends it to Supabase's email + password login with that address, which `config.json`
+gives. Like a Discord login, it stays logged in in that browser until Log out, which ends only that browser's session
+(the others share the account).
 
-The page offers the passphrase below the Discord login. Readers enter it once per browser session; Lock (or logging
-out) forgets it. It opens the data as of the last publish: what the worker builds later reaches Supabase, and the
-passphrase sees it only after the next `--publish`. Everyone shares one passphrase, so changing it (and publishing
-again) is the only way to revoke it, and old encrypted files stay readable in git history to anyone who has it.
-Without `.supabase` the passphrase is the only way in: `--publish` writes no `config.json` and asks for the passphrase
-twice when it isn't set.
+`python tools/scorecard/supa.py passphrase` makes the account, with the passphrase from `SCORECARD_PASSPHRASE`, else
+from `.PUBLISH_KEY` at the repository root (git-ignored); it must be at least 12 characters, several unrelated words
+being best. Run it again after changing the passphrase: it deletes the account and makes a new one, which logs
+everyone out of the old one. `supa.py passphrase off` only removes it. Publish after either, so `config.json` offers
+the passphrase or stops offering it. Supabase limits how fast logins can be tried, so guessing has to go through the
+server.
+
+Everyone who has the passphrase shares the account, so the database (`supabase/migrations/20261102000000_passphrase.sql`,
+`profiles.shared`) keeps it as `supa.py` made it: Delete my account refuses it, and a change to its password, email
+or phone fails (a trigger on `auth.users`, since GoTrue writes those rows itself whoever asks). Admins can still
+revoke it or remove it on the admin page like any account.
+
+Until 2 November 2026 the passphrase opened `data.enc.json`, an encrypted copy of the last publish (AES-256-GCM,
+PBKDF2), which a publish now deletes. The old copies stay in git history, readable to anyone who has the passphrase
+of the time.
 
 `ours` is our players' share of the rotation pages, without names: per job, every clean 0:00–2:00 pull's rDPS and the
 buffs it gave others, how many players those come from, and each player's rotation ceiling (`ours_by_job` in
-`build_site.py`). It stays private in both setups. Until it is available, the rotations overview hides its chart of
+`build_site.py`). It stays private, in Supabase. Until it is available, the rotations overview hides its chart of
 our players against the ceiling and the clears. rDPS then adds the clears' mean buff credit instead of our players'
 median, and the notes under the tables say which one they use.
 
@@ -456,7 +466,7 @@ role (melee, physical ranged, magical ranged) with job icons and ordered by expe
   potency, casts per skill and any resources wasted. It is drawn compactly in the game's action icons, a line for each
   stretch between major mechanics: every GCD on the line with the oGCDs woven after it smaller and raised beside it (the
   table view has every GCD's start time, cast and running). The icons come from XIVAPI by action name (`gamedata.icons`,
-  cached in `.cache/icons/`) and go into the site data as data URIs, so the published copy carries them encrypted like the
+  cached in `.cache/icons/`) and go into the site data as data URIs, so the published copy carries them behind the login like the
   rest. GCDs cast while running are marked (a green bar under an instant GCD the player runs through, a blue one under a
   hard cast whose run fits only in its slidecast and the gap after), with how much running falls before the next GCD:
   the optimizer only makes sure each run fits outside cast bars, so `dps.py` places them (longest stretches outside cast
@@ -831,7 +841,7 @@ resumed. Run `build_site.py --reanalyse` afterwards so the site picks up the new
 
 | File | Purpose |
 |---|---|
-| `build_site.py` | The command: adds reports to the website's data (`site/data.json`); `--publish` writes the public copy to `stats/` (`public.json` open, the rest to Supabase and, with a passphrase, `data.enc.json`) |
+| `build_site.py` | The command: adds reports to the website's data (`site/data.json`); `--publish` writes the public copy to `stats/` (`public.json` open, the rest to Supabase) |
 | `supa.py` | Uploads to Supabase, writes audit entries; `status`, `admin`, `staff`, `audit`, `probe` |
 | `worker.py`, `worker.service` | Builds what the admin page's report list asks for and watches live reports (runs on the Strato server as `stats-worker`) |
 | `supabase/` | The Supabase project: `config.toml` and the schema with its access rules, roles and audit log (`migrations/`) |
@@ -844,7 +854,6 @@ resumed. Run `build_site.py --reanalyse` afterwards so the site picks up the new
 | `fflogs.py` | FFLogs v2 client: token, rate-limit waits, paged events, batched tables, character ids, a report's upload state; `--login` for archived reports |
 | `benchmark.json` | Benchmark snapshot used for the damage, uptime and HP checkpoint comparisons |
 | `build_benchmark.py` | Rebuilds `benchmark.json` |
-| `encrypt_data.js` | Encrypts the data for `--publish` without Supabase (Node) |
 | `site/` | The website: `index.html`, `style.css`, `app.js`, and the generated `data.json` (git-ignored) |
 | `.cache/` | Downloaded reports, the API token and benchmark progress (git-ignored) |
 
