@@ -162,6 +162,8 @@ shared account (`Staff passphrase`), so they don't say who it was.
 - **Reports.** Add a report by its FFLogs link or code, with its group name (G1, G2, …; empty takes the day's next
   free one). For each report there are buttons to rename its group, rebuild it from a fresh download, watch it live,
   or remove it. Each row shows the state the worker reports: queued, building, ok, or error with FFLogs' message.
+  A report stays "building" until it has been uploaded, after its rotation ceilings (a few minutes), and "ok" means
+  it is on the site.
   The list refreshes every 15 seconds, except while a field is being edited. The list and the search are tabs, the
   list open first. It shows the two newest raid days (and anything queued, building or failed), older ones behind a button, and links each
   built report to its page on the site.
@@ -174,7 +176,9 @@ The analysis runs in Python, not in the browser or the database, so the page onl
 reports with the same functions as `build_site.py`, removes what was removed, writes `data.json` and uploads. After a
 build it refreshes the rotation ceilings of the built reports' players (`refresh_ceilings`: `dps.py --job auto
 --ceilings-only --reports`, about 4 minutes for a report in WSL, then `build_site.apply_ceilings`; the audit log says
-"ceilings refreshed" or "ceilings failed"). A report watched live waits until its watch ends and is refreshed once then
+"ceilings refreshed" or "ceilings failed"), and uploads only after that, so the row says "building" until then. A
+row still "building" at the worker's next pass (a restart or a failed upload in between) gets its ceilings and upload
+then, without being analysed again. A report watched live waits until its watch ends and is refreshed once then
 (the worker keeps that in memory, so a restart in between leaves it on the pooled ceilings until its next build). A
 build from the command line also keeps the list in step: reports it adds appear there, and reports it removes leave.
 `site_lock()` (`site/.build.lock`) keeps the worker and a command-line build from writing `data.json` at the same time.

@@ -2603,7 +2603,7 @@ async function adminPage() {
     || [...box.querySelectorAll("input[type=text], input[type=number]")].some(i => i.value !== i.defaultValue) || box.querySelector("input[type=checkbox]:checked");
   const act = fn => async () => { try { await fn(); } catch (e) { alert(e.message); return; } reportsBox.replaceChildren(); draw(); };
   const waitingNote = el("div");   // logins waiting for approval, at the top where they are seen
-  app.append(waitingNote, el("h2", {}, "Reports"), el("p", { class: "lede" }, "The reports on the site. The worker builds what this list asks for within a minute; a live report is checked for new pulls every 3 minutes until its watch ends (12 hours at most)."),
+  app.append(waitingNote, el("h2", {}, "Reports"), el("p", { class: "lede" }, "The reports on the site. The worker builds what this list asks for within a minute and uploads it once its players' rotation ceilings are done, a few minutes later (the row says building until then); a live report is checked for new pulls every 3 minutes until its watch ends (12 hours at most)."),
     adminTabs([["The list", reportsBox], ["Find a raid day's reports on FFLogs", findBox(act)]]),
     el("h2", { id: "accounts" }, "Accounts"), people, el("h2", {}, "Audit log"), auditBox());
   let lastBuilt = null;

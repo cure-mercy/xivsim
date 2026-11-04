@@ -12,10 +12,11 @@ Every POLL seconds it reads the list and, for each row:
   the log has had nothing new for IDLE_STOP.
 After a build it refreshes the rotation ceilings of the built reports' players (refresh_ceilings: tools/rotation/dps.py
 for just those reports, then build_site.apply_ceilings). After any change it writes data.json (build_site.finish) and
-uploads what changed (supa.upload). A failed build puts
-its error on the row for the admin page. Every SEARCH_POLL seconds it also answers the admin page's searches for a raid
-day's P12S reports on FFLogs (report_searches, see search). The keys come from .supabase (or SCORECARD_SUPABASE), as for
-supa.py.
+uploads what changed (supa.upload). A built row says "building" until that upload, "ok" only once the report is on the
+site; one still "building" at the next pass (a restart or a failed upload in between) gets its ceilings and upload
+then. A failed build puts its error on the row for the admin page. Every SEARCH_POLL seconds it also answers the admin
+page's searches for a raid day's P12S reports on FFLogs (report_searches, see search). The keys come from .supabase (or
+SCORECARD_SUPABASE), as for supa.py.
 """
 import argparse, datetime, json, subprocess, sys, time, traceback
 from pathlib import Path
@@ -53,7 +54,7 @@ def step(bench):
     now = datetime.datetime.now(UTC)
     with build_site.site_lock():
         site = build_site.load_site()
-        done, gone = [], []
+        done, gone, built = [], [], []   # built: rows that say "building" until their report has been uploaded
         for r in rows:
             code = r["code"]
             if r["want"] == "absent":
@@ -78,16 +79,18 @@ def step(bench):
             if log and not grown and (now - end).total_seconds() > IDLE_STOP:
                 patch(code, live_until=iso(now), message=f"Stopped watching: nothing new in the log since {end:%a %d %b %H:%M} UTC.")
             if not why:
-                if r["state"] in ("queued", "building"): patch(code, state="ok")   # e.g. only live watching was switched on
+                if r["state"] == "building":   # analysed, but a restart or a failed upload came first: ceilings and upload now
+                    print(f"{code}: not uploaded yet", file=sys.stderr); done.append(code); built.append(code)
+                elif r["state"] == "queued": patch(code, state="ok")   # e.g. only live watching was switched on
                 continue
             print(f"{code}: {why}", file=sys.stderr)
             patch(code, state="building", message=None)
             try:
                 e = build_site.add_report(site, code, r["group_name"], refresh, bench)
                 log = log or fflogs.report_state(code)
-                patch(code, state="ok", message=None, group_name=e["group"], day=e["day"], pulls=e["pulls_total"],
-                      segments=log["segments"], built_at=iso(datetime.datetime.now(UTC)))
-                done.append(code)
+                patch(code, state="building", message="Analysed: uploading to the site." if live else "Analysed: goes on the site once its rotation ceilings are done (a few minutes).",
+                      group_name=e["group"], day=e["day"], pulls=e["pulls_total"], segments=log["segments"], built_at=iso(datetime.datetime.now(UTC)))
+                done.append(code); built.append(code)
                 supa.audit("report built", code, dict(why=why, group=e["group"], day=e["day"], pulls=e["pulls_total"]), by="worker")
             except (Exception, SystemExit) as ex:   # S.fetch raises SystemExit for a report without P12S pulls (yet)
                 plain = isinstance(ex, (ValueError, SystemExit, RuntimeError))   # RuntimeError: FFLogs' own answer ("This report does not exist.")
@@ -105,6 +108,8 @@ def step(bench):
         if done:
             build_site.finish(site, bench)
             supa.upload(build_site.fragments(site))
+        # on the site now; a row the admin changed in the meantime (queued again) keeps its state
+        if built: supa.call("PATCH", f"/rest/v1/report_sources?code=in.{supa.q(supa.in_list(built))}&state=eq.building", dict(state="ok", message=None))
         for code in gone: supa.call("DELETE", f"/rest/v1/report_sources?code=eq.{supa.q(code)}")
     return done
 
