@@ -148,11 +148,11 @@
     // The dashes land a median 12.1 yalms out: players walk a ring 12.6 to its corners and 11.6 to its sides.
     // Athena takes her corner 14.0 yalms out, on the rim. The labels only mark the way.
     const R_PATH = 12.6 * Y, R_BOSS = 14.0 * Y, R_LABEL = 58;
-    // The puddle: about 3 yalms in radius, measured on a video of a pull against the octagon's 10.3-yalm side (its
-    // swirling edge leaves about half a yalm either way). It lasts five dashes (puddle 1 goes as puddle 6 appears, as a
-    // video shows), and the logs agree: nobody alive stood within 5.9 yalms of one while it was down. The party stacks
-    // in the middle before the numbers send it out.
-    const R_PUDDLE = 3.0 * Y, R_STACK = 40;
+    // The puddle: its outline drawn on a frame of a pull spans 581 px against 518 for the octagon's 10.3-yalm side,
+    // 11.6 yalms at that side's depth and about 10 to 11 nearer the camera, where the puddle is; and nobody alive
+    // stood within 5.9 yalms of one while it was down. So 5.5 in radius. It lasts five dashes (puddle 1 goes as
+    // puddle 6 appears, as a video shows). The party stacks in the middle before the numbers send it out.
+    const R_PUDDLE = 5.5 * Y, R_STACK = 40;
     // The pair standing in for the lasers waits this far from the middle add, on its own side (White Flame's
     // targets stood a median 8.6 yalms out).
     const R_STANDIN = 8.6 * Y;
