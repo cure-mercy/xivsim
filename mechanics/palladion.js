@@ -303,6 +303,7 @@
     // wait short of puddles 1 and 2 and 5/7's spot out of puddle 7.
     function relayout(k, p){
       DASH[k] = p;
+      if(k === 1) START['13'] = p;
       for(let n = k + 2; n <= 8; n += 2) DASH[n] = packPast(DASH[n - 2], 1);
       WALL['13'] = packPast(DASH[2], -1);
       WALL['24'] = packPast(DASH[1], -1);
@@ -444,7 +445,9 @@
         return onFloor([s.at[0] - dy / len * gap, s.at[1] + dx / len * gap]);
       }
       const side = (num === 1 || num === 2 || num === 5 || num === 6) ? -1 : 1;
-      const gap = s.wide ? 26 : 12;
+      // 5/7 standing in and 6/8 at the wall spread as the raidplan has them: 5 and 7 at 282 and 312 degrees, 6 and 8
+      // at 109 and 128, about 4.3 yalms apart
+      const gap = s.wide ? (g === '57' ? 2.15 * Y : 26) : (g === '68' ? 2.1 * Y : 12);
       return onFloor([s.at[0] - dy / len * gap * side, s.at[1] + dx / len * gap * side]);
     }
     // A partner's offset beside a spot near a corner can reach past the edge: pull it back half a yalm inside.
@@ -798,17 +801,11 @@
     }
     function checkFlame(k){
       const when = LIVE.flame[k - 1], pos = party(when), me = st.num;
-      const near = Object.keys(pos).map(Number).sort((a, b) => dist(pos[a], [300, 300]) - dist(pos[b], [300, 300])).slice(0, 2);
+      const near = nearest(pos);
       T.playBeams(document.getElementById('p4-beams'), near.map(n => ({ from:[300, 300], through: pos[n], half: FLAME_HALF })));
       if(st.over) return;
       const g = standInAt(k), baiters = DASHES[g], target = planSpot(me, when);
-      const hitBy = n => {
-        const u = [pos[n][0] - 300, pos[n][1] - 300], len = Math.hypot(u[0], u[1]) || 1;
-        return Object.keys(pos).map(Number).filter(m => {
-          const v = [pos[m][0] - 300, pos[m][1] - 300];
-          return (v[0] * u[0] + v[1] * u[1]) / len > 0 && Math.abs(v[0] * u[1] - v[1] * u[0]) / len <= FLAME_HALF;
-        });
-      };
+      const hitBy = n => laserHits(pos, n);
       const sec = `<b>${when.toFixed(1)} s</b>`;
       if(baiters.includes(me) && !near.includes(me))
         return liveFail('White Flame not baited', `The ${NTH[k - 1]} add was yellow, and its White Flame fired at ${sec} at the two players nearest the middle: <b>${near.join(' and ')}</b>, not you. These lasers were your pair's. ${liveRule()}`, target);
@@ -825,6 +822,15 @@
       fxAdd(ccNode(k, 'p4-fx-cc'), 1200);
       if(inClearCut(k, here(LIVE.adds[k - 1])))
         liveFail('Caught in Clear Cut', `The ${NTH[k - 1]} add was purple, and its Clear Cut, a 270° cone 4 yalms long from the middle, went off at <b>${LIVE.adds[k - 1].toFixed(1)} s</b> with you in it: Damage Down. Standing in is safe from about 4 yalms out. ${liveRule()}`, planSpot(st.num, LIVE.adds[k - 1]));
+    }
+    // White Flame at the two players nearest the middle; laserHits: everyone in the laser through n (n included).
+    const nearest = pos => Object.keys(pos).map(Number).sort((a, b) => dist(pos[a], [300, 300]) - dist(pos[b], [300, 300])).slice(0, 2);
+    function laserHits(pos, n){
+      const u = [pos[n][0] - 300, pos[n][1] - 300], len = Math.hypot(u[0], u[1]) || 1;
+      return Object.keys(pos).map(Number).filter(m => {
+        const v = [pos[m][0] - 300, pos[m][1] - 300];
+        return (v[0] * u[0] + v[1] * u[1]) / len > 0 && Math.abs(v[0] * u[1] - v[1] * u[0]) / len <= FLAME_HALF;
+      });
     }
     function checkStack(k){
       const when = LIVE.stack[k - 1], c = st.land[k], pos = party(when), me = st.num;
@@ -1332,6 +1338,58 @@
       ], answerDash);
     }
 
+    /* ---------- step by step: a spot off the plan that is still safe ---------- */
+    // Why a spot would get you or someone else hit, or null if it is safe: through dash m's stack, its add's lasers
+    // or Clear Cut (and, from the start, dash 1's line), clear of the puddles down (`puddles` dropped so far), off
+    // everyone else's spot (`others`, where each stands then), and, if a dash of yours will land on it (`land`),
+    // with its stack, its line and its puddle (for its five dashes) clear of everyone else's spots.
+    const snapLayout = () => JSON.parse(JSON.stringify([DASH, WALL, STANDIN, START, OUT]));
+    function restoreLayout(s){ [DASH, WALL, STANDIN, START, OUT].forEach((o, i) => Object.assign(o, s[i])); rebuild(); }
+    function hazard(p, m, puddles, others, land, line){
+      const me = st.num, mine = pairOf(me);
+      const v = verdict(p, p, 1, puddles, null);
+      if(v.kind !== 'ok') return missNote(v);
+      if(st.adds[m] === 'P' && inClearCut(m, p)) return `That spot is inside Clear Cut, the purple add's 270° cone 4 yalms long from the middle: Damage Down.`;
+      if(line && !mine.includes(m) && distToSegment(p, line[0], line[1]) <= LINE_HALF) return `That spot is on dash ${m}'s path, which hits everyone in it but ${m} and ${PARTNER[m]}.`;
+      const on = Object.keys(others).map(Number).find(o => o !== st.partner && dist(others[o], p) < 1.5 * Y);
+      if(on) return `That spot is where ${on} stands.`;
+      if(!mine.includes(m) && dist(p, DASH[m]) <= STACK_R) return `That spot is inside dash ${m}'s stack, which is ${m} and ${PARTNER[m]}'s: its Magic Vulnerability Up would make your next hit lethal.`;
+      if(mine.includes(m) && m !== me && dist(p, DASH[m]) > STACK_R) return `That spot is outside dash ${m}'s stack, so ${m} would take it alone.`;
+      if(st.adds[m] === 'Y'){
+        const pos = Object.assign({}, others, { [me]: p }), near = nearest(pos), baiters = DASHES[standInAt(m)];
+        if(baiters.includes(me) && !near.includes(me)) return `From there you are not one of the two players nearest the middle, so the yellow add's White Flame, yours, would fire at ${near.join(' and ')}.`;
+        if(!baiters.includes(me) && near.includes(me)) return `From there you would be one of the two players nearest the middle, and the yellow add's White Flame, meant for ${baiters.join(' and ')}, would fire at you.`;
+        for(const n of near){
+          const hit = laserHits(pos, n).filter(o => o !== n);
+          if(n === me && hit.length) return `From there your White Flame would run on through ${hit.join(' and ')}.`;
+          if(n !== me && hit.includes(me)) return `That spot is in the White Flame through ${n}.`;
+        }
+      }
+      if(land){
+        const saved = snapLayout();
+        relayout(land, p);
+        const from = land === 1 ? posAt(st.boss, 0, R_BOSS) : DASH[land - 1];
+        let why = null;
+        for(let o = 1; o <= 8 && !why; o++){
+          if(mine.includes(o)) continue;
+          const at = numAt(o, [land, 'post']);
+          if(dist(at, p) <= STACK_R) why = `Dash ${land} would land there with ${o} inside its 6-yalm stack.`;
+          else if(distToSegment(at, from, p) <= LINE_HALF) why = `Dash ${land}'s path to that spot would run through ${o}.`;
+          for(let b = land; b <= Math.min(8, land + 4) && !why; b++){
+            const spots = [numAt(o, [b, 'post'])].concat(b < 8 ? [numAt(o, [b + 1, 'pre'])] : []);
+            if(spots.some(q => dist(q, p) < R_PUDDLE)) why = `Dash ${land}'s puddle there would cover where ${o} stands on dash ${b}.`;
+          }
+        }
+        if(why) restoreLayout(saved);
+        return why;
+      }
+      return null;
+    }
+    // A safe spot off the plan: a warning, and on to the next step.
+    function warnOff(title, why, next){
+      showFeedback(fb, 'warn', title, why, next.label, next.fn);
+    }
+
     /* ---------- answers ---------- */
     function judge(ok, title, why, next){
       if(ok){
@@ -1356,6 +1414,14 @@
         loose = v.kind === 'ok';
       }
       const ok = v.kind === 'ok';
+      // Off the spot: safe through dash 1 (its line, its stack, the first add) and clear of everyone, it is a warning.
+      // 1 starts where dash 1 lands, so the puddles pack from there.
+      let risk = null;
+      if(!ok){
+        const others = {};
+        for(let o = 1; o <= 8; o++) if(o !== st.num) others[o] = numAt(o, 'start');
+        risk = hazard(p, 1, 0, others, st.num === 1 ? 1 : 0, [posAt(st.boss, 0, R_BOSS), st.num === 1 ? p : DASH[1]]);
+      }
       const host = drawOpening();
       drawParty(host, 'start', ok && !loose ? null : p);
       if(!ok) drawTarget(host, numAt(st.num, 'start'));
@@ -1366,8 +1432,9 @@
         '57': `5 and 7 are first in the bait order, so you start <b>standing in close to the middle</b>, spread a little and clear of the dash line, ready for the first yellow add.`,
         '68': `6 and 8 start at the wall just short of the <b>relative south-east</b> corner, towards east, and wait there.`
       }[st.group];
+      if(!ok && !risk) return warnOff('Safe, but off the spot', `That spot keeps you clear of dash 1, its stack and the first add, and of everyone else, but it is off where the group starts. ` + why + ` Everything is read off Athena's corner, which is relative north this pull.`, stepTo(2));
       judge(ok, ok ? 'Right spot' : 'Wrong spot',
-        (ok ? '' : missNote(v) + ' ') + why + ` Everything is read off Athena's corner, which is relative north this pull.`, stepTo(2));
+        (ok ? '' : risk + ' ') + why + ` Everything is read off Athena's corner, which is relative north this pull.`, stepTo(2));
     }
 
     const TITLE_OK = { take:'Yours to take', move:'Good move', bait:'Your lasers', hold:'Right to wait' };
@@ -1406,6 +1473,17 @@
       st.sub = false;
       // Moving to the dash 5 spot a dash early, or again once you stand on it, counts as well as holding.
       const dashSpotAlt = e.early || (e.dashSpot ? 5 : 0);
+      // the spot through this dash: everyone else where the plan has them after it, the puddles down so far
+      const others = {};
+      for(let o = 1; o <= 8; o++) if(o !== st.num) others[o] = numAt(o, [n, 'post']);
+      // Repositioning where you could have held is a warning when the new spot is safe.
+      if(e.act === 'hold' && !endsIn && !dashSpotAlt && !hazard(p, n, n, others, 0, null)){
+        const host = layer('p4-actors');
+        drawPuddles(host, n); drawLasers(host, n); addAt(host, n);
+        drawParty(host, [n, 'post'], p);
+        drawTarget(host, numAt(st.num, [n, 'post']));
+        return warnOff('Safe, but you could have held', `That spot is clear of everything on this dash, but there was no need to move. ${whyText(g, n)}`, stepTo(st.step + 1));
+      }
       if(e.act !== 'move' && !endsIn && !dashSpotAlt){
         // the mistake was choosing Reposition, so Undo goes back past the spot to the dash question
         fb.dataset.undoDepth = '2';
@@ -1433,6 +1511,24 @@
       const ok = v.kind === 'ok';
       // moving over early changes where you stand from here on, so the plan follows you
       if(ok && e.early){ st.early57 = true; rebuild(); }
+      // Off the spot but safe through this dash, clear of everyone, and, if one of your dashes will land there, with
+      // its puddle clear of everyone's spots: a warning, and the later puddles pack from where yours lands. Your
+      // partner's dash has to land within reach of you to share.
+      let risk = null;
+      if(!ok){
+        const land = e.kind === 'dash' && e.dash === st.num ? e.dash : 0;
+        const shared = e.kind === 'dash' && e.dash !== st.num ? e.dash : 0;
+        risk = e.early ? null : hazard(p, n, n, others, land, null);
+        if(e.early) risk = `Moving over early, go to the dash 5 spot itself, just clockwise of puddle 3.`;
+        if(!risk && shared && dist(p, DASH[shared]) > STACK_R) risk = `That spot is too far from where dash ${shared} lands to share its stack.`;
+      }
+      if(!ok && !risk){
+        const host = layer('p4-actors');
+        drawPuddles(host, n); drawLasers(host, n); addAt(host, n);
+        drawParty(host, [n, 'post'], p);
+        drawTarget(host, numAt(st.num, [n, 'post']));
+        return warnOff('Safe, but off the spot', `${missNote(v)} It is clear of everything on this dash and of everyone else, so the pull goes on. ${whyText(g, n)}`, stepTo(st.step + 1));
+      }
       const host = layer('p4-actors');
       drawPuddles(host, n);
       drawLasers(host, n);
@@ -1440,7 +1536,7 @@
       drawParty(host, [n, 'post'], ok && !loose ? null : p);
       if(!ok) drawTarget(host, numAt(st.num, [n, 'post']));
       const title = ok ? (n === 8 ? 'Palladion cleared' : 'Right move, right spot') : 'Right move, wrong spot';
-      judge(ok, title, (ok ? '' : missNote(v) + ' ') + whyText(g, n), stepTo(st.step + 1));
+      judge(ok, title, (ok ? '' : risk + ' ') + whyText(g, n), stepTo(st.step + 1));
     }
 
     const newRound = T.trackRounds('palladion', startRound);

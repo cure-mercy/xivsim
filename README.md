@@ -155,6 +155,14 @@ packed clockwise, 1-3-5-7 from the south corner and 2-4-6-8 from Athena's; laser
 short of puddle 1. The plan adds that the higher number of a baiting pair stands clockwise of the lower one, which
 the drill does not check.
 
+Step by step, a spot pick off the group's spot is no longer simply wrong. It passes as before within reach of the spot;
+otherwise it is a warning ("Safe, but off the spot") when it is safe through that dash (its stack, its add's lasers
+and Clear Cut, from the start dash 1's path too), clear of the puddles down and of everyone else's spot, and, if one
+of your dashes will land on it, its stack, path and puddle (for the five dashes it lasts) clear of everyone else; your
+later puddles then pack from where it landed (`hazard`, `relayout`). Anything else fails with the reason. Repositioning
+where holding was right is a warning on the same terms. 5 and 7 stand in 282° and 312°, 6 and 8 wait at 109° and 128°,
+as the raidplan spreads them.
+
 ### Reading the raidplan
 
 raidplan.io renders in the browser, so a plain page fetch sees only the slide numbers. The data is public JSON:
