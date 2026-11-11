@@ -84,16 +84,18 @@ from Athena's Palladion begincast (`scratch/palladion/live.py`, with `casts.py` 
 anyone stood and lived), drawn to the edge of the board, so Palladion draws `Y` = 240 / 13.5, about 17.8 units to the
 yalm, and its floor tiles at that scale (lines 10 yalms apart), not the 12 of the other drills. Athena takes her corner
 14.0 out; the dashes land a median 12.1 out, a side's puddles 6.7 to 7.5 apart (`PACK` 7.0); White Flame's targets
-stood a median 8.6 out (`R_STANDIN`). From the Action sheet: the stack is 6 yalms in radius, the dash line (Shockwave,
+stood a median 8.6 out. From the Action sheet: the stack is 6 yalms in radius, the dash line (Shockwave,
 a charge) and White Flame 4 wide, Clear Cut a 4-yalm cone (the stand-ins' inner limit); everyone runs 7 yalms a
 second. Nothing in the logs or the Action sheet is the puddle itself: its outline drawn on a frame of a pull spans
 581 px against 518 for the octagon's 10.3-yalm side, 11.6 yalms at that side's depth and about 10 to 11 nearer the
 camera where the puddle lies, and in the logs nobody alive stood within 5.9 yalms of one while it was down, so it is
 5.5 in radius (the bright ovals in videos are the waymarks; the raidplan's 2.1 is a schematic). A video shows puddle 1
 going as puddle 6 appears (each lasts five dashes). It turns lethal 3 s after it drops (`GRACE`: the pair it landed on were still 2.9 yalms from its centre 2 s after, nobody inside
-from 3 s). The stand-ins' directions (`STANDIN_DEG`) keep each pair clear of the puddles down while it baits and its
-lasers off the pair waiting at the wall: 5/7 west, 6/8 south-east, 1/3 north-west at 320°, 2/4 south-east at 140°
-(the raidplan draws 1/3 nearer west, about 285°, and 2/4 about 130°). The rest of the party plays the plan
+from 3 s). Where the stand-ins stand (`STANDIN_AT`) keeps each pair clear of the puddles down while it baits, of the
+stacks landing beside it and of the dash lines, with its lasers off the pair waiting at the wall: 5/7 west and 6/8
+south-east, 8.6 out (White Flame's targets stood a median 8.6 out); 1/3 at 326° and 8.0 out, 2/4 at 146° and 7.5 out,
+at least 0.6 yalms clear of dash 7's and dash 8's stacks, puddles 2 and 1 and the lines (`scratch/palladion/standin.py`;
+the raidplan draws 1/3 at about 285° and 7 out, 2/4 at about 130°). The rest of the party plays the plan
 (`scheduleOf`), trading places along the wall (`ringVia`), and where it has you is the spot a failed pull shows. Your
 own dash lands where you stand when Athena sets off, judged with the step drill's reach, and the later puddles on that
 side pack from where it really landed (`relayout`). `scratch/palladion/sweep.py` plays every number against every

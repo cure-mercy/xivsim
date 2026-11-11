@@ -165,11 +165,14 @@
     // stood within 5.9 yalms of one while it was down. So 5.5 in radius. It lasts five dashes (puddle 1 goes as
     // puddle 6 appears, as a video shows). The party stacks in the middle before the numbers send it out.
     const R_PUDDLE = 5.5 * Y, R_STACK = 40;
-    // The pair standing in for the lasers waits this far from the middle add, on its own side (White Flame's
-    // targets stood a median 8.6 yalms out).
-    const R_STANDIN = 8.6 * Y;
-    // and in which direction, clockwise from Athena's corner
-    const STANDIN_DEG = { '57': 270, '68': 135, '13': 320, '24': 140 };
+    // Where each pair stands in for the lasers, on its own half: [degrees clockwise from Athena's corner, yalms out].
+    // White Flame's targets stood a median 8.6 out, and 5/7 and 6/8 stand there, due west and south-east as they
+    // wait at the wall. 1/3 and 2/4 stand in while dashes land beside the wall near them: 1/3 at 326 degrees and 8.0
+    // out keep 0.7 yalms clear of dash 7's stack, 0.6 of puddle 2 (down until that stack) and 0.8 of the dash lines
+    // across the middle; 2/4 at 146 and 7.5 out keep 0.8 clear of dash 8's stack and of puddle 1, 2.1 of the dash
+    // lines (scratch/palladion/standin.py; the raidplan draws 1/3 nearer the middle too). Every pair's lasers run
+    // past the pair waiting at the wall for its next dash.
+    const STANDIN_AT = { '57': [270, 8.6], '68': [135, 8.6], '13': [326, 8.0], '24': [146, 7.5] };
     // A puddle dropped as close as possible to the last one on its side: the logs put them 6.7 to 7.5 yalms apart,
     // and the dash that leaves it lands where you stand, just outside the last one.
     const PACK = 7.0 * Y;
@@ -270,11 +273,8 @@
       for(let n = 1; n <= 8; n++) DASH[n] = pathPt(ALONG[n]);
       Object.assign(WALL, { '13': pathPt(packFrom(ALONG[2], -1)), '24': pathPt(packFrom(ALONG[1], -1)),
                             '57': posAt(6, 0, R_PATH), '68': posAt(3, 0, R_PATH) });
-      // Standing in: each pair R_STANDIN out on its own half, 5/7 due west and 6/8 south-east as they wait at
-      // the wall. 1/3 stand in north-west and 2/4 south-east, well clear of puddles 2 and 1 (6.7 yalms with the
-      // pair spread), with their lasers running past the pair waiting at the wall for its next dash.
-      Object.entries(STANDIN_DEG).forEach(([g, deg]) => {
-        STANDIN[g] = [300 + Math.sin(deg * RAD) * R_STANDIN, 300 - Math.cos(deg * RAD) * R_STANDIN];
+      Object.entries(STANDIN_AT).forEach(([g, [deg, yalms]]) => {
+        STANDIN[g] = [300 + Math.sin(deg * RAD) * yalms * Y, 300 - Math.cos(deg * RAD) * yalms * Y];
       });
       OUT.at = pathPt(packFrom(ALONG[7], 1));
       Object.assign(START, { '13': DASH[1], '24': posAt(1, 0, R_PATH), '57': STANDIN['57'], '68': WALL['68'] });
