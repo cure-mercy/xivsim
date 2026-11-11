@@ -16,7 +16,7 @@ After a drill change, run that drill's suite and `undo`; after a classifier or w
 
 | Suite | What it checks |
 |---|---|
-| `para1`, `engrave`, `superchain`, `para3` | real-time solvers: the right play clears, each kind of mistake fails as it should |
+| `para1`, `engrave`, `superchain`, `para3`, `palladion` | real-time solvers: the right play clears, each kind of mistake fails as it should |
 | `undo` | step by step: undo and redo give back exactly the page they should |
 | `blame` | the scorecard's mistake classifier against hand-checked pulls (`tests/blame.py`; see below) |
 
@@ -28,9 +28,12 @@ adds `tests/solvers/common.js` and the suite's solvers, and plays each page in h
 (`--virtual-time-budget`, `--dump-dom`). Chrome is looked for on the usual paths; `CHROME` overrides it. The run exits 1
 on a solver crash, a page error, a missing log (the solver did not finish within its budget) or any `FAIL` line.
 
-Superchain I's and Paradeigma III's solvers read the pull from inside the drill: `SC_HOOK` / `P3_HOOK` splice a
-`window.__sc` / `window.__p3` hook into a copy of the drill's script (`*.dbg.js`), and the run stops with an assertion
-if the hook point in the drill has moved.
+Superchain I's, Paradeigma III's and Palladion's solvers read the pull from inside the drill: `SC_HOOK` / `P3_HOOK` /
+`P4_HOOK` splice a `window.__sc` / `window.__p3` / `window.__p4` hook into a copy of the drill's script (`*.dbg.js`),
+and the run stops with an assertion if the hook point in the drill has moved. Palladion's real-time solver plays your
+number's part of the plan (the drill's own `scheduleOf`) on one page and breaks one rule a pull on the other; its undo
+pages use `palladion-undo.js`, which answers each spot pick at the plan's spot or a random one, since the generic
+`undo.js` can only click a spot pick where its marker already stands.
 
 Pages start longest first, by `tests/out/times.json` (each page's seconds from earlier runs). Python suites
 (`PY_SUITES`, currently `blame`) need no Chrome and run on a thread beside it.

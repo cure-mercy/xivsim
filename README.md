@@ -47,8 +47,8 @@ list as a locked "Mechanic N", so their titles give nothing away. To open one:
 
 ## Real-time drills
 
-Paradeigma I, Paradeigma II, Superchain I and Paradeigma III can be played step by step or against the fight's
-clock. A new real-time mode follows `mechanics/superchain-1.js`:
+Paradeigma I, Paradeigma II, Superchain I, Paradeigma III and Palladion can be played step by step or against the
+fight's clock. A new real-time mode follows `mechanics/superchain-1.js`:
 
 - a `LIVE` timeline from the logs (next section);
 - a clock and Start button in a `<x>-live` box, and a free-pick click layer (the drill's `freePick`);
@@ -74,7 +74,16 @@ undo and redo don't leave it stale.
 `LIVE` timelines come from the groups' own logs (`tools/logs.csv`, one column per group), in seconds after a boss
 cast; each drill's `LIVE` comment names its pulls. Paradeigma III (Oct 2026) takes the median of six clean pulls,
 none more than 0.1 s off, and new real-time drills should do the same. Paradeigma I and II and Superchain I still
-use a single pull.
+use a single pull. Palladion (Nov 2026) takes the median of the 17 cached pulls that reached dash 6 or later, counted
+from Athena's Palladion begincast (`scratch/palladion/live.py`, with `casts.py` for the enemy casts).
+
+**Palladion's scale.** The logs put the dash spots 12.1 yalms out, but the drill draws the compressed octagon to fill
+the board, so its real-time checks use the drill's own ring for the yalm (`PER_Y`, about 17.9 units): the stack
+6 yalms in radius, the dash line (Shockwave, a charge) and White Flame 4 wide, from the Action sheet, and a run of
+7 yalms a second. Nothing in the logs shows the puddle, so it keeps the step drill's size and turns lethal 1.5 s after
+it drops (`GRACE`). The rest of the party plays the plan (`scheduleOf`), and where it has you is the spot a failed pull
+shows. Your own dash lands where you stand when Athena sets off, judged with the step drill's reach, and the later
+puddles on that side pack from where it really landed (`relayout`).
 
 - **What is cached.** The scorecard's `tools/scorecard/.cache/report_<code>.json` (built by `scorecard.py`) holds
   every pull's DamageTaken events with target and source positions (`targetResources.x/y`; yalms =

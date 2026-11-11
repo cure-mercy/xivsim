@@ -10,7 +10,7 @@ and any script errors.
     PROBE_SEED=N python tests/run.py     the same pulls as the run that printed seed N
 
 Suites:
-    para1, engrave, superchain, para3
+    para1, engrave, superchain, para3, palladion
                                 real-time solvers: the right play clears, each kind of mistake fails as it should
     undo                        step by step: undo and redo give back exactly the page they should
     blame                       the scorecard's mistake classifier against pulls checked by hand (tests/blame.py; no
@@ -39,16 +39,21 @@ P3_HOOK = ("    const newRound = T.trackRounds('para3', startRound);",
            "    window.__p3 = { st: () => st, plan, LIVE, supTowerSpot, plainTower, centreCorner, dpsKey,\n"
            "      dropSpot: (role, t) => mx(PLAN.drop[role][t.row]), baitSpotOf: id => baitSpot(st.actors[id]), soakSpotOf: id => soakSpot(st.actors[id]),\n"
            "      inPlus, inSaltire, MARK_NEAR };\n")
+# and so does Palladion's
+P4_HOOK = ("    const newRound = T.trackRounds('palladion', startRound);",
+           "    window.__p4 = { st: () => st, LIVE, scheduleOf, planSpot, DASH, WALL, PARTNER };\n")
 
 PARA1 = dict(tab='para1', pace='twelfth-p1-pace', panel='panel-para1', clock='p1-clock')
 ENGRAVE = dict(tab='engrave', pace='twelfth-eg-pace', panel='panel-engrave', clock='eg-clock')
 SUPERCHAIN = dict(tab='superchain', pace='twelfth-sc-pace', panel='panel-superchain', clock='sc-clock')
 PARA3 = dict(tab='para3', pace='twelfth-p3-pace', panel='panel-para3', clock='p3-clock')
+PALLADION = dict(tab='palladion', pace='twelfth-p4-pace', panel='panel-palladion', clock='p4-clock')
 
 # what the undo snapshots leave out: layers of passing effects, and a class that only animates
 UNDO_ENGRAVE = {'pace': 'steps', 'skip': ['eg-lasers', 'eg-fx', 'eg-debuffBadge'], 'strip': ['eg-untilted']}
 UNDO_SUPERCHAIN = {'pace': 'steps', 'skip': ['sc-beams', 'sc-fx']}
 UNDO_PARA3 = {'pace': 'steps', 'skip': ['p3-lasers', 'p3-fx']}
+UNDO_PALLADION = {'pace': 'steps', 'skip': ['p4-beams', 'p4-fx']}
 WINDOW = '1400,1000'
 
 # suite -> pages: (page name, drill, slot, solvers, probe settings, virtual time budget in ms). The settings
@@ -59,10 +64,13 @@ SUITES = {
     'engrave': [(f'engrave-{s}', ENGRAVE, s, 'engrave', {}, 1_600_000) for s in ['H1', 'M2']],
     'superchain': [(f'superchain-{s}', SUPERCHAIN, s, 'superchain', {}, 500_000) for s in ['T1', 'H2', 'M1', 'R2']],
     'para3': [(f'para3-{s}', PARA3, s, 'para3', {}, 900_000) for s in ['H1', 'T2', 'M1']],
+    # the numbers ignore role, so the slot does not matter: one page clears with every pair, one breaks a rule a pull
+    'palladion': [(f'palladion-{p}', PALLADION, 'T1', 'palladion', {'plays': p}, 700_000) for p in ['right', 'wrong']],
     'undo': [(f'undo-para1-{s}', PARA1, s, 'para1-undo', {'pace': 'steps'}, 600_000) for s in ['T1', 'R2']]
           + [(f'undo-engrave-{s}', ENGRAVE, s, 'undo', UNDO_ENGRAVE, 600_000) for s in ['H1', 'M1']]
           + [(f'undo-superchain-{s}', SUPERCHAIN, s, 'undo', UNDO_SUPERCHAIN, 600_000) for s in ['T1', 'R2']]
-          + [(f'undo-para3-{s}', PARA3, s, 'undo', UNDO_PARA3, 600_000) for s in ['H2', 'M1']],
+          + [(f'undo-para3-{s}', PARA3, s, 'undo', UNDO_PARA3, 600_000) for s in ['H2', 'M1']]
+          + [(f'undo-palladion-{s}', PALLADION, s, 'palladion-undo', UNDO_PALLADION, 600_000) for s in ['T1', 'R2']],
 }
 # suites run in Python, not in Chrome: name -> run() returning (log, failed)
 PY_SUITES = {'blame': lambda: __import__('blame').run()}
@@ -90,7 +98,7 @@ def find_chrome():
 def build(run_dir, seed, name, drill, slot, solvers, extra):
     page = (ROOT / 'index.html').read_text(encoding='utf-8')
     rel = run_dir.relative_to(ROOT).as_posix()
-    for d, script, hook in ((SUPERCHAIN, 'superchain-1', SC_HOOK), (PARA3, 'paradeigma-3', P3_HOOK)):
+    for d, script, hook in ((SUPERCHAIN, 'superchain-1', SC_HOOK), (PARA3, 'paradeigma-3', P3_HOOK), (PALLADION, 'palladion', P4_HOOK)):
         if drill is not d: continue
         src = (ROOT / 'mechanics' / f'{script}.js').read_text(encoding='utf-8')
         assert hook[0] in src, f'the hook point in {script}.js has moved'

@@ -3,12 +3,54 @@
 
   const { showFeedback, el, dist } = T;
 
+  const STYLES = /* css */ `
+    /* Real time: the fight clock and the casts running, above the arena */
+    .p4-live{ display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line);
+      border-radius: 12px; background: var(--nebula); }
+    .p4-live-head{ display: flex; align-items: center; gap: 12px; }
+    .p4-clock{ font-family: var(--font-mono); font-weight: 700; font-size: 1.05rem; color: var(--mist);
+      font-variant-numeric: tabular-nums; }
+    .p4-clock small{ font-size: 0.7rem; color: var(--mist-faint); font-weight: 400; margin-left: 4px; }
+    .p4-live-note{ flex: 1; font-size: 0.8rem; color: var(--mist-dim); }
+    .p4-casts{ display: flex; flex-direction: column; gap: 6px; min-height: 26px; }
+    .p4-cast{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; font-size: 0.8rem; color: var(--mist-dim); }
+    .p4-cast b{ color: var(--mist); font-weight: 600; }
+    .p4-left{ font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--mist); }
+    .p4-cast-bar{ grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; }
+    .p4-cast-bar i{ display: block; height: 100%; background: var(--aether); transform-origin: left center; }
+    .p4-cast.mine .p4-cast-bar i{ background: var(--brand-soft); }
+    .p4-cast.mine .p4-left{ color: var(--brand-soft); }
+    .p4-idle{ font-size: 0.8rem; color: var(--mist-faint); }
+    /* a stack landing */
+    .p4-fx-burst{ transform-box: fill-box; transform-origin: center; }
+    @media (prefers-reduced-motion: no-preference){
+      .p4-fx-burst{ animation: p4-burst 0.8s ease-out forwards; }
+      .p4-fx-fade{ animation: p4-fade 0.8s ease-out forwards; }
+    }
+    @media (prefers-reduced-motion: reduce){ .p4-fx-burst, .p4-fx-fade{ display: none; } }
+    @keyframes p4-burst{ from{ transform: scale(0.6); opacity: 1; } to{ transform: scale(1.25); opacity: 0; } }
+    @keyframes p4-fade{ from{ opacity: 1; } to{ opacity: 0; } }
+    /* against the clock there is no stepping back: only a new pull */
+    .layout.p4-timed .history-ctrls [data-history="undo"],
+    .layout.p4-timed .history-ctrls [data-history="redo"],
+    .layout.p4-timed .history-ctrls [data-history="rewind"]{ display: none; }
+  `;
+
   const MARKUP = /* html */ `
   <div class="layout" id="panel-palladion" role="tabpanel" aria-labelledby="tabBtn-palladion" hidden>
 
     <section class="arena-wrap">
       <div class="step-row">
         <span class="step-pill" id="p4-stepPill">Step 1 · Starting spot</span>
+      </div>
+
+      <div class="p4-live" id="p4-live" hidden>
+        <div class="p4-live-head">
+          <span class="p4-clock" id="p4-clock">0.0<small>s</small></span>
+          <span class="p4-live-note" id="p4-liveNote"></span>
+          <button type="button" class="btn" id="p4-start">Start ▶</button>
+        </div>
+        <div class="p4-casts" id="p4-casts"></div>
       </div>
 
       <svg class="arena-svg" id="p4-arena" style="--zone-band: 23.09%" viewBox="48.8 36.8 502.4 630.4" role="img" aria-label="Top-down view of the compressed octagonal arena during Palladion">
@@ -24,6 +66,10 @@
 
         <g id="p4-marks"></g>
         <g id="p4-actors"></g>
+        <g id="p4-beams" pointer-events="none"></g>
+        <g id="p4-fx" pointer-events="none"></g>
+        <!-- after a miss against the clock: where you should have been -->
+        <g id="p4-target" pointer-events="none"></g>
         <g id="p4-hits"></g>
         <g id="p4-zones"></g>
 
@@ -36,6 +82,20 @@
     </section>
 
     <aside class="hud">
+      <div class="card player-card">
+        <div class="card-head">
+          <h2>Pace</h2>
+          <span class="info-tip">
+            <button type="button" class="info-btn" aria-label="About the pace" aria-expanded="false" aria-describedby="p4-paceTip">?</button>
+            <span class="info-pop" role="tooltip" id="p4-paceTip"><b>Step by step</b> pauses the fight at every dash while you answer each call. <b>Real time</b> runs the fight clock from our logs: click anywhere to move, and where you stand when each dash, stack and laser goes off is what counts.</span>
+          </span>
+        </div>
+        <div class="role-select player-select cols-2" role="group" aria-label="Choose the pace">
+          <button type="button" class="role-btn" data-pace="steps"><span>Step by step</span></button>
+          <button type="button" class="role-btn" data-pace="live"><span>Real time</span></button>
+        </div>
+      </div>
+
       <div class="card">
         <h2>Your number</h2>
         <div class="lc-row">
@@ -100,6 +160,33 @@
     const NORTH_TILES_Y = 180;
     const REL = ['N','NE','E','SE','S','SW','W','NW'];
 
+    /* ---------- real time ---------- */
+    // Seconds after Athena begins casting Palladion (7.7 s; she is on her corner and the numbers are out as it
+    // starts: the party leaves the middle for its spots about 2 s in). The median of 17 pulls of our groups that
+    // reached dash 6 or later (and one other group's), none of the beats spread more than 0.1 s once a missing
+    // hit is left out; scratch/palladion/live.py. One add returns and casts per dash, just before Athena sets
+    // off for it; its White Flame lands 1.52 s after its cast, between the dash's line and its stack.
+    const LIVE = {
+      start: 0,
+      cast: [0, 7.7],
+      adds:  [7.13, 10.16, 13.15, 16.15, 19.16, 22.17, 25.16, 28.15],   // add k casts in the middle
+      dash:  [8.20, 11.28, 14.35, 17.43, 20.50, 23.58, 26.65, 29.73],   // Athena sets off for k: her spot is fixed
+      shock: [8.38, 11.45, 14.53, 17.61, 20.68, 23.75, 26.82, 29.86],   // the line from where she was (Shockwave)
+      flame: [8.67, 11.68, 14.70, 17.71, 20.68, 23.68, 26.69, 29.68],   // a yellow add's White Flame
+      stack: [8.83, 11.90, 14.99, 18.06, 21.15, 24.22, 27.28, 30.35],   // the stack where she landed, and its puddle
+      ultima: 54.32                                                     // Theos's Ultima, long after the drill ends
+    };
+    // The logs put the dash spots 12.1 yalms out (the real floor is smaller than the octagon drawn here), so
+    // against the clock everything is sized from that: the stack is 6 yalms in radius, the dash line and each
+    // White Flame 4 wide (the game's Action sheet: 33526, 33527, 33520), and everyone runs 7 yalms a second.
+    // Magic Vulnerability Up lasts 4 s from a stack and 6 s from a laser, so the bait order leaves every pair
+    // clear of it by its next hit. The logs do not show the puddle: it keeps the step drill's size and turns
+    // lethal GRACE seconds after it drops, time to step out of it.
+    const PER_Y = R_PATH / 12.1;
+    const STACK_R = 6 * PER_Y, LINE_HALF = 2 * PER_Y, FLAME_HALF = 2 * PER_Y;
+    const SPEED = 7 * PER_Y, REACT = 2.0, STEP_OFF = 0.05, TICK_MS = 33, GRACE = 1.5;
+    const END = LIVE.stack[7] + GRACE + 0.2;
+
     const GROUP_OF  = { 1:'13', 3:'13', 2:'24', 4:'24', 5:'57', 7:'57', 6:'68', 8:'68' };
     const PARTNER   = { 1:3, 3:1, 2:4, 4:2, 5:7, 7:5, 6:8, 8:6 };
     const PAIR_NAME = { '13':'1 and 3', '24':'2 and 4', '57':'5 and 7', '68':'6 and 8' };
@@ -108,6 +195,7 @@
     // Each pair baits the lasers from its own half: 1/3/5/7 west of the middle, 2/4/6/8 east.
     const HALF = { '13':'W', '57':'W', '24':'E', '68':'E' };
     const ORDINAL   = ['first', 'second', 'third', 'fourth'];
+    const NTH = ORDINAL.concat(['fifth', 'sixth', 'seventh', 'eighth']);
 
     let st = {};
     const fb = document.getElementById('p4-feedback');
@@ -148,21 +236,52 @@
     // Every later puddle packs clockwise against the one before it on that side, 1-3-5-7 and 2-4-6-8.
     const ALONG = { 1: 4 * SIDE, 2: 0 };
     for(let n = 3; n <= 8; n++) ALONG[n] = packFrom(ALONG[n - 2], 1);
-    const DASH = {};
-    for(let n = 1; n <= 8; n++) DASH[n] = pathPt(ALONG[n]);
-
-    // Each pair's spot at the wall while it is neither dashing nor standing in. 1/3 and 2/4 run clockwise
-    // off their dashes until a puddle stops them: 1/3 short of puddle 2, 2/4 short of puddle 1.
-    const WALL = { '13': pathPt(packFrom(ALONG[2], -1)), '24': pathPt(packFrom(ALONG[1], -1)),
-                   '57': posAt(6, 0, R_PATH), '68': posAt(3, 0, R_PATH) };
-    const STANDIN = {};
-    Object.keys(WALL).forEach(g => { STANDIN[g] = inward(WALL[g], R_STANDIN); });
-    const OUT_57 = pathPt(packFrom(ALONG[7], 1));
+    // Where each dash lands (DASH), each pair's spot at the wall while it is neither dashing nor standing in
+    // (WALL: 1/3 and 2/4 run clockwise off their dashes until a puddle stops them, 1/3 short of puddle 2 and
+    // 2/4 short of puddle 1), its spot standing in for the lasers (STANDIN), 5/7's spot out of puddle 7
+    // (OUT.at) and every pair's starting spot (START). resetLayout() puts them where the plan packs them;
+    // against the clock your own dashes land wherever you stand, and relayout() packs the later ones from there.
+    const DASH = {}, WALL = {}, STANDIN = {}, START = {}, OUT = {};
+    function resetLayout(){
+      for(let n = 1; n <= 8; n++) DASH[n] = pathPt(ALONG[n]);
+      Object.assign(WALL, { '13': pathPt(packFrom(ALONG[2], -1)), '24': pathPt(packFrom(ALONG[1], -1)),
+                            '57': posAt(6, 0, R_PATH), '68': posAt(3, 0, R_PATH) });
+      Object.keys(WALL).forEach(g => { STANDIN[g] = inward(WALL[g], R_STANDIN); });
+      OUT.at = pathPt(packFrom(ALONG[7], 1));
+      Object.assign(START, { '13': DASH[1], '24': posAt(1, 0, R_PATH), '57': STANDIN['57'], '68': WALL['68'] });
+    }
+    resetLayout();
+    // The ring coordinate nearest a spot, and the spot along the ring just clear of a puddle at any point p
+    // (packFrom does the same for a puddle on the ring).
+    function alongOf(p){
+      let best = 0, bd = Infinity;
+      for(let i = 0; i < 720; i++){ const s = PERIM * i / 720, d = dist(pathPt(s), p); if(d < bd){ bd = d; best = s; } }
+      return best;
+    }
+    function packPast(p, dir){
+      const s0 = alongOf(p);
+      let lo = 0, hi = PERIM / 4;
+      for(let i = 0; i < 40; i++){
+        const mid = (lo + hi) / 2;
+        if(dist(pathPt(s0 + dir * mid), p) < PACK) lo = mid; else hi = mid;
+      }
+      return pathPt(s0 + dir * hi);
+    }
+    // Your dash k landed at p: the later puddles on that side pack from it, and so do the wall spots that
+    // wait short of puddles 1 and 2 and 5/7's spot out of puddle 7.
+    function relayout(k, p){
+      DASH[k] = p;
+      for(let n = k + 2; n <= 8; n += 2) DASH[n] = packPast(DASH[n - 2], 1);
+      WALL['13'] = packPast(DASH[2], -1);
+      WALL['24'] = packPast(DASH[1], -1);
+      ['13', '24'].forEach(g => { STANDIN[g] = inward(WALL[g], R_STANDIN); });
+      OUT.at = packPast(DASH[7], 1);
+      rebuild();
+    }
     // Running clockwise until a puddle stops you counts anywhere from the octagon corner before that
     // puddle up to the spot just short of it: the south-east corner for 2/4 (puddle 1), the north-west
     // corner for 1/3 and for 5/7 leaving puddle 7 (puddle 2).
     const CORNER_BEFORE = { '24': posAt(3, 0, R_PATH), '13': posAt(7, 0, R_PATH), '57': posAt(7, 0, R_PATH) };
-    const START = { '13': DASH[1], '24': posAt(1, 0, R_PATH), '57': STANDIN['57'], '68': WALL['68'] };
 
     /* ---------- the adds ---------- */
     // One add returns per dash. Among the first four, two are yellow (White Flame) and two purple (Clear
@@ -244,7 +363,7 @@
           if(e.act === 'take') cur = { at: DASH[n], wide:false, dash:n };
           else if(e.act === 'move'){
             const at = e.kind === 'dash' ? DASH[e.dash] : e.kind === 'stepin' ? STANDIN[g]
-              : e.kind === 'swap' ? WALL[g] : OUT_57;
+              : e.kind === 'swap' ? WALL[g] : OUT.at;
             cur = { at, wide: e.kind === 'stepin', mid: e.kind === 'stepin', dash: e.kind === 'dash' ? e.dash : 0 };
             target[g][n] = at;
           }
@@ -284,7 +403,7 @@
     function numAt(num, where){
       if(where === 'stack') return posAt(num - 1, 0, R_STACK);
       const g = GROUP_OF[num];
-      const src = g === st.group ? st.track : st.shown;
+      const src = g === st.group || st.live ? st.track : st.shown;
       const s = where === 'start' ? src.pre[g][1] : src[where[1]][g][where[0]];
       const dx = s.at[0] - 300, dy = s.at[1] - 300, len = Math.hypot(dx, dy) || 1;
       // On a dash spot the number Athena comes for stands right on it, where her dash ends, and the
@@ -417,10 +536,398 @@
       st.partner = PARTNER[st.num];
       st.adds = rollAdds();
       st.early57 = false;
+      resetLayout();
       rebuild();
       st.step = 1;
       st.sub = false;
+      // against the clock
+      stopClock();
+      (st.fxTimers || []).forEach(clearTimeout);
+      st.fxTimers = [];
+      st.live = pace === 'live';
+      st.fired = {}; st.over = false; st.land = {}; st.shownText = null;
+      ['p4-beams', 'p4-fx', 'p4-target'].forEach(id => { document.getElementById(id).innerHTML = ''; });
+      clock.t = LIVE.start;
+      panel.classList.toggle('p4-timed', st.live);
+      const startBtn = document.getElementById('p4-start');
+      startBtn.hidden = !st.live;
+      startBtn.style.visibility = '';
+      startBtn.parentNode.style.minHeight = '';
+      // the most casts the strip ever shows at once, so it keeps that many rows throughout
+      st.castSlots = Math.max(1, ...Array.from({ length: 330 }, (_, k) => liveRows(k * 0.1).length));
+      st.moves = {};
+      for(let n = 1; n <= 8; n++) setAt(n, numAt(n, 'stack'));
       render();
+    }
+
+    /* ---------- against the clock: moving ---------- */
+    let pace = 'steps';
+    try{ if(localStorage.getItem('twelfth-p4-pace') === 'live') pace = 'live'; }catch(e){}
+    const clock = { t: 0, running: false, timer: 0, last: 0 };
+    const panel = document.getElementById('panel-palladion');
+
+    function whereAt(num, t){
+      const m = st.moves[num];
+      if(t <= m.t0) return m.from;
+      if(m.dur <= 0 || t >= m.t0 + m.dur) return m.to;
+      const k = (t - m.t0) / m.dur;
+      return [m.from[0] + (m.to[0] - m.from[0]) * k, m.from[1] + (m.to[1] - m.from[1]) * k];
+    }
+    function setAt(num, p){ st.moves[num] = { from:p, to:p, t0:0, dur:0 }; }
+    function moveTo(num, to, delay){
+      const from = whereAt(num, clock.t), t0 = clock.t + (delay === undefined ? STEP_OFF : delay);
+      st.moves[num] = { from, to, t0, dur: dist(from, to) / SPEED };
+    }
+    const here = t => whereAt(st.num, t);
+    const party = t => { const p = {}; for(let n = 1; n <= 8; n++) p[n] = whereAt(n, t); return p; };
+
+    // Where a pair's numbers stand outside the step drill's beats: at the wall, side by side.
+    function wallSpot(num){
+      const g = GROUP_OF[num], at = WALL[g];
+      const dx = at[0] - 300, dy = at[1] - 300, len = Math.hypot(dx, dy) || 1;
+      const side = (num === 1 || num === 2 || num === 5 || num === 6) ? -1 : 1;
+      return [at[0] - dy / len * 12 * side, at[1] + dx / len * 12 * side];
+    }
+    // Everyone's moves, from the plan: off the stack once Athena has taken her corner, then each beat's move
+    // just after the dash before it has landed (2/4 into Athena's corner once dash 1's line has gone through),
+    // and a pair that has taken its lasers straight back out to the wall. The spots are read when the move
+    // starts, so they follow the puddles where they really landed. The rest of the party plays this, and it is
+    // where you should have been when a pull fails.
+    function scheduleOf(num){
+      const g = GROUP_OF[num], out = [{ at: REACT, spot: () => numAt(num, 'start') }];
+      for(let n = 1; n <= 8; n++){
+        const e = st.plan[g][n - 1];
+        const at = n === 1 ? LIVE.shock[0] + 0.15 : LIVE.stack[n - 2] + 0.3;
+        if(n > 1 || e.act === 'move') out.push({ at, spot: () => numAt(num, [n, 'post']) });
+        if(e.act === 'bait') out.push({ at: LIVE.flame[n - 1] + 0.3, spot: () => wallSpot(num) });
+      }
+      // dash 8 was 6/8's last: they step clockwise out of its puddle
+      if(g === '68') out.push({ at: LIVE.stack[7] + 0.3, spot: () => {
+        const p = packPast(DASH[8], 1), q = numAt(num, [8, 'post']);
+        return [p[0] + q[0] - DASH[8][0], p[1] + q[1] - DASH[8][1]];
+      } });
+      return out;
+    }
+    function planSpot(num, t){
+      const due = scheduleOf(num).filter(m => m.at <= t);
+      return due.length ? due[due.length - 1].spot() : numAt(num, 'stack');
+    }
+
+    /* ---------- the fight clock ---------- */
+    function stopClock(){ clock.running = false; if(clock.timer) clearTimeout(clock.timer); clock.timer = 0; }
+    function startClock(){
+      if(!st.live || clock.running || st.over) return;
+      clock.running = true;
+      clock.last = performance.now();
+      // the button keeps its room and, when the strip sits above the arena, the header its height, so the
+      // arena does not move as the clock starts
+      const head = document.getElementById('p4-start').parentNode;
+      if(!T.leadBeside('palladion')) head.style.minHeight = head.getBoundingClientRect().height + 'px';
+      document.getElementById('p4-start').style.visibility = 'hidden';
+      liveText();
+      livePick(here(clock.t));
+      clock.timer = setTimeout(tick, TICK_MS);
+    }
+    // The clock only runs while you can see it: switching mechanic or tab pauses it.
+    function tick(){
+      if(!clock.running) return;
+      clock.timer = setTimeout(tick, TICK_MS);
+      const now = performance.now(), dt = Math.min(0.1, (now - clock.last) / 1000);
+      clock.last = now;
+      if(panel.hidden || document.hidden) return;
+      clock.t += dt;
+      onTime();
+      if(!st.over) checkGround();
+      if(!st.over){ drawLive(); liveText(); }
+      renderLive();
+    }
+    function onTime(){
+      const t = clock.t;
+      const at = (key, time, fn) => { if(t >= time && !st.fired[key]){ st.fired[key] = true; fn(); } };
+      // the rest of the party, on the plan's schedule
+      for(let n = 1; n <= 8; n++){
+        if(n === st.num) continue;
+        scheduleOf(n).forEach((m, i) => at(`m${n}-${i}`, m.at, () => moveTo(n, m.spot(), 0)));
+      }
+      for(let k = 1; k <= 8; k++){
+        at(`c${k}`, LIVE.dash[k - 1], () => lockDash(k));
+        at(`s${k}`, LIVE.shock[k - 1], () => checkLine(k));
+        if(st.adds[k] === 'Y') at(`w${k}`, LIVE.flame[k - 1], () => checkFlame(k));
+        at(`p${k}`, LIVE.stack[k - 1], () => checkStack(k));
+      }
+      at('end', END, liveClear);
+    }
+
+    /* ---------- against the clock: judging where you are ---------- */
+    const pairOf = k => [k, PARTNER[k]];
+    const yalms = d => (d / PER_Y).toFixed(1);
+    // Where Athena stands before dash k sets off: her corner, then each dash's landing spot.
+    const athenaBefore = k => k === 1 ? posAt(st.boss, 0, R_BOSS) : st.land[k - 1];
+    // The rule for your pair, for a failed pull's feedback.
+    function liveRule(){
+      const g = st.group, d = DASHES[g], p = `<b>${st.partner}</b>`;
+      const start = {
+        '13': `1 and 3 start in the relative south corner, straight across from Athena, and take dash 1 there.`,
+        '24': `2 and 4 wait in the relative north-east corner, off dash 1's path, and step into the corner Athena left once dash 1 has gone through: dash 2 comes there.`,
+        '57': `5 and 7 start standing in close to the middle on the west side for the first lasers.`,
+        '68': `6 and 8 wait at the relative south-east wall while 5 and 7 have the first lasers.`
+      }[g];
+      const dashes = `Your dashes are <b>${d[0]} and ${d[1]}</b>, shared with ${p}: stand side by side where each should land, and after each step clockwise out of its puddle, to just past it, for the next.`;
+      const prev = BAIT_ORDER[BAIT_ORDER.indexOf(g) - 1];
+      const lasers = `You bait the <b>${ORDINAL[BAIT_ORDER.indexOf(g)]}</b> set of White Flame from the ${HALF[g] === 'W' ? 'west' : 'east'} half, ${prev ? `stepping in close to the middle once ${PAIR_NAME[prev]} have taken theirs` : 'standing in from the start'}, spread from ${p}, and go straight back out to the wall after it.`;
+      return `${start} ${dashes} ${lasers}`;
+    }
+    function liveFail(title, why, target){
+      if(st.over) return;
+      st.over = true;
+      stopClock();
+      layer('p4-hits');
+      drawLive();
+      renderLive();
+      const host = layer('p4-target');
+      if(target) T.drawTarget(host, target, here(clock.t));
+      fb.dataset.noUndo = '1';
+      showFeedback(fb, false, title, why, 'New pull ↻', () => newRound());
+    }
+
+    // Athena sets off for dash k: she lands where k stands now. Your own dashes are judged on that spot, as the
+    // step drill judges it, and the later puddles pack from where it really is.
+    function lockDash(k){
+      const p = whereAt(k, LIVE.dash[k - 1]);
+      st.land[k] = p;
+      if(k !== st.num || st.over) return;
+      let v = verdict(p, DASH[k], k === 1 ? TOL_START : TOL_MOVE, k - 1, null);
+      if(k === 2 && v.kind === 'far') v = { kind: northTiles(p) };
+      if(v.kind !== 'ok'){
+        const where = k === 1 ? `the relative south corner, straight across from her`
+          : k === 2 ? `the corner she left, or anywhere in the northern tiles clear of dash 1's path`
+          : `just clockwise of puddle ${k - 2}, as close to it as you can`;
+        return liveFail(`Dash ${k} out of place`, `Athena set off for you at <b>${LIVE.dash[k - 1].toFixed(1)} s</b>, and her dash lands where you stand. ${missNote(v)} Dash ${k} belongs at ${where}, so the puddles pack along the wall and leave the rest of it free. ${liveRule()}`, DASH[k]);
+      }
+      relayout(k, p);
+    }
+    function checkLine(k){
+      const from = athenaBefore(k), to = st.land[k], pos = party(LIVE.shock[k - 1]);
+      fxLine(from, to);
+      if(pairOf(k).includes(st.num)) return;
+      if(distToSegment(pos[st.num], from, to) <= LINE_HALF)
+        liveFail(`Caught in dash ${k}`, `Athena's dash to ${k} at <b>${LIVE.shock[k - 1].toFixed(1)} s</b> ran from ${k === 1 ? 'her corner' : `puddle ${k - 1}`} straight to ${k}, and you were in its path, about 4 yalms wide. Only ${k} and ${PARTNER[k]} take it. ${liveRule()}`, planSpot(st.num, LIVE.shock[k - 1]));
+    }
+    function checkFlame(k){
+      const when = LIVE.flame[k - 1], pos = party(when), me = st.num;
+      const near = Object.keys(pos).map(Number).sort((a, b) => dist(pos[a], [300, 300]) - dist(pos[b], [300, 300])).slice(0, 2);
+      T.playBeams(document.getElementById('p4-beams'), near.map(n => ({ from:[300, 300], through: pos[n], half: FLAME_HALF })));
+      if(st.over) return;
+      const g = standInAt(k), baiters = DASHES[g], target = planSpot(me, when);
+      const hitBy = n => {
+        const u = [pos[n][0] - 300, pos[n][1] - 300], len = Math.hypot(u[0], u[1]) || 1;
+        return Object.keys(pos).map(Number).filter(m => {
+          const v = [pos[m][0] - 300, pos[m][1] - 300];
+          return (v[0] * u[0] + v[1] * u[1]) / len > 0 && Math.abs(v[0] * u[1] - v[1] * u[0]) / len <= FLAME_HALF;
+        });
+      };
+      const sec = `<b>${when.toFixed(1)} s</b>`;
+      if(baiters.includes(me) && !near.includes(me))
+        return liveFail('White Flame not baited', `The ${NTH[k - 1]} add was yellow, and its White Flame fired at ${sec} at the two players nearest the middle: <b>${near.join(' and ')}</b>, not you. These lasers were your pair's. ${liveRule()}`, target);
+      if(!baiters.includes(me) && near.includes(me))
+        return liveFail('Took a White Flame', `A yellow add's White Flame fired at ${sec} at the two players nearest the middle, and you were one of them. ${PAIR_NAME[g]} were standing in for these lasers: keep farther out than them unless they are yours. ${liveRule()}`, target);
+      // your own laser first: two baiters on one spot is one mistake, made by standing too close
+      for(const n of near.slice().sort((a, b) => (b === me) - (a === me))){
+        const hit = hitBy(n).filter(m => m !== n);
+        if(n === me && hit.length) return liveFail(hit.includes(st.partner) ? 'Too close to your partner' : 'Your laser hit someone', `Your White Flame ran from the middle through you and on to the wall at ${sec}, and it went through <b>${hit.join(' and ')}</b> as well${hit.includes(st.partner) ? `: stand a little apart from ${st.partner} when you bait, the higher number clockwise` : ''}. ${liveRule()}`, target);
+        if(n !== me && hit.includes(me)) return liveFail('Caught in White Flame', `At ${sec} White Flame ran from the middle through <b>${n}</b> and on to the wall, and you were in its path. ${liveRule()}`, target);
+      }
+    }
+    function checkStack(k){
+      const when = LIVE.stack[k - 1], c = st.land[k], pos = party(when), me = st.num;
+      fxStack(c);
+      const inside = Object.keys(pos).map(Number).filter(n => dist(pos[n], c) <= STACK_R);
+      const sec = `<b>${when.toFixed(1)} s</b>`;
+      if(pairOf(k).includes(me)){
+        if(!inside.includes(me)) return liveFail(`Dash ${k} not shared`, `Athena landed on ${k} at ${sec}, and you were ${yalms(dist(pos[me], c))} yalms from her, outside the 6-yalm stack, so ${k} took it alone. ${liveRule()}`, planSpot(me, when));
+        const extra = inside.filter(n => !pairOf(k).includes(n));
+        if(k === me && extra.length) return liveFail(`Dash ${k} caught ${extra.join(' and ')}`, `Your dash landed at ${sec} close enough to <b>${extra.join(' and ')}</b> that the stack, 6 yalms across its radius, caught them too, with its Magic Vulnerability Up. ${liveRule()}`, planSpot(me, when));
+        return;
+      }
+      if(inside.includes(me)) liveFail(`Caught in dash ${k}'s stack`, `Athena landed on ${k} at ${sec} and you were ${yalms(dist(pos[me], c))} yalms from her, inside the stack meant for ${k} and ${PARTNER[k]}. It reaches 6 yalms, and its Magic Vulnerability Up makes your next hit lethal. ${liveRule()}`, planSpot(me, when));
+    }
+    // Every tick: off the octagon, or in a puddle once it has turned lethal.
+    function checkGround(){
+      const t = clock.t, p = here(t);
+      if(!inOctagon(p)) return liveFail('Off the edge', `You walked into the lethal edge Ultima Blade left around the octagon. ${liveRule()}`, planSpot(st.num, t));
+      for(let k = 1; k <= 8; k++){
+        if(!st.land[k] || t < LIVE.stack[k - 1] + GRACE) continue;
+        if(dist(p, st.land[k]) < R_PUDDLE) return liveFail(`Stood in puddle ${k}`, `Dash ${k} left its puddle at <b>${LIVE.stack[k - 1].toFixed(1)} s</b>, and at ${t.toFixed(1)} s you were still in it.${pairOf(k).includes(st.num) ? ` Step out of your own puddle straight after the stack, clockwise.` : ''} ${liveRule()}`, planSpot(st.num, t));
+      }
+    }
+    function liveClear(){
+      if(st.over) return;
+      st.over = true;
+      stopClock();
+      layer('p4-hits');
+      drawLive();
+      renderLive();
+      const d = DASHES[st.group], y = st.ys[BAIT_ORDER.indexOf(st.group)];
+      fb.dataset.noUndo = '1';
+      showFeedback(fb, true, 'Palladion cleared',
+        `You were where you needed to be at every dash.<ul>`
+        + `<li>Dashes ${d[0]} and ${d[1]} shared with ${st.partner} at <b>${LIVE.stack[d[0] - 1].toFixed(1)}</b> and <b>${LIVE.stack[d[1] - 1].toFixed(1)} s</b></li>`
+        + `<li>The ${ORDINAL[BAIT_ORDER.indexOf(st.group)]} White Flame baited at <b>${LIVE.flame[y - 1].toFixed(1)} s</b></li>`
+        + `<li>Clear of every dash line, stack and puddle</li></ul>`
+        + `Athena now returns to the middle, breaks its floor and casts Theos's Ultima at ${LIVE.ultima.toFixed(0)} s, split between everyone still alive.`,
+        'New pull ↻', () => newRound());
+    }
+
+    /* ---------- against the clock: drawing ---------- */
+    function fxAdd(node, ms){
+      if(T.isReplaying()) return;
+      document.getElementById('p4-fx').appendChild(node);
+      st.fxTimers.push(setTimeout(() => node.remove(), ms));
+    }
+    function fxLine(a, b){
+      fxAdd(el('line', { x1:a[0].toFixed(1), y1:a[1].toFixed(1), x2:b[0].toFixed(1), y2:b[1].toFixed(1), stroke:'rgba(247,147,30,0.45)',
+        'stroke-width':(2 * LINE_HALF).toFixed(1), 'stroke-linecap':'round', class:'p4-fx-fade' }), 800);
+    }
+    function fxStack(c){
+      fxAdd(el('circle', { cx:c[0].toFixed(1), cy:c[1].toFixed(1), r:STACK_R.toFixed(1), fill:'rgba(255,203,69,0.18)',
+        stroke:'var(--aether-soft)', 'stroke-width':3, class:'p4-fx-burst', 'clip-path':'url(#arenaClip)' }), 900);
+    }
+    // The whole scene at the clock: puddles down so far, the dash under way, Athena, the add in the middle and
+    // the party where each stands.
+    function drawLive(){
+      const t = clock.t, host = layer('p4-actors');
+      drawPuddles(host, LIVE.stack.filter(x => x <= t).length, st.land);
+      let k = 0;
+      for(let j = 1; j <= 8; j++) if(t >= LIVE.dash[j - 1]) k = j;
+      let boss = posAt(st.boss, 0, R_BOSS);
+      if(k){
+        const from = athenaBefore(k), to = st.land[k], f = Math.min(1, (t - LIVE.dash[k - 1]) / (LIVE.shock[k - 1] - LIVE.dash[k - 1]));
+        boss = [from[0] + (to[0] - from[0]) * f, from[1] + (to[1] - from[1]) * f];
+        if(t < LIVE.stack[k - 1]){
+          host.appendChild(el('line', { x1:from[0], y1:from[1], x2:to[0], y2:to[1], stroke:'var(--aether)', 'stroke-width':(2 * LINE_HALF).toFixed(1),
+            opacity:0.16, 'stroke-linecap':'round' }));
+          const clip = el('g', { 'clip-path':'url(#arenaClip)' });
+          clip.appendChild(el('circle', { cx:to[0], cy:to[1], r:STACK_R.toFixed(1), fill:'none', stroke:'var(--astral)', 'stroke-width':2.5, class:'pulse' }));
+          host.appendChild(clip);
+        }
+      }
+      bossGlyph(host, boss[0], boss[1]);
+      let a = 0;
+      for(let j = 1; j <= 8; j++) if(t >= LIVE.adds[j - 1]) a = j;
+      centreAdd(host, a ? st.adds[a] : null);
+      for(let n = 1; n <= 8; n++) if(n !== st.num) drawMarker(host, n, whereAt(n, t), false);
+      drawMarker(host, st.num, here(t), true);
+    }
+
+    /* ---------- against the clock: the casts and the ask ---------- */
+    function liveRows(t = clock.t){
+      const rows = [], mine = pairOf(st.num);
+      const addRow = (from, to, who, what, isMine) => { if(t >= from && t < to) rows.push({ from, to, who, what, mine: isMine }); };
+      addRow(LIVE.cast[0], LIVE.cast[1], 'Athena', 'Palladion');
+      for(let k = 1; k <= 8; k++){
+        addRow(LIVE.dash[k - 1], LIVE.stack[k - 1], 'Athena', `Palladion · dash ${k}`, DASHES[st.group].includes(k));
+        if(st.adds && st.adds[k] === 'Y') addRow(LIVE.adds[k - 1], LIVE.flame[k - 1], 'Anthropos', 'White Flame', false);
+      }
+      return rows;
+    }
+    function renderLive(){
+      const box = document.getElementById('p4-live');
+      box.hidden = !st.live;
+      if(!st.live) return;
+      document.getElementById('p4-clock').innerHTML = `${clock.t.toFixed(1)}<small>s</small>`;
+      document.getElementById('p4-casts').innerHTML = T.castRows('p4', liveRows(), clock.t, 'Nothing casting.', st.castSlots);
+      document.getElementById('p4-liveNote').innerHTML = !clock.running && !st.over && clock.t <= LIVE.start
+        ? '<span class="hint">Click to move as the fight unfolds: where you stand when each dash, stack and laser goes off is what counts.</span>'
+        : '';
+    }
+    const PRE_TEXT = `Athena has begun casting Palladion: she has taken a corner, <span class="hl">relative north</span>, and marked everyone 1 to 8. The fight clock runs in real time from here. Press Start, then click to move as the fight unfolds.`;
+    // What to do now, for your pair: before dash 1, then beat by beat. A beat runs from the stack before it to
+    // its own, and nothing here tells the colour of an add before it is out.
+    function beatText(n){
+      const g = st.group, p = `<b>${st.partner}</b>`, e = st.plan[g][n - 1];
+      const bi = BAIT_ORDER.indexOf(g), prev = BAIT_ORDER[bi - 1], mine = st.ys[bi];
+      const standIn = `Stand in close to the middle on your ${HALF[g] === 'W' ? 'west' : 'east'} half, a little apart from ${p}: the next yellow add's White Flame is yours. Once it has fired, go straight back out to the wall.`;
+      if(n === 0){
+        const start = {
+          '13': `Take your spot in the relative south corner, straight across from Athena, beside ${p}: dash 1 comes to you.`,
+          '24': `Wait in the relative north-east corner, off dash 1's path. Once dash 1 has gone through, step into the corner Athena left: dash 2 comes there.`,
+          '57': standIn,
+          '68': `Wait at the relative south-east wall while 5 and 7 stand in for the first lasers.`
+        }[g];
+        return start + `<span class="hint"> The dashes come every 3 seconds from ${LIVE.dash[0].toFixed(1)} s, in number order.</span>`;
+      }
+      if(e.act === 'take') return `Dash ${n} is yours: stay where it should land beside ${p} and share the stack.<span class="hint"> Then step clockwise out of its puddle.</span>`;
+      if(e.act === 'move' && e.kind === 'dash' && e.dash === 2) return `Dash 1 has gone through: step into the corner Athena left. Dash 2 comes there.`;
+      if(e.act === 'move' && e.kind === 'dash') return `Step clockwise to just past puddle ${e.dash - 2}, as close to it as you can, beside ${p}: dash ${e.dash} lands there.`;
+      if(e.act === 'move' && e.kind === 'swap') return `Your dashes are done. Run clockwise along the wall until a puddle stops you, and wait there until ${PAIR_NAME[BAIT_ORDER[bi - 1]]} have taken their lasers.`;
+      if(e.act === 'move' && e.kind === 'out') return `Dash 7 was your last: step clockwise out of your puddle and keep clear of dash 8's line.`;
+      if((e.act === 'move' && e.kind === 'stepin') || (e.act === 'bait' && !st.track.mid(g, n, 'pre'))) return `${PAIR_NAME[prev]} have taken their lasers. ` + standIn;
+      if(e.act === 'bait' || e.standin) return standIn;
+      if(mine < n) return `Your lasers are done. Hold at the wall, clear of the puddles and of the dash lines.`;
+      return prev && standInAt(n) === prev ? `${PAIR_NAME[prev]} are standing in for the lasers. Hold at the wall, and step in as soon as theirs have fired.` : `Hold at the wall, clear of the dash lines.`;
+    }
+    // the beat the clock is in: 0 until 2/4's first move or dash 1's stack, then n until dash n's stack
+    function beatAt(t){
+      let n = 0;
+      for(let k = 1; k <= 8; k++) if(t >= (k === 1 ? LIVE.shock[0] + 0.15 : LIVE.stack[k - 2] + 0.3)) n = k;
+      return n;
+    }
+    function liveText(){
+      const n = beatAt(clock.t);
+      const text = n === 0 || (n === 1 && st.plan[st.group][0].act !== 'move') ? beatText(0) : beatText(n);
+      if(st.shownText === text) return;
+      st.shownText = text;
+      pill(n === 0 ? 'Starting spot' : 'Dash ' + n + ' of 8');
+      instr(text);
+    }
+
+    function setPace(p){
+      pace = p;
+      try{ localStorage.setItem('twelfth-p4-pace', p); }catch(e){}
+      panel.querySelectorAll('[data-pace]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.pace === p)));
+      newRound();
+    }
+    panel.querySelectorAll('[data-pace]').forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.pace === pace));
+      b.addEventListener('click', () => { if(b.dataset.pace !== pace) setPace(b.dataset.pace); });
+    });
+    document.getElementById('p4-start').addEventListener('click', startClock);
+
+    // Against the clock a click anywhere sends you running there; you can change course at any time.
+    function livePick(from){
+      const host = layer('p4-hits');
+      const g = el('g', { class:'hit free-pick', tabindex:'0', role:'button', 'data-free':'',
+        'data-x': from[0].toFixed(1), 'data-y': from[1].toFixed(1),
+        'aria-label':'Pick a spot on the arena to run to. Arrow keys move the marker, Enter confirms.' });
+      g.appendChild(el('rect', { x:60, y:60, width:480, height:480, rx:6, class:'free-area' }));
+      const ghost = el('g', { class:'free-ghost', 'pointer-events':'none', visibility:'hidden' });
+      ghost.appendChild(el('circle', { cx:0, cy:0, r:17, class:'free-ring' }));
+      const tag = el('text', { x:0, y:5, 'text-anchor':'middle', 'font-family':'Space Mono, monospace',
+        'font-size':13, 'font-weight':700, fill:'var(--aether-soft)' });
+      tag.textContent = String(st.num);
+      ghost.appendChild(tag);
+      const place = p => {
+        const x = Math.max(60, Math.min(540, p[0])), y = Math.max(60, Math.min(540, p[1]));
+        g.setAttribute('data-x', x.toFixed(1));
+        g.setAttribute('data-y', y.toFixed(1));
+        ghost.setAttribute('transform', `translate(${x.toFixed(1)},${y.toFixed(1)})`);
+        ghost.setAttribute('visibility', 'visible');
+      };
+      const current = () => [+g.getAttribute('data-x'), +g.getAttribute('data-y')];
+      const go = p => { if(!st.over) moveTo(st.num, p); };
+      g.addEventListener('pointermove', e => place(T.freePoint(g, e)));
+      g.addEventListener('pointerleave', () => { if(document.activeElement !== g) ghost.setAttribute('visibility', 'hidden'); });
+      g.addEventListener('focus', () => place(current()));
+      g.addEventListener('blur', () => ghost.setAttribute('visibility', 'hidden'));
+      g.addEventListener('click', e => go(T.freePoint(g, e)));
+      g.addEventListener('keydown', e => {
+        const d = e.shiftKey ? 24 : 8;
+        const move = { ArrowLeft:[-d, 0], ArrowRight:[d, 0], ArrowUp:[0, -d], ArrowDown:[0, d] }[e.key];
+        if(move){ e.preventDefault(); const c = current(); place([c[0] + move[0], c[1] + move[1]]); return; }
+        if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(current()); }
+      });
+      host.appendChild(g);
+      host.appendChild(ghost);
     }
 
     /* ---------- drawing helpers ---------- */
@@ -511,17 +1018,17 @@
       return host;
     }
 
-    function drawPuddles(host, count){
+    function drawPuddles(host, count, spots = DASH){
       const clip = el('g', { 'clip-path':'url(#arenaClip)' });
       host.appendChild(clip);
       for(let k = 1; k <= count; k++){
-        const [px, py] = DASH[k];
+        const [px, py] = spots[k];
         clip.appendChild(el('circle', { cx:px, cy:py, r:R_PUDDLE, fill:'rgba(74,143,224,0.26)',
           stroke:'var(--umbral-soft)', 'stroke-width':1.5 }));
       }
       // numbers on top of every puddle, so an overlapping neighbour never hides one
       for(let k = 1; k <= count; k++){
-        const [px, py] = inward(DASH[k], R_PATH - 52);
+        const [px, py] = inward(spots[k], R_PATH - 52);
         const t = el('text', { x:px, y:py + 6, 'text-anchor':'middle',
           'font-family':'Space Mono, monospace', 'font-size':17, 'font-weight':700,
           fill:'var(--umbral-soft)', opacity:0.8 });
@@ -646,8 +1153,19 @@
       document.getElementById('p4-num').textContent = String(st.num);
       document.getElementById('p4-assignText').innerHTML =
         `Partnered with <b>${st.partner}</b>, standing in for the <b>${ORDINAL[BAIT_ORDER.indexOf(st.group)]}</b> set of lasers. Limit cut numbers ignore role.`;
-      layer('p4-marks'); layer('p4-actors'); layer('p4-hits'); layer('p4-zones');
+      layer('p4-marks'); layer('p4-actors'); layer('p4-hits'); layer('p4-zones'); layer('p4-target');
       fb.hidden = true;
+      renderLive();
+
+      // against the clock the ask keeps the height of the tallest it will show, so the arena holds still
+      T.holdPrompt('palladion', st.live ? [PRE_TEXT, ...[0, 1, 2, 3, 4, 5, 6, 7, 8].map(beatText)] : null);
+      if(st.live){
+        drawRelLabels(true);
+        drawLive();
+        pill('Palladion');
+        instr(PRE_TEXT);
+        return;
+      }
 
       if(st.step === 1){
         pill('Starting spot');
@@ -801,5 +1319,5 @@
     newRound();
   }
 
-  T.register({ id: 'palladion', label: 'Palladion', phase: 'Athena', markup: MARKUP, init: initPalladion });
+  T.register({ id: 'palladion', label: 'Palladion', phase: 'Athena', markup: MARKUP, styles: STYLES, init: initPalladion });
 })(window.Twelfth);
