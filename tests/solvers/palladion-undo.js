@@ -17,13 +17,14 @@ Probe.run('panel-palladion', 'p4-clock', async ({ P, log, click }) => {
     if(e && e.early) return D.DASH[e.early];
     return D.planSpot(st.num, st.step === 1 ? 3.0 : n === 1 ? L.shock[0] + 0.2 : L.stack[n - 2] + 0.35);
   };
-  // Leniency, as 6 at the start: their own spot is right, a safe spot off it at the wall a warning, dash 1's path wrong.
+  // Leniency, as 6 at the start: their own spot is right, a safe spot off it at the wall a warning, dash 1's path and a
+  // spot nearer the middle than 5/7 (whatever colour the first add) wrong.
   {
     const R = Math.PI / 180, ring = deg => D.pathPt(D.alongOf([300 + Math.sin(deg * R) * 12.6 * D.Y, 300 - Math.cos(deg * R) * 12.6 * D.Y]));
     const head = () => { const f = P.querySelector('.feedback:not([hidden]) .feedback-head'); return f ? f.textContent.trim()[0] : '-'; };
     P.querySelector('[data-pick="6"]').click();
     const got = [];
-    for(const [name, spot, want] of [['their spot', () => D.planSpot(6, 3.0), '✓'], ['wall at 145°', () => ring(145), '!'], ['dash 1 path', () => [300, 300 + 4 * D.Y], '✕']]){
+    for(const [name, spot, want] of [['their spot', () => D.planSpot(6, 3.0), '✓'], ['wall at 145°', () => ring(145), '!'], ['dash 1 path', () => [300, 300 + 4 * D.Y], '✕'], ['nearer than 5/7', () => [300 + 5 * D.Y, 300 + D.Y], '✕']]){
       P.querySelector('[data-history="reroll"]').click();
       click(spot());
       got.push(name + ' ' + head() + (head() === want ? '' : ' (want ' + want + ') FAIL'));

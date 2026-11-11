@@ -157,7 +157,8 @@ the drill does not check.
 
 Step by step, a spot pick off the group's spot is no longer simply wrong. It passes as before within reach of the spot;
 otherwise it is a warning ("Safe, but off the spot") when it is safe through that dash (its stack, its add's lasers
-and Clear Cut, from the start dash 1's path too), clear of the puddles down and of everyone else's spot, and, if one
+and Clear Cut, from the start dash 1's path too), clear of the puddles down and of everyone else's spot, never nearer
+the middle than the pair standing in for the lasers (and, for that pair, still the two nearest), and, if one
 of your dashes will land on it, its stack, path and puddle (for the five dashes it lasts) clear of everyone else; your
 later puddles then pack from where it landed (`hazard`, `relayout`). Anything else fails with the reason. Repositioning
 where holding was right is a warning on the same terms. 5 and 7 stand in 282° and 312°, 6 and 8 wait at 109° and 128°,

@@ -1355,6 +1355,14 @@
       if(on) return `That spot is where ${on} stands.`;
       if(!mine.includes(m) && dist(p, DASH[m]) <= STACK_R) return `That spot is inside dash ${m}'s stack, which is ${m} and ${PARTNER[m]}'s: its Magic Vulnerability Up would make your next hit lethal.`;
       if(mine.includes(m) && m !== me && dist(p, DASH[m]) > STACK_R) return `That spot is outside dash ${m}'s stack, so ${m} would take it alone.`;
+      // Whatever colour the add, while a pair stands in for the lasers nobody else may be one of the two players
+      // nearest the middle, and the pair standing in must be those two: the next yellow add fires at them.
+      const standing = standInAt(m);
+      if(standing){
+        const pos = Object.assign({}, others, { [me]: p }), near = nearest(pos), them = DASHES[standing];
+        if(!them.includes(me) && near.includes(me)) return `That spot is nearer the middle than ${PAIR_NAME[standing]}, who are standing in for the lasers: the next yellow add's White Flame would fire at you.`;
+        if(them.includes(me) && !near.includes(me)) return `From there you are not one of the two players nearest the middle, and you are standing in for the lasers: the next yellow add's White Flame would go to ${near.join(' and ')}.`;
+      }
       if(st.adds[m] === 'Y'){
         const pos = Object.assign({}, others, { [me]: p }), near = nearest(pos), baiters = DASHES[standInAt(m)];
         if(baiters.includes(me) && !near.includes(me)) return `From there you are not one of the two players nearest the middle, so the yellow add's White Flame, yours, would fire at ${near.join(' and ')}.`;
