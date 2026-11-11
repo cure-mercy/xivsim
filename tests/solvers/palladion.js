@@ -25,6 +25,8 @@ Probe.run('panel-palladion', 'p4-clock', async ({ P, log, sleep, clockT, head, u
     if(mode === 'puddle') moves = moves.filter(m => m.at < L.stack[0]).concat(at(L.stack[0] + 0.3, [D.DASH[1][0] + 2.5 * D.Y, D.DASH[1][1] - 1.1 * D.Y]));
     // 6/8 walk into dash 1's stack, beside the line
     if(mode === 'crowd') moves = [at(2.0, [360, 490])];
+    // 5/7 stand in right on the add, inside the purple add's Clear Cut
+    if(mode === 'onadd') moves = [at(2.0, [305, 300])];
     // 5/7 bait from the very spot their partner stands on
     if(mode === 'close') moves = [at(2.0, D.planSpot(D.PARTNER[me], 3))].concat(moves.filter(m => m.at > L.flame[st.ys[0] - 1]));
     // 3 sets up for dash 3 four yalms too far along the wall, not just past puddle 1
@@ -59,8 +61,16 @@ Probe.run('panel-palladion', 'p4-clock', async ({ P, log, sleep, clockT, head, u
   } else if(window.__probe.plays === 'right'){
     for(const g of ['13', '24', '57', '68', '13', '24', '57', '68', null, null]) log.push('right: ' + await play('right', g));
     for(const g of ['13', '24', '57', '68']) log.push('nudge: ' + await play('nudge', g));
+    // the picker: the chosen number every pull, and before Start no number on the card or the board but your '?'
+    P.querySelector('[data-pick="6"]').click(); await sleep(30);
+    const nums = [];
+    for(let i = 0; i < 5; i++){ await reroll(); nums.push(D.st().num); }
+    const card = document.getElementById('p4-num').textContent;
+    const labels = [...P.querySelectorAll('#p4-actors .player text')].map(t => t.textContent).join('');
+    log.push(`picker: ${nums.join(',')} card '${card}' labels '${labels}'` + (nums.every(n => n === 6) && card === '?' && labels === '?' ? '' : ' FAIL'));
+    P.querySelector('[data-pick="random"]').click(); await sleep(30);
   } else {
-    for(const [m, g] of [['stay', null], ['early', '24'], ['nobait', '57'], ['greedy', '68'], ['puddle', '13'], ['crowd', '68'], ['close', '57'], ['offspot', 3]])
+    for(const [m, g] of [['stay', null], ['early', '24'], ['nobait', '57'], ['greedy', '68'], ['puddle', '13'], ['crowd', '68'], ['close', '57'], ['offspot', 3], ['onadd', st => st.group === '57' && st.adds[1] === 'P']])
       log.push(m + ': ' + await play(m, g));
   }
 });

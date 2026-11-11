@@ -30,6 +30,15 @@
     @media (prefers-reduced-motion: reduce){ .p4-fx-burst, .p4-fx-fade{ display: none; } }
     @keyframes p4-burst{ from{ transform: scale(0.6); opacity: 1; } to{ transform: scale(1.25); opacity: 0; } }
     @keyframes p4-fade{ from{ opacity: 1; } to{ opacity: 0; } }
+    /* Clear Cut going off: the cone fades as it lands */
+    @media (prefers-reduced-motion: no-preference){ .p4-fx-cc{ animation: p4-fade 1.2s ease-out forwards; } }
+    @media (prefers-reduced-motion: reduce){ .p4-fx-cc{ display: none; } }
+    /* the number to practise: any of the eight, or any of them */
+    .p4-pick-label{ margin: 14px 0 8px; font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--mist-faint); }
+    .role-select.p4-num-pick{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 8px; }
+    .p4-num-pick .role-btn{ padding: 6px 4px; min-height: 36px; font-family: var(--font-mono); font-weight: 700; }
+    .p4-num-pick .p4-any{ grid-column: span 2; font-family: inherit; font-weight: inherit; font-size: 0.86rem; }
     /* against the clock there is no stepping back: only a new pull */
     .layout.p4-timed .history-ctrls [data-history="undo"],
     .layout.p4-timed .history-ctrls [data-history="redo"],
@@ -103,6 +112,9 @@
           <div class="lc-num" id="p4-num">1</div>
           <p class="assign-text hint-only" id="p4-assignText"></p>
         </div>
+        <div class="p4-pick-label" id="p4-pickLabel">Practise</div>
+        <div class="role-select p4-num-pick" id="p4-numPick" role="group" aria-labelledby="p4-pickLabel"></div>
+        <p class="player-note hint-only" id="p4-pickNote"></p>
       </div>
 
       <div class="card">
@@ -117,7 +129,7 @@
           <li><b>Palladion</b> puts a 1–8 marker on everyone. Athena reappears on a random corner, and that corner is <b>relative north</b> for the whole mechanic. Partners are <b>1+3, 2+4, 5+7, 6+8</b>.</li>
           <li>She dashes to each number in order. The dash lays a line AoE with proximity damage, then a point-blank that must be <b>shared with your partner</b> and leaves a blue puddle that kills on contact. Each puddle lasts five dashes: puddle 1 goes as puddle 6 appears.</li>
           <li>Starting spots, all relative: <b>1/3 south</b> corner, <b>2/4 north-east</b> corner, <b>5/7 close to the middle</b> on the west side, <b>6/8 south-east</b> corner. 2 and 4 may start anywhere in the northern tiles off dash 1's path. They let the first dash land, then step into the corner Athena left to take the second; anywhere up there off dash 1's path would do, but the corner keeps the puddles packed.</li>
-          <li>A <b>purple</b> add is Clear Cut, a 270° cone you can ignore; a <b>yellow</b> add fires <b>White Flame</b> at the two players nearest the middle. The first four adds are two of each in a <b>random order</b>, and the last four return in the <b>reverse</b> of that order.</li>
+          <li>A <b>purple</b> add casts Clear Cut, a 270° cone only 4 yalms long that faces true north or south: anyone standing in is clear of it; a <b>yellow</b> add fires <b>White Flame</b> at the two players nearest the middle. The first four adds are two of each in a <b>random order</b>, and the last four return in the <b>reverse</b> of that order.</li>
           <li>So <b>one pair always stands in</b> close to the middle, on its own half (1/3/5/7 west, 2/4/6/8 east), in the bait order <b>5/7 → 6/8 → 1/3 → 2/4</b>. On a purple add it holds; on a yellow add it spreads, takes one laser each and goes straight back out to the wall, and the next pair, holding at the wall until then, steps in on the next dash: a reposition close to the middle, or straight to Bait if that add is yellow too. While standing in, Hold and Bait both keep you there. A pair still owed a dash steps in as soon as its dashes are done, which is always in time. Everyone else stays against the wall.</li>
           <li>Only the first two dashes land in corners: 1 straight across from Athena, 2 in the corner she left. After your dash, move <b>clockwise to just outside your puddle</b>, as close to it as you can, and your second dash lands there. The pair that takes over steps just clockwise of that puddle in turn, so the puddles pack along the wall, <b>1-3-5-7</b> from the south corner and <b>2-4-6-8</b> from Athena's, and leave the rest of the wall free with less walking.</li>
           <li>Once a pair has taken both its dashes it <b>trades places</b> with the next dash pair: 5/7 take over from 1/3 after dash 3, and 6/8 from 2/4 after dash 4. 1/3 step straight in for the third lasers, unless 6/8 are baiting on dash 4 itself: then they wait at the wall first. 2/4 run <b>clockwise along the wall until a puddle stops them</b> and step in on the dash after 1/3 bait. After its lasers every pair goes back out to the wall: 1/3 just short of puddle 2, 2/4 just short of puddle 1.</li>
@@ -128,7 +140,7 @@
       <div class="card">
         <h2>The middle add</h2>
         <div class="legend-list">
-          <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--shape-purple)"><use href="#icon-add"/></svg><span><b>Purple glyph</b> — Clear Cut, a 270° cone in the middle.<span class="hint"> Ignore it.</span></span></div>
+          <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--shape-purple)"><use href="#icon-add"/></svg><span><b>Purple glyph</b> — Clear Cut, a 270° cone 4 yalms long.<span class="hint"> Stand in from 4 yalms out and it misses you.</span></span></div>
           <div class="legend-item"><svg viewBox="0 0 24 24" fill="var(--aether)"><use href="#icon-add"/></svg><span><b>Yellow glyph</b> — White Flame at the two nearest players.<span class="hint"> The pair standing in baits it.</span></span></div>
         </div>
       </div>
@@ -417,7 +429,7 @@
     // One player's own marker: partners sit side by side. `where` is 'stack' (the middle, before the
     // numbers go out), 'start', or [n, 'pre' | 'post'] around dash n.
     function numAt(num, where){
-      if(where === 'stack') return posAt(num - 1, 0, R_STACK);
+      if(where === 'stack') return posAt(st.seat[num - 1], 0, R_STACK);
       const g = GROUP_OF[num];
       const src = g === st.group || st.live ? st.track : st.shown;
       const s = where === 'start' ? src.pre[g][1] : src[where[1]][g][where[0]];
@@ -560,10 +572,16 @@
     function startRound(){
       // The board is always turned so Athena's corner, relative north, sits at the top.
       st.boss  = 0;
-      st.num   = 1 + Math.floor(Math.random() * 8);
+      st.num   = practise === 'random' ? 1 + Math.floor(Math.random() * 8) : +practise;
       st.group = GROUP_OF[st.num];
       st.partner = PARTNER[st.num];
       st.adds = rollAdds();
+      // the stack before the numbers go out, in no particular order, so where you stand gives nothing away
+      st.seat = T.shuffle([0, 1, 2, 3, 4, 5, 6, 7]);
+      // Clear Cut faces true north or true south (the logs: 34 of each, from no pattern we can find); the board is
+      // turned to Athena's corner, so true north lies at any of the eight corners
+      st.northDeg = 45 * Math.floor(Math.random() * 8);
+      st.ccFace = st.adds.map(a => a === 'P' ? (Math.random() < 0.5 ? 'N' : 'S') : null);
       st.early57 = false;
       resetLayout();
       rebuild();
@@ -588,6 +606,18 @@
       for(let n = 1; n <= 8; n++) setAt(n, numAt(n, 'stack'));
       render();
     }
+
+    /* ---------- the number to practise ---------- */
+    const PICKS = ['1', '2', '3', '4', '5', '6', '7', '8', 'random'];
+    let practise = 'random';
+    try{ const saved = localStorage.getItem('twelfth-p4-num'); if(PICKS.includes(saved)) practise = saved; }catch(e){}
+    document.getElementById('p4-numPick').addEventListener('click', e => {
+      const b = e.target.closest('[data-pick]');
+      if(!b || b.dataset.pick === practise) return;
+      practise = b.dataset.pick;
+      try{ localStorage.setItem('twelfth-p4-num', practise); }catch(e){}
+      newRound();
+    });
 
     /* ---------- against the clock: moving ---------- */
     let pace = 'steps';
@@ -668,6 +698,8 @@
       const head = document.getElementById('p4-start').parentNode;
       if(!T.leadBeside('palladion')) head.style.minHeight = head.getBoundingClientRect().height + 'px';
       document.getElementById('p4-start').style.visibility = 'hidden';
+      renderNumber();
+      drawLive();
       liveText();
       livePick(here(clock.t));
       clock.timer = setTimeout(tick, TICK_MS);
@@ -697,6 +729,7 @@
         }));
       }
       for(let k = 1; k <= 8; k++){
+        if(st.adds[k] === 'P') at(`a${k}`, LIVE.adds[k - 1], () => checkClearCut(k));
         at(`c${k}`, LIVE.dash[k - 1], () => lockDash(k));
         at(`s${k}`, LIVE.shock[k - 1], () => checkLine(k));
         if(st.adds[k] === 'Y') at(`w${k}`, LIVE.flame[k - 1], () => checkFlame(k));
@@ -785,6 +818,11 @@
         if(n !== me && hit.includes(me)) return liveFail('Caught in White Flame', `At ${sec} White Flame ran from the middle through <b>${n}</b> and on to the wall, and you were in its path. ${liveRule()}`, target);
       }
     }
+    function checkClearCut(k){
+      fxAdd(ccNode(k, 'p4-fx-cc'), 1200);
+      if(inClearCut(k, here(LIVE.adds[k - 1])))
+        liveFail('Caught in Clear Cut', `The ${NTH[k - 1]} add was purple, and its Clear Cut, a 270° cone 4 yalms long from the middle, went off at <b>${LIVE.adds[k - 1].toFixed(1)} s</b> with you in it: Damage Down. Standing in is safe from about 4 yalms out. ${liveRule()}`, planSpot(st.num, LIVE.adds[k - 1]));
+    }
     function checkStack(k){
       const when = LIVE.stack[k - 1], c = st.land[k], pos = party(when), me = st.num;
       fxStack(c);
@@ -862,8 +900,9 @@
       let a = 0;
       for(let j = 1; j <= 8; j++) if(t >= LIVE.adds[j - 1]) a = j;
       centreAdd(host, a ? st.adds[a] : null);
-      for(let n = 1; n <= 8; n++) if(n !== st.num) drawMarker(host, n, whereAt(n, t), false);
-      drawMarker(host, st.num, here(t), true);
+      const hidden = !numbersOut();
+      for(let n = 1; n <= 8; n++) if(n !== st.num) drawMarker(host, n, whereAt(n, t), false, hidden);
+      drawMarker(host, st.num, here(t), true, hidden);
     }
 
     /* ---------- against the clock: the casts and the ask ---------- */
@@ -997,9 +1036,10 @@
       document.querySelectorAll('#panel-palladion .hit').forEach(h => h.setAttribute('aria-disabled','true'));
     }
 
-    function drawMarker(host, num, at, me){
+    // `hidden`: before the numbers are out, nobody's shows (yours is a question mark)
+    function drawMarker(host, num, at, me, hidden){
       const [x, y] = at;
-      const g = el('g', { class: 'player' + (me ? ' me' : num === st.partner ? ' related' : '') });
+      const g = el('g', { class: 'player' + (me ? ' me' : num === st.partner && !hidden ? ' related' : '') });
       host.appendChild(g);
       if(me) g.appendChild(el('circle', { cx:x, cy:y, r:20, fill:'none', stroke:'var(--mist)', 'stroke-width':2.5, class:'pulse' }));
       g.appendChild(el('circle', { cx:x, cy:y, r: me ? 15 : 12, fill:'rgba(10,9,22,0.92)',
@@ -1007,7 +1047,7 @@
       const t = el('text', { x, y: y + (me ? 5 : 4), 'text-anchor':'middle',
         'font-family':'Space Mono, monospace', 'font-size': me ? 14 : 11, 'font-weight':700,
         fill: me ? 'var(--mist)' : 'var(--mist-dim)' });
-      t.textContent = String(num);
+      t.textContent = hidden ? (me ? '?' : '') : String(num);
       g.appendChild(t);
     }
     // The whole party at one moment; your own marker can be put somewhere else.
@@ -1039,6 +1079,30 @@
       g.appendChild(el('path', { d:'M0 -17 L5 -5 L17 0 L5 5 L0 17 L-5 5 L-17 0 L-5 -5 Z',
         fill:'var(--aether)', transform:`translate(${x},${y})` }));
       host.appendChild(g);
+    }
+
+    // Clear Cut: a cone of 270 degrees, 4 yalms long (the Action sheet, 33531), from the purple add in the middle,
+    // facing true north or south. It lands as it is cast.
+    const R_CC = 4 * Y;
+    const ccDeg = k => (st.northDeg + (st.ccFace[k] === 'S' ? 180 : 0)) % 360;
+    function ccPath(k){
+      const pt = a => [300 + Math.sin(a * RAD) * R_CC, 300 - Math.cos(a * RAD) * R_CC].map(v => v.toFixed(1)).join(' ');
+      return `M300 300 L${pt(ccDeg(k) - 135)} A${R_CC.toFixed(1)} ${R_CC.toFixed(1)} 0 1 1 ${pt(ccDeg(k) + 135)} Z`;
+    }
+    function inClearCut(k, p){
+      const d = dist(p, [300, 300]);
+      if(d > R_CC) return false;
+      if(d < 0.3 * Y) return true;
+      const a = Math.atan2(p[0] - 300, 300 - p[1]) / RAD, off = Math.abs(((a - ccDeg(k)) % 360 + 540) % 360 - 180);
+      return off <= 135;
+    }
+    const ccNode = (k, cls) => el('path', { d: ccPath(k), fill:'rgba(176,131,234,0.26)', stroke:'var(--shape-purple)', 'stroke-width':1.5,
+      'pointer-events':'none', ...(cls ? { class: cls } : {}) });
+    function clearCut(host, k){ host.appendChild(ccNode(k)); }
+    // Add n in the middle, with its cone if it is purple.
+    function addAt(host, n){
+      if(st.adds[n] === 'P') clearCut(host, n);
+      centreAdd(host, st.adds[n]);
     }
 
     // The add in the middle, in the colour of the one that has just returned (grey before any has).
@@ -1196,10 +1260,24 @@
     function instr(h){ document.getElementById('p4-instrText').innerHTML = h; }
     const addWord = n => st.adds[n] === 'Y' ? '<span class="hl">yellow</span>' : '<span class="hl">purple</span>';
 
+    // Against the clock the numbers go out as Athena begins casting Palladion, so they stay hidden until Start.
+    const numbersOut = () => !st.live || clock.running || clock.t > LIVE.start || st.over;
+    function renderNumber(){
+      const out = numbersOut();
+      document.getElementById('p4-num').textContent = out ? String(st.num) : '?';
+      document.getElementById('p4-assignText').innerHTML = out
+        ? `Partnered with <b>${st.partner}</b>, standing in for the <b>${ORDINAL[BAIT_ORDER.indexOf(st.group)]}</b> set of lasers. Limit cut numbers ignore role.`
+        : `The numbers go out as Athena begins casting Palladion, when you press Start.`;
+    }
+    function renderPick(){
+      document.getElementById('p4-numPick').innerHTML = PICKS.map(id => `<button type="button" class="role-btn${id === 'random' ? ' p4-any' : ''}" data-pick="${id}" aria-pressed="${id === practise}" aria-label="${id === 'random' ? 'Random' : 'Number ' + id}">${id === 'random' ? 'Random' : id}</button>`).join('');
+      document.getElementById('p4-pickNote').textContent = practise === 'random'
+        ? 'Each pull marks you with one of the eight at random.' : `Every pull marks you ${practise}.`;
+    }
+
     function render(){
-      document.getElementById('p4-num').textContent = String(st.num);
-      document.getElementById('p4-assignText').innerHTML =
-        `Partnered with <b>${st.partner}</b>, standing in for the <b>${ORDINAL[BAIT_ORDER.indexOf(st.group)]}</b> set of lasers. Limit cut numbers ignore role.`;
+      renderPick();
+      renderNumber();
       layer('p4-marks'); layer('p4-actors'); layer('p4-hits'); layer('p4-zones'); layer('p4-target');
       fb.hidden = true;
       renderLive();
@@ -1228,7 +1306,7 @@
         pill('Dash ' + n + ' of 8 · where to');
         const host = layer('p4-actors');
         drawPuddles(host, n);
-        centreAdd(host, st.adds[n]);
+        addAt(host, n);
         drawParty(host, [n, 'pre']);
         drawRelLabels(true);
         // Neutral on purpose: nothing here says whether repositioning was the right call.
@@ -1239,7 +1317,7 @@
 
       pill('Dash ' + n + ' of 8');
       const host = drawDash(n);
-      centreAdd(host, st.adds[n]);
+      addAt(host, n);
       drawParty(host, [n, 'pre']);
       drawRelLabels(true);
       instr(`Athena is diving to <span class="hl">${n}</span>, and a ${addWord(n)} add has returned to the middle. As <span class="hl">${st.num}</span>, what are you doing right now?<span class="hint"> You share a dash only on your own two numbers and reposition between them. One pair at a time stands in near the middle, in the order 5/7, 6/8, 1/3, 2/4: it baits only a yellow add, then goes back out as the next pair steps in.</span>`);
@@ -1307,7 +1385,7 @@
       if(ok){
         const host = drawDash(n);
         drawLasers(host, n);
-        centreAdd(host, st.adds[n]);
+        addAt(host, n);
         drawParty(host, [n, 'post']);
         layer('p4-zones');
       }
@@ -1355,7 +1433,7 @@
       const host = layer('p4-actors');
       drawPuddles(host, n);
       drawLasers(host, n);
-      centreAdd(host, st.adds[n]);
+      addAt(host, n);
       drawParty(host, [n, 'post'], ok && !loose ? null : p);
       if(!ok) drawTarget(host, numAt(st.num, [n, 'post']));
       const title = ok ? (n === 8 ? 'Palladion cleared' : 'Right move, right spot') : 'Right move, wrong spot';

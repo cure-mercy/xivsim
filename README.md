@@ -66,8 +66,10 @@ play that is off the group's plan pauses with `showFeedback(fb, 'warn', …)`, o
 deviations listed. A Pause button, when added, should call the same pair.
 
 **Debuff picker**: the "Practise" row of debuff icons plus Random (Superchain I, Paradeigma III), remembered in
-localStorage (`twelfth-sc-debuff`, `twelfth-p3-debuff`). Re-render it inside `render()`, as Paradeigma III does, so
-undo and redo don't leave it stale.
+localStorage (`twelfth-sc-debuff`, `twelfth-p3-debuff`); Palladion's is a row of limit cut numbers (`twelfth-p4-num`).
+Re-render it inside `render()`, as Paradeigma III does, so undo and redo don't leave it stale. A drill whose debuff
+or number goes out after the fight clock starts keeps it hidden until Start (Palladion: the card shows "?", and the
+stacked party is drawn without numbers, in a shuffled order).
 
 ## Real-time timings from logs
 
@@ -95,7 +97,11 @@ lasers off the pair waiting at the wall: 5/7 west, 6/8 south-east, 1/3 north-wes
 (`scheduleOf`), trading places along the wall (`ringVia`), and where it has you is the spot a failed pull shows. Your
 own dash lands where you stand when Athena sets off, judged with the step drill's reach, and the later puddles on that
 side pack from where it really landed (`relayout`). `scratch/palladion/sweep.py` plays every number against every
-order of the first four adds (48 pulls).
+order of the first four adds (48 pulls). Clear Cut (a purple add) faces true north or true south, 34 times each
+in the logs with no pattern we found (`scratch/palladion/clearcut.py`); it lands as it is cast, with no telegraph.
+The board is turned to Athena's corner, so each pull puts true north at a random corner (`st.northDeg`) and faces
+each Clear Cut north or south at random; it is drawn step by step while its add is in the middle, flashes against
+the clock, and standing in it fails the pull (Damage Down, which our logs show three times).
 
 - **What is cached.** The scorecard's `tools/scorecard/.cache/report_<code>.json` (built by `scorecard.py`) holds
   every pull's DamageTaken events with target and source positions (`targetResources.x/y`; yalms =
