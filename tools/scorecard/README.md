@@ -549,7 +549,7 @@ lost pulls, their most frequent other mistake, the two costliest rotation issues
 and a raid buff pressed 1.5 s late or skipped. Every point links to its section, and mistakes in a mechanic the trainer
 has a drill for link to it: **Drill** opens the trainer on that mechanic (`index.html#<mechanic>`) and **Brief** its
 brief (`briefs.html#<mechanic>`). The open drills are listed in `DRILLS` in `site/app.js` (Paradeigma I, Paradeigma II,
-Superchain I, Paradeigma III); add a mechanic there when its drill opens. The links point one level up from the scorecard,
+Superchain I, Paradeigma III, Palladion); add a mechanic there when its drill opens. The links point one level up from the scorecard,
 which is the trainer on GitHub Pages.
 
 ### Burst

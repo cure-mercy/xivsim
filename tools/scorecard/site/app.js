@@ -332,7 +332,7 @@ function shareBars(rows, { refName = "", barName = "" } = {}) {
 
 // ---------- practice links and focus lists ----------
 // the trainer's drills and briefs (the repository root on GitHub Pages; this site lives in stats/), open mechanics only
-const DRILLS = { "Paradeigma I": "para1", "Paradeigma II": "engrave", "Superchain I": "superchain", "Paradeigma III": "para3" };
+const DRILLS = { "Paradeigma I": "para1", "Paradeigma II": "engrave", "Superchain I": "superchain", "Paradeigma III": "para3", "Palladion": "palladion" };
 const drillLinks = mech => DRILLS[mech] ? el("span", { class: "drill" }, el("a", { href: `../index.html#${DRILLS[mech]}` }, "Drill"), " · ",
   el("a", { href: `../briefs.html#${DRILLS[mech]}` }, "Brief")) : null;
 const jumpTo = (title, text) => el("button", { type: "button", class: "linklike", on: { click: () => {

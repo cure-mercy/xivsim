@@ -95,8 +95,8 @@ use a single pull.
 The drills were first built on Icy Veins' Twelfth Circle (Savage) guides, cross-checked with the Console Games Wiki.
 Our raid groups (G1–G5 in `tools/logs.csv`) play their own plan, the raidplan
 [Syncademy P12S P1](https://raidplan.io/plan/qa834veq2fssd2yc): slide 1 assignments, 2–5 Paradeigma I, 6–11
-Paradeigma II, 12–22 Superchain Theory I, 23–28 Paradeigma III. **Where the two differ, the raidplan wins.** So far
-only Paradeigma III follows it; the other drills still follow Icy Veins. To adapt one, read its raidplan slides
+Paradeigma II, 12–22 Superchain Theory I, 23–28 Paradeigma III, 29–38 Palladion. **Where the two differ, the raidplan
+wins.** So far Paradeigma III and Palladion follow it; the other drills still follow Icy Veins. To adapt one, read its raidplan slides
 (below), compare them with the drill, then change the drill and its brief together, and cite the plan in the brief
 footer. When the plan is unclear, the groups' logs show which variant they really play.
 
@@ -116,6 +116,15 @@ footer. When the plan is unclear, the groups' logs show which variant they reall
 - **Game geometry.** Where a drill squeezes geometry to fit its arena, its checks run in game geometry: the wall
   adds are drawn 21.3 y out but stand 25 y out in the fight, so the straight-tether seat on the B/D line is 35.0 y
   from its add, half a yalm past the lethal 34.5 (`MIN_STRETCH_Y`).
+
+### Palladion
+
+The drill was built on Icy Veins before the plan had Palladion; its slides (29–38, added by November 2026) play the
+same: 1/3 opposite Athena, 2/4 just clockwise of her, 5/7 anticlockwise near the middle, 6/8 opposite them; puddles
+packed clockwise, 1-3-5-7 from the south corner and 2-4-6-8 from Athena's; lasers in the order 5/7, 6/8, 1/3, 2/4,
+1/3/5/7 from the west half and 2/4/6/8 from the east; after their lasers 1/3 wait just short of puddle 2, 2/4 just
+short of puddle 1. The plan adds that the higher number of a baiting pair stands clockwise of the lower one, which
+the drill does not check.
 
 ### Reading the raidplan
 
