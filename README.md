@@ -84,9 +84,11 @@ yalm, and its floor tiles at that scale (lines 10 yalms apart), not the 12 of th
 14.0 out; the dashes land a median 12.1 out, a side's puddles 6.7 to 7.5 apart (`PACK` 7.0); White Flame's targets
 stood a median 8.6 out (`R_STANDIN`). From the Action sheet: the stack is 6 yalms in radius, the dash line (Shockwave,
 a charge) and White Flame 4 wide, Clear Cut a 4-yalm cone (the stand-ins' inner limit); everyone runs 7 yalms a
-second. Nothing in the logs or the Action sheet is the puddle itself: a video of a pull shows puddle 1 going as
-puddle 6 appears (each lasts five dashes), and while one was down nobody alive stood within 5.9 yalms of it, so it is
-5.8 in radius and turns lethal 3 s after it drops (`GRACE`: the pair it landed on were still inside 2 s after, nobody
+second. Nothing in the logs or the Action sheet is the puddle itself: measured on a video of a pull against the
+octagon's 10.3-yalm side it is about 3 yalms in radius (its swirling edge leaves half a yalm either way; the bright
+ovals in videos are the waymarks, and the raidplan draws 2.1), another video shows puddle 1 going as puddle 6 appears
+(each lasts five dashes), and in the logs nobody alive stood within 5.9 yalms of one while it was down. It turns
+lethal 3 s after it drops (`GRACE`: the pair it landed on were still 2.9 yalms from its centre 2 s after, nobody inside
 from 3 s). The stand-ins' directions (`STANDIN_DEG`) keep each pair clear of the puddles down while it baits and its
 lasers off the pair waiting at the wall: 5/7 west, 6/8 south-east, 1/3 north-west at 320°, 2/4 south-east at 140°
 (the raidplan draws 1/3 nearer west, about 285°, and 2/4 about 130°). The rest of the party plays the plan

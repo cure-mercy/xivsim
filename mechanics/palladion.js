@@ -148,11 +148,11 @@
     // The dashes land a median 12.1 yalms out: players walk a ring 12.6 to its corners and 11.6 to its sides.
     // Athena takes her corner 14.0 yalms out, on the rim. The labels only mark the way.
     const R_PATH = 12.6 * Y, R_BOSS = 14.0 * Y, R_LABEL = 58;
-    // The puddle: while one was down (from 3 s after it dropped until it went, five dashes later, as a video of a
-    // pull shows), nobody alive stood within 5.9 yalms of it, and the pair waiting for the next dash on its side stood
-    // a median 6.7 out: 5.8 is the largest radius the logs allow. The party stacks in the middle before the numbers
-    // send it out.
-    const R_PUDDLE = 5.8 * Y, R_STACK = 40;
+    // The puddle: about 3 yalms in radius, measured on a video of a pull against the octagon's 10.3-yalm side (its
+    // swirling edge leaves about half a yalm either way). It lasts five dashes (puddle 1 goes as puddle 6 appears, as a
+    // video shows), and the logs agree: nobody alive stood within 5.9 yalms of one while it was down. The party stacks
+    // in the middle before the numbers send it out.
+    const R_PUDDLE = 3.0 * Y, R_STACK = 40;
     // The pair standing in for the lasers waits this far from the middle add, on its own side (White Flame's
     // targets stood a median 8.6 yalms out).
     const R_STANDIN = 8.6 * Y;
@@ -193,7 +193,7 @@
     // Against the clock: the stack is 6 yalms in radius, the dash line and each White Flame 4 wide (the game's
     // Action sheet: 33526, 33527, 33520), and everyone runs 7 yalms a second. Magic Vulnerability Up lasts 4 s from a
     // stack and 6 s from a laser, so the bait order leaves every pair clear of it by its next hit. A puddle turns
-    // lethal GRACE seconds after it drops: the pair it landed on were still up to 3 yalms inside it 2 s after, and
+    // lethal GRACE seconds after it drops: the pair it landed on were still 2.9 yalms from its centre 2 s after, and
     // nobody alive was inside one from 3 s.
     const STACK_R = 6 * Y, LINE_HALF = 2 * Y, FLAME_HALF = 2 * Y;
     const SPEED = 7 * Y, REACT = 2.0, STEP_OFF = 0.05, TICK_MS = 33, GRACE = 3.0;
@@ -259,9 +259,8 @@
       Object.assign(WALL, { '13': pathPt(packFrom(ALONG[2], -1)), '24': pathPt(packFrom(ALONG[1], -1)),
                             '57': posAt(6, 0, R_PATH), '68': posAt(3, 0, R_PATH) });
       // Standing in: each pair R_STANDIN out on its own half, 5/7 due west and 6/8 south-east as they wait at
-      // the wall. 1/3 stand in north-west and 2/4 south-east, clear of puddles 2 and 1 (6.7 yalms with the pair
-      // spread, past the 5.8 of a puddle), with their lasers running past the pair waiting at the wall for its
-      // next dash.
+      // the wall. 1/3 stand in north-west and 2/4 south-east, well clear of puddles 2 and 1 (6.7 yalms with the
+      // pair spread), with their lasers running past the pair waiting at the wall for its next dash.
       Object.entries(STANDIN_DEG).forEach(([g, deg]) => {
         STANDIN[g] = [300 + Math.sin(deg * RAD) * R_STANDIN, 300 - Math.cos(deg * RAD) * R_STANDIN];
       });
