@@ -41,7 +41,8 @@ P3_HOOK = ("    const newRound = T.trackRounds('para3', startRound);",
            "      inPlus, inSaltire, MARK_NEAR };\n")
 # and so does Palladion's
 P4_HOOK = ("    const newRound = T.trackRounds('palladion', startRound);",
-           "    window.__p4 = { st: () => st, LIVE, scheduleOf, planSpot, DASH, WALL, PARTNER };\n")
+           "    window.__p4 = { st: () => st, LIVE, scheduleOf, planSpot, ringVia, DASH, WALL, PARTNER, Y, SPEED,\n"
+           "      pos: n => whereAt(n, clock.t), alongOf, pathPt };\n")
 
 PARA1 = dict(tab='para1', pace='twelfth-p1-pace', panel='panel-para1', clock='p1-clock')
 ENGRAVE = dict(tab='engrave', pace='twelfth-eg-pace', panel='panel-engrave', clock='eg-clock')

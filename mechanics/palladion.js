@@ -55,7 +55,8 @@
 
       <svg class="arena-svg" id="p4-arena" style="--zone-band: 23.09%" viewBox="48.8 36.8 502.4 630.4" role="img" aria-label="Top-down view of the compressed octagonal arena during Palladion">
         <rect x="60" y="60" width="480" height="480" rx="6" fill="url(#floor)" pointer-events="none"/>
-        <image href="assets/arena-phase1.svg" x="60" y="60" width="480" height="480" preserveAspectRatio="none" pointer-events="none"/>
+        <!-- the 40-yalm floor at this drill's scale (240 units to 13.5 yalms), so its tile lines sit 10 yalms out -->
+        <image href="assets/arena-phase1.svg" x="-55.6" y="-55.6" width="711.1" height="711.1" preserveAspectRatio="none" pointer-events="none" clip-path="url(#arenaClip)"/>
 
         <!-- Ultima Blade compresses the floor to an octagon. Drawn inscribed in the board so the
              usable ground fills it; everything outside the octagon is a lethal AoE. -->
@@ -114,7 +115,7 @@
         <ol>
           <li><b>Ultima Blade</b> shrinks the arena to an octagon ringed by a lethal edge and summons eight adds, which fly off and then return to the middle one per dash.</li>
           <li><b>Palladion</b> puts a 1–8 marker on everyone. Athena reappears on a random corner, and that corner is <b>relative north</b> for the whole mechanic. Partners are <b>1+3, 2+4, 5+7, 6+8</b>.</li>
-          <li>She dashes to each number in order. The dash lays a line AoE with proximity damage, then a point-blank that must be <b>shared with your partner</b> and leaves a blue puddle that kills on contact.</li>
+          <li>She dashes to each number in order. The dash lays a line AoE with proximity damage, then a point-blank that must be <b>shared with your partner</b> and leaves a blue puddle that kills on contact. Each puddle lasts five dashes: puddle 1 goes as puddle 6 appears.</li>
           <li>Starting spots, all relative: <b>1/3 south</b> corner, <b>2/4 north-east</b> corner, <b>5/7 close to the middle</b> on the west side, <b>6/8 south-east</b> corner. 2 and 4 may start anywhere in the northern tiles off dash 1's path. They let the first dash land, then step into the corner Athena left to take the second; anywhere up there off dash 1's path would do, but the corner keeps the puddles packed.</li>
           <li>A <b>purple</b> add is Clear Cut, a 270° cone you can ignore; a <b>yellow</b> add fires <b>White Flame</b> at the two players nearest the middle. The first four adds are two of each in a <b>random order</b>, and the last four return in the <b>reverse</b> of that order.</li>
           <li>So <b>one pair always stands in</b> close to the middle, on its own half (1/3/5/7 west, 2/4/6/8 east), in the bait order <b>5/7 → 6/8 → 1/3 → 2/4</b>. On a purple add it holds; on a yellow add it spreads, takes one laser each and goes straight back out to the wall, and the next pair, holding at the wall until then, steps in on the next dash: a reposition close to the middle, or straight to Bait if that add is yellow too. While standing in, Hold and Bait both keep you there. A pair still owed a dash steps in as soon as its dashes are done, which is always in time. Everyone else stays against the wall.</li>
@@ -138,26 +139,39 @@
 
   function initPalladion(){
     const RAD = Math.PI / 180;
-    // The octagon wall is drawn at 240 so it fills the board. Players walk a ring just inside it, and
-    // puddles are allowed to spill over the wall and off the board.
-    const R_PATH = 216, R_BOSS = 216, R_LABEL = 58;
-    const R_PUDDLE = 78, R_STACK = 40;
-    // The pair standing in for the lasers waits this close to the middle add, on its own side.
-    const R_STANDIN = 110;
-    // A puddle dropped as close as possible to the last one: its centre sits where you stood, just
-    // outside the old puddle's edge.
-    const PACK = R_PUDDLE + 26;
-    // How far a click may land from the spot and still count. Standing in counts anywhere in a ring
-    // around the add: near enough to be one of its two nearest players, not on top of it.
-    const TOL_START = 50, TOL_MOVE = 40;
-    const STANDIN_MIN = 55, STANDIN_MAX = 150;
+    // Everything is drawn at the game's proportions, measured from our logs (scratch/palladion/radii.py, spots.py,
+    // puddle.py) and the game's Action sheet. Ultima Blade leaves an octagon about 13.5 yalms to its corners (12.5 to
+    // its sides; the farthest anyone stood and lived is 13.0 to 13.3 towards the corners, 12.3 to 12.5 between), drawn
+    // to the edge of the board, so this drill draws Y units to the yalm, not the 12 of the full floor the other
+    // drills draw; the floor's tiles are drawn at the same scale.
+    const Y = 240 / 13.5;
+    // The dashes land a median 12.1 yalms out: players walk a ring 12.6 to its corners and 11.6 to its sides.
+    // Athena takes her corner 14.0 yalms out, on the rim. The labels only mark the way.
+    const R_PATH = 12.6 * Y, R_BOSS = 14.0 * Y, R_LABEL = 58;
+    // The puddle: while one was down (from 3 s after it dropped until it went, five dashes later, as a video of a
+    // pull shows), nobody alive stood within 5.9 yalms of it, and the pair waiting for the next dash on its side stood
+    // a median 6.7 out: 5.8 is the largest radius the logs allow. The party stacks in the middle before the numbers
+    // send it out.
+    const R_PUDDLE = 5.8 * Y, R_STACK = 40;
+    // The pair standing in for the lasers waits this far from the middle add, on its own side (White Flame's
+    // targets stood a median 8.6 yalms out).
+    const R_STANDIN = 8.6 * Y;
+    // and in which direction, clockwise from Athena's corner
+    const STANDIN_DEG = { '57': 270, '68': 135, '13': 320, '24': 140 };
+    // A puddle dropped as close as possible to the last one on its side: the logs put them 6.7 to 7.5 yalms apart,
+    // and the dash that leaves it lands where you stand, just outside the last one.
+    const PACK = 7.0 * Y;
+    // How far a click may land from the spot and still count. Standing in counts anywhere in a ring around the add:
+    // out of Clear Cut's 4-yalm cone, near enough to be one of its two nearest players, well inside the ring.
+    const TOL_START = 3 * Y, TOL_MOVE = 2.5 * Y;
+    const STANDIN_MIN = 4 * Y, STANDIN_MAX = 10.5 * Y;
     // 5/7's last move may also go straight north, where the party meets for Theos's Ultima: anywhere this
     // far north of the add counts, which also keeps clear of dash 8's line across the middle.
-    const NORTH_Y = 240;
-    // Athena's dash path is about as wide as the add in the middle is across.
-    const DASH_W = 36;
-    // 2/4's loose spots, before dash 2: the northern tiles, down to the first tile line.
-    const NORTH_TILES_Y = 180;
+    const NORTH_Y = 300 - 3.4 * Y;
+    // Athena's dash path, Shockwave, is 4 yalms wide.
+    const DASH_W = 4 * Y;
+    // 2/4's loose spots, before dash 2: the northern tiles, down to the first tile line 10 yalms north.
+    const NORTH_TILES_Y = 300 - 10 * Y;
     const REL = ['N','NE','E','SE','S','SW','W','NW'];
 
     /* ---------- real time ---------- */
@@ -176,15 +190,13 @@
       stack: [8.83, 11.90, 14.99, 18.06, 21.15, 24.22, 27.28, 30.35],   // the stack where she landed, and its puddle
       ultima: 54.32                                                     // Theos's Ultima, long after the drill ends
     };
-    // The logs put the dash spots 12.1 yalms out (the real floor is smaller than the octagon drawn here), so
-    // against the clock everything is sized from that: the stack is 6 yalms in radius, the dash line and each
-    // White Flame 4 wide (the game's Action sheet: 33526, 33527, 33520), and everyone runs 7 yalms a second.
-    // Magic Vulnerability Up lasts 4 s from a stack and 6 s from a laser, so the bait order leaves every pair
-    // clear of it by its next hit. The logs do not show the puddle: it keeps the step drill's size and turns
-    // lethal GRACE seconds after it drops, time to step out of it.
-    const PER_Y = R_PATH / 12.1;
-    const STACK_R = 6 * PER_Y, LINE_HALF = 2 * PER_Y, FLAME_HALF = 2 * PER_Y;
-    const SPEED = 7 * PER_Y, REACT = 2.0, STEP_OFF = 0.05, TICK_MS = 33, GRACE = 1.5;
+    // Against the clock: the stack is 6 yalms in radius, the dash line and each White Flame 4 wide (the game's
+    // Action sheet: 33526, 33527, 33520), and everyone runs 7 yalms a second. Magic Vulnerability Up lasts 4 s from a
+    // stack and 6 s from a laser, so the bait order leaves every pair clear of it by its next hit. A puddle turns
+    // lethal GRACE seconds after it drops: the pair it landed on were still up to 3 yalms inside it 2 s after, and
+    // nobody alive was inside one from 3 s.
+    const STACK_R = 6 * Y, LINE_HALF = 2 * Y, FLAME_HALF = 2 * Y;
+    const SPEED = 7 * Y, REACT = 2.0, STEP_OFF = 0.05, TICK_MS = 33, GRACE = 3.0;
     const END = LIVE.stack[7] + GRACE + 0.2;
 
     const GROUP_OF  = { 1:'13', 3:'13', 2:'24', 4:'24', 5:'57', 7:'57', 6:'68', 8:'68' };
@@ -246,7 +258,13 @@
       for(let n = 1; n <= 8; n++) DASH[n] = pathPt(ALONG[n]);
       Object.assign(WALL, { '13': pathPt(packFrom(ALONG[2], -1)), '24': pathPt(packFrom(ALONG[1], -1)),
                             '57': posAt(6, 0, R_PATH), '68': posAt(3, 0, R_PATH) });
-      Object.keys(WALL).forEach(g => { STANDIN[g] = inward(WALL[g], R_STANDIN); });
+      // Standing in: each pair R_STANDIN out on its own half, 5/7 due west and 6/8 south-east as they wait at
+      // the wall. 1/3 stand in north-west and 2/4 south-east, clear of puddles 2 and 1 (6.7 yalms with the pair
+      // spread, past the 5.8 of a puddle), with their lasers running past the pair waiting at the wall for its
+      // next dash.
+      Object.entries(STANDIN_DEG).forEach(([g, deg]) => {
+        STANDIN[g] = [300 + Math.sin(deg * RAD) * R_STANDIN, 300 - Math.cos(deg * RAD) * R_STANDIN];
+      });
       OUT.at = pathPt(packFrom(ALONG[7], 1));
       Object.assign(START, { '13': DASH[1], '24': posAt(1, 0, R_PATH), '57': STANDIN['57'], '68': WALL['68'] });
     }
@@ -274,7 +292,6 @@
       for(let n = k + 2; n <= 8; n += 2) DASH[n] = packPast(DASH[n - 2], 1);
       WALL['13'] = packPast(DASH[2], -1);
       WALL['24'] = packPast(DASH[1], -1);
-      ['13', '24'].forEach(g => { STANDIN[g] = inward(WALL[g], R_STANDIN); });
       OUT.at = packPast(DASH[7], 1);
       rebuild();
     }
@@ -410,11 +427,21 @@
       // partner beside it on the clockwise side, away from the last puddle.
       if(s.dash){
         const gap = num === s.dash ? 0 : 24;
-        return [s.at[0] - dy / len * gap, s.at[1] + dx / len * gap];
+        return onFloor([s.at[0] - dy / len * gap, s.at[1] + dx / len * gap]);
       }
       const side = (num === 1 || num === 2 || num === 5 || num === 6) ? -1 : 1;
       const gap = s.wide ? 26 : 12;
-      return [s.at[0] - dy / len * gap * side, s.at[1] + dx / len * gap * side];
+      return onFloor([s.at[0] - dy / len * gap * side, s.at[1] + dx / len * gap * side]);
+    }
+    // A partner's offset beside a spot near a corner can reach past the edge: pull it back half a yalm inside.
+    function onFloor(p){
+      let [x, y] = p;
+      for(let i = 0; i < 8; i++){
+        const a = (-90 + 22.5 + i * 45) * RAD, c = Math.cos(a), sn = Math.sin(a);
+        const over = (x - 300) * c + (y - 300) * sn - (APOTHEM - 0.5 * Y);
+        if(over > 0){ x -= c * over; y -= sn * over; }
+      }
+      return [x, y];
     }
     // Who is standing in for the lasers as dash n goes out, if anyone still is.
     function standInAt(n){
@@ -445,9 +472,12 @@
     }
     // What a clicked spot amounts to: off the edge, in a puddle, near enough, or too far. A null target
     // means standing in, which counts anywhere in the ring around the middle add.
+    // A puddle lasts five dashes: it goes as the fifth after it drops (puddle 1 as puddle 6 appears), so with
+    // `count` down only the last five are on the floor.
+    const firstPuddle = count => Math.max(1, count - 4);
     function verdict(p, target, tol, puddles, half){
       if(!inOctagon(p)) return { kind:'edge' };
-      for(let k = 1; k <= puddles; k++) if(dist(p, DASH[k]) < R_PUDDLE) return { kind:'puddle', puddle:k };
+      for(let k = firstPuddle(puddles); k <= puddles; k++) if(dist(p, DASH[k]) < R_PUDDLE) return { kind:'puddle', puddle:k };
       if(target) return { kind: dist(p, target) <= tol ? 'ok' : 'far' };
       const r = dist(p, [300, 300]);
       if(r < STANDIN_MIN) return { kind:'onAdd' };
@@ -566,17 +596,31 @@
     const clock = { t: 0, running: false, timer: 0, last: 0 };
     const panel = document.getElementById('panel-palladion');
 
+    // A move is a run at SPEED along a list of points, from where you were when it started.
     function whereAt(num, t){
       const m = st.moves[num];
-      if(t <= m.t0) return m.from;
-      if(m.dur <= 0 || t >= m.t0 + m.dur) return m.to;
-      const k = (t - m.t0) / m.dur;
-      return [m.from[0] + (m.to[0] - m.from[0]) * k, m.from[1] + (m.to[1] - m.from[1]) * k];
+      let left = Math.max(0, t - m.t0) * SPEED;
+      for(let i = 1; i < m.pts.length; i++){
+        const a = m.pts[i - 1], b = m.pts[i], d = dist(a, b);
+        if(left < d) return [a[0] + (b[0] - a[0]) * left / d, a[1] + (b[1] - a[1]) * left / d];
+        left -= d;
+      }
+      return m.pts[m.pts.length - 1];
     }
-    function setAt(num, p){ st.moves[num] = { from:p, to:p, t0:0, dur:0 }; }
-    function moveTo(num, to, delay){
+    function setAt(num, p){ st.moves[num] = { pts:[p], t0:0 }; }
+    function moveTo(num, to, delay, via){
       const from = whereAt(num, clock.t), t0 = clock.t + (delay === undefined ? STEP_OFF : delay);
-      st.moves[num] = { from, to, t0, dur: dist(from, to) / SPEED };
+      st.moves[num] = { pts:[from, ...(via || []), to], t0 };
+    }
+    // The ring's corners between two spots, going clockwise: a run along the wall turns at them.
+    function ringVia(from, to){
+      const s0 = alongOf(from), s1 = alongOf(to), span = ((s1 - s0) % PERIM + PERIM) % PERIM;
+      const via = [];
+      for(let k = 0; k < 8; k++){
+        const off = ((k * SIDE - s0) % PERIM + PERIM) % PERIM;
+        if(off > 1 && off < span - 1) via.push([off, posAt(k, 0, R_PATH)]);
+      }
+      return via.sort((a, b) => a[0] - b[0]).map(v => v[1]);
     }
     const here = t => whereAt(st.num, t);
     const party = t => { const p = {}; for(let n = 1; n <= 8; n++) p[n] = whereAt(n, t); return p; };
@@ -598,13 +642,14 @@
       for(let n = 1; n <= 8; n++){
         const e = st.plan[g][n - 1];
         const at = n === 1 ? LIVE.shock[0] + 0.15 : LIVE.stack[n - 2] + 0.3;
-        if(n > 1 || e.act === 'move') out.push({ at, spot: () => numAt(num, [n, 'post']) });
+        // trading places with the next dash pair is a run clockwise along the wall, clear of the middle
+        if(n > 1 || e.act === 'move') out.push({ at, spot: () => numAt(num, [n, 'post']), ring: e.act === 'move' && e.kind === 'swap' });
         if(e.act === 'bait') out.push({ at: LIVE.flame[n - 1] + 0.3, spot: () => wallSpot(num) });
       }
       // dash 8 was 6/8's last: they step clockwise out of its puddle
       if(g === '68') out.push({ at: LIVE.stack[7] + 0.3, spot: () => {
         const p = packPast(DASH[8], 1), q = numAt(num, [8, 'post']);
-        return [p[0] + q[0] - DASH[8][0], p[1] + q[1] - DASH[8][1]];
+        return onFloor([p[0] + q[0] - DASH[8][0], p[1] + q[1] - DASH[8][1]]);
       } });
       return out;
     }
@@ -647,7 +692,10 @@
       // the rest of the party, on the plan's schedule
       for(let n = 1; n <= 8; n++){
         if(n === st.num) continue;
-        scheduleOf(n).forEach((m, i) => at(`m${n}-${i}`, m.at, () => moveTo(n, m.spot(), 0)));
+        scheduleOf(n).forEach((m, i) => at(`m${n}-${i}`, m.at, () => {
+          const to = m.spot();
+          moveTo(n, to, 0, m.ring ? ringVia(whereAt(n, clock.t), to) : []);
+        }));
       }
       for(let k = 1; k <= 8; k++){
         at(`c${k}`, LIVE.dash[k - 1], () => lockDash(k));
@@ -660,7 +708,7 @@
 
     /* ---------- against the clock: judging where you are ---------- */
     const pairOf = k => [k, PARTNER[k]];
-    const yalms = d => (d / PER_Y).toFixed(1);
+    const yalms = d => (d / Y).toFixed(1);
     // Where Athena stands before dash k sets off: her corner, then each dash's landing spot.
     const athenaBefore = k => k === 1 ? posAt(st.boss, 0, R_BOSS) : st.land[k - 1];
     // The rule for your pair, for a failed pull's feedback.
@@ -756,7 +804,7 @@
       const t = clock.t, p = here(t);
       if(!inOctagon(p)) return liveFail('Off the edge', `You walked into the lethal edge Ultima Blade left around the octagon. ${liveRule()}`, planSpot(st.num, t));
       for(let k = 1; k <= 8; k++){
-        if(!st.land[k] || t < LIVE.stack[k - 1] + GRACE) continue;
+        if(!st.land[k] || t < LIVE.stack[k - 1] + GRACE || (k <= 3 && t >= LIVE.stack[k + 4])) continue;
         if(dist(p, st.land[k]) < R_PUDDLE) return liveFail(`Stood in puddle ${k}`, `Dash ${k} left its puddle at <b>${LIVE.stack[k - 1].toFixed(1)} s</b>, and at ${t.toFixed(1)} s you were still in it.${pairOf(k).includes(st.num) ? ` Step out of your own puddle straight after the stack, clockwise.` : ''} ${liveRule()}`, planSpot(st.num, t));
       }
     }
@@ -1008,8 +1056,8 @@
       const host = layer('p4-actors');
       const [bx, by] = posAt(st.boss, 0, R_BOSS);
       bossGlyph(host, bx, by);
-      const [tx, ty] = posAt(st.boss, 0, R_BOSS + 28);
-      const tag = el('text', { x:tx, y:ty + 4, 'text-anchor':'middle',
+      // she stands on the rim, so her tag goes beside her
+      const tag = el('text', { x:bx + 24, y:by + 4, 'text-anchor':'start',
         'font-family':'Space Mono, monospace', 'font-size':11, 'font-weight':700,
         'letter-spacing':'0.1em', fill:'var(--aether-soft)' });
       tag.textContent = 'REL N';
@@ -1021,13 +1069,13 @@
     function drawPuddles(host, count, spots = DASH){
       const clip = el('g', { 'clip-path':'url(#arenaClip)' });
       host.appendChild(clip);
-      for(let k = 1; k <= count; k++){
+      for(let k = firstPuddle(count); k <= count; k++){
         const [px, py] = spots[k];
         clip.appendChild(el('circle', { cx:px, cy:py, r:R_PUDDLE, fill:'rgba(74,143,224,0.26)',
           stroke:'var(--umbral-soft)', 'stroke-width':1.5 }));
       }
       // numbers on top of every puddle, so an overlapping neighbour never hides one
-      for(let k = 1; k <= count; k++){
+      for(let k = firstPuddle(count); k <= count; k++){
         const [px, py] = inward(spots[k], R_PATH - 52);
         const t = el('text', { x:px, y:py + 6, 'text-anchor':'middle',
           'font-family':'Space Mono, monospace', 'font-size':17, 'font-weight':700,

@@ -77,13 +77,23 @@ none more than 0.1 s off, and new real-time drills should do the same. Paradeigm
 use a single pull. Palladion (Nov 2026) takes the median of the 17 cached pulls that reached dash 6 or later, counted
 from Athena's Palladion begincast (`scratch/palladion/live.py`, with `casts.py` for the enemy casts).
 
-**Palladion's scale.** The logs put the dash spots 12.1 yalms out, but the drill draws the compressed octagon to fill
-the board, so its real-time checks use the drill's own ring for the yalm (`PER_Y`, about 17.9 units): the stack
-6 yalms in radius, the dash line (Shockwave, a charge) and White Flame 4 wide, from the Action sheet, and a run of
-7 yalms a second. Nothing in the logs shows the puddle, so it keeps the step drill's size and turns lethal 1.5 s after
-it drops (`GRACE`). The rest of the party plays the plan (`scheduleOf`), and where it has you is the spot a failed pull
-shows. Your own dash lands where you stand when Athena sets off, judged with the step drill's reach, and the later
-puddles on that side pack from where it really landed (`relayout`).
+**Palladion's scale.** The drill draws the game's proportions (Nov 2026; `scratch/palladion/radii.py`, `spots.py`,
+`puddle.py`): the octagon Ultima Blade leaves is about 13.5 yalms to its corners and 12.5 to its sides (the farthest
+anyone stood and lived), drawn to the edge of the board, so Palladion draws `Y` = 240 / 13.5, about 17.8 units to the
+yalm, and its floor tiles at that scale (lines 10 yalms apart), not the 12 of the other drills. Athena takes her corner
+14.0 out; the dashes land a median 12.1 out, a side's puddles 6.7 to 7.5 apart (`PACK` 7.0); White Flame's targets
+stood a median 8.6 out (`R_STANDIN`). From the Action sheet: the stack is 6 yalms in radius, the dash line (Shockwave,
+a charge) and White Flame 4 wide, Clear Cut a 4-yalm cone (the stand-ins' inner limit); everyone runs 7 yalms a
+second. Nothing in the logs or the Action sheet is the puddle itself: a video of a pull shows puddle 1 going as
+puddle 6 appears (each lasts five dashes), and while one was down nobody alive stood within 5.9 yalms of it, so it is
+5.8 in radius and turns lethal 3 s after it drops (`GRACE`: the pair it landed on were still inside 2 s after, nobody
+from 3 s). The stand-ins' directions (`STANDIN_DEG`) keep each pair clear of the puddles down while it baits and its
+lasers off the pair waiting at the wall: 5/7 west, 6/8 south-east, 1/3 north-west at 320°, 2/4 south-east at 140°
+(the raidplan draws 1/3 nearer west, about 285°, and 2/4 about 130°). The rest of the party plays the plan
+(`scheduleOf`), trading places along the wall (`ringVia`), and where it has you is the spot a failed pull shows. Your
+own dash lands where you stand when Athena sets off, judged with the step drill's reach, and the later puddles on that
+side pack from where it really landed (`relayout`). `scratch/palladion/sweep.py` plays every number against every
+order of the first four adds (48 pulls).
 
 - **What is cached.** The scorecard's `tools/scorecard/.cache/report_<code>.json` (built by `scorecard.py`) holds
   every pull's DamageTaken events with target and source positions (`targetResources.x/y`; yalms =
