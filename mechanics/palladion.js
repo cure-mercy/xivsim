@@ -128,7 +128,7 @@
           <li><b>Ultima Blade</b> shrinks the arena to an octagon ringed by a lethal edge and summons eight adds, which fly off and then return to the middle one per dash.</li>
           <li><b>Palladion</b> puts a 1–8 marker on everyone. Athena reappears on a random corner, and that corner is <b>relative north</b> for the whole mechanic. Partners are <b>1+3, 2+4, 5+7, 6+8</b>.</li>
           <li>She dashes to each number in order. The dash lays a line AoE with proximity damage, then a point-blank that must be <b>shared with your partner</b> and leaves a blue puddle that kills on contact. Each puddle lasts five dashes: puddle 1 goes as puddle 6 appears.</li>
-          <li>Starting spots, all relative: <b>1/3 south</b> corner, <b>2/4 north-east</b> corner, <b>5/7 close to the middle</b> on the west side, <b>6/8 south-east</b> corner. 2 and 4 may start anywhere in the northern tiles off dash 1's path. They let the first dash land, then step into the corner Athena left to take the second; anywhere up there off dash 1's path would do, but the corner keeps the puddles packed.</li>
+          <li>Starting spots, all relative: <b>1/3 south</b> corner, <b>2/4 north-east</b> corner, <b>5/7 close to the middle</b> on the west side, <b>6/8</b> at the wall just short of the <b>south-east</b> corner, towards east. 2 and 4 may start anywhere in the northern tiles off dash 1's path. They let the first dash land, then step into the corner Athena left to take the second; anywhere up there off dash 1's path would do, but the corner keeps the puddles packed.</li>
           <li>A <b>purple</b> add casts Clear Cut, a 270° cone only 4 yalms long that faces true north or south: anyone standing in is clear of it; a <b>yellow</b> add fires <b>White Flame</b> at the two players nearest the middle. The first four adds are two of each in a <b>random order</b>, and the last four return in the <b>reverse</b> of that order.</li>
           <li>So <b>one pair always stands in</b> close to the middle, on its own half (1/3/5/7 west, 2/4/6/8 east), in the bait order <b>5/7 → 6/8 → 1/3 → 2/4</b>. On a purple add it holds; on a yellow add it spreads, takes one laser each and goes straight back out to the wall, and the next pair, holding at the wall until then, steps in on the next dash: a reposition close to the middle, or straight to Bait if that add is yellow too. While standing in, Hold and Bait both keep you there. A pair still owed a dash steps in as soon as its dashes are done, which is always in time. Everyone else stays against the wall.</li>
           <li>Only the first two dashes land in corners: 1 straight across from Athena, 2 in the corner she left. After your dash, move <b>clockwise to just outside your puddle</b>, as close to it as you can, and your second dash lands there. The pair that takes over steps just clockwise of that puddle in turn, so the puddles pack along the wall, <b>1-3-5-7</b> from the south corner and <b>2-4-6-8</b> from Athena's, and leave the rest of the wall free with less walking.</li>
@@ -166,13 +166,14 @@
     // puddle 6 appears, as a video shows). The party stacks in the middle before the numbers send it out.
     const R_PUDDLE = 5.5 * Y, R_STACK = 40;
     // Where each pair stands in for the lasers, on its own half: [degrees clockwise from Athena's corner, yalms out].
-    // White Flame's targets stood a median 8.6 out, and 5/7 and 6/8 stand there, due west and south-east as they
-    // wait at the wall. 1/3 and 2/4 stand in while dashes land beside the wall near them: 1/3 at 326 degrees and 8.0
+    // White Flame's targets stood a median 8.6 out, and 5/7 and 6/8 stand there: 5/7 due west, 6/8 at 118 degrees
+    // like their spot at the wall (the raidplan puts 6 and 8 at 104 to 136, a mean of 118, short of the south-east
+    // corner). 1/3 and 2/4 stand in while dashes land beside the wall near them: 1/3 at 326 degrees and 8.0
     // out keep 0.7 yalms clear of dash 7's stack, 0.6 of puddle 2 (down until that stack) and 0.8 of the dash lines
     // across the middle; 2/4 at 146 and 7.5 out keep 0.8 clear of dash 8's stack and of puddle 1, 2.1 of the dash
     // lines (scratch/palladion/standin.py; the raidplan draws 1/3 nearer the middle too). Every pair's lasers run
     // past the pair waiting at the wall for its next dash.
-    const STANDIN_AT = { '57': [270, 8.6], '68': [135, 8.6], '13': [326, 8.0], '24': [146, 7.5] };
+    const STANDIN_AT = { '57': [270, 8.6], '68': [118, 8.6], '13': [326, 8.0], '24': [146, 7.5] };
     // A puddle dropped as close as possible to the last one on its side: the logs put them 6.7 to 7.5 yalms apart,
     // and the dash that leaves it lands where you stand, just outside the last one.
     const PACK = 7.0 * Y;
@@ -272,7 +273,7 @@
     function resetLayout(){
       for(let n = 1; n <= 8; n++) DASH[n] = pathPt(ALONG[n]);
       Object.assign(WALL, { '13': pathPt(packFrom(ALONG[2], -1)), '24': pathPt(packFrom(ALONG[1], -1)),
-                            '57': posAt(6, 0, R_PATH), '68': posAt(3, 0, R_PATH) });
+                            '57': posAt(6, 0, R_PATH), '68': ringAt(118) });
       Object.entries(STANDIN_AT).forEach(([g, [deg, yalms]]) => {
         STANDIN[g] = [300 + Math.sin(deg * RAD) * yalms * Y, 300 - Math.cos(deg * RAD) * yalms * Y];
       });
@@ -280,6 +281,8 @@
       Object.assign(START, { '13': DASH[1], '24': posAt(1, 0, R_PATH), '57': STANDIN['57'], '68': WALL['68'] });
     }
     resetLayout();
+    // The spot on the ring in a direction, in degrees clockwise from Athena's corner.
+    function ringAt(deg){ return pathPt(alongOf([300 + Math.sin(deg * RAD) * R_PATH, 300 - Math.cos(deg * RAD) * R_PATH])); }
     // The ring coordinate nearest a spot, and the spot along the ring just clear of a puddle at any point p
     // (packFrom does the same for a puddle on the ring).
     function alongOf(p){
@@ -750,7 +753,7 @@
         '13': `1 and 3 start in the relative south corner, straight across from Athena, and take dash 1 there.`,
         '24': `2 and 4 wait in the relative north-east corner, off dash 1's path, and step into the corner Athena left once dash 1 has gone through: dash 2 comes there.`,
         '57': `5 and 7 start standing in close to the middle on the west side for the first lasers.`,
-        '68': `6 and 8 wait at the relative south-east wall while 5 and 7 have the first lasers.`
+        '68': `6 and 8 wait at the wall just short of the relative south-east corner, towards east, while 5 and 7 have the first lasers.`
       }[g];
       const dashes = `Your dashes are <b>${d[0]} and ${d[1]}</b>, shared with ${p}: stand side by side where each should land, and after each step clockwise out of its puddle, to just past it, for the next.`;
       const prev = BAIT_ORDER[BAIT_ORDER.indexOf(g) - 1];
@@ -938,7 +941,7 @@
           '13': `Take your spot in the relative south corner, straight across from Athena, beside ${p}: dash 1 comes to you.`,
           '24': `Wait in the relative north-east corner, off dash 1's path. Once dash 1 has gone through, step into the corner Athena left: dash 2 comes there.`,
           '57': standIn,
-          '68': `Wait at the relative south-east wall while 5 and 7 stand in for the first lasers.`
+          '68': `Wait at the wall just short of the relative south-east corner, towards east, while 5 and 7 stand in for the first lasers.`
         }[g];
         return start + `<span class="hint"> The dashes come every 3 seconds from ${LIVE.dash[0].toFixed(1)} s, in number order.</span>`;
       }
@@ -1295,7 +1298,7 @@
       if(st.step === 1){
         pill('Starting spot');
         drawParty(drawOpening(), 'stack');
-        instr(`Athena has taken a corner and marked you <span class="hl">${st.num}</span>. Her corner is <span class="hl">relative north</span>, and the party is still stacked in the middle. Click where you start.<span class="hint"> <b>1 and 3</b> take the first dash in the corner straight across from her, <b>2 and 4</b> wait in the north-east corner off that line, <b>5 and 7</b> stand in close to the middle on the west side for the first lasers, and <b>6 and 8</b> hold in the south-east corner.</span>`);
+        instr(`Athena has taken a corner and marked you <span class="hl">${st.num}</span>. Her corner is <span class="hl">relative north</span>, and the party is still stacked in the middle. Click where you start.<span class="hint"> <b>1 and 3</b> take the first dash in the corner straight across from her, <b>2 and 4</b> wait in the north-east corner off that line, <b>5 and 7</b> stand in close to the middle on the west side for the first lasers, and <b>6 and 8</b> hold at the wall just short of the south-east corner, towards east.</span>`);
         freePick(numAt(st.num, 'stack'), answerStart);
         return;
       }
@@ -1361,7 +1364,7 @@
         '13': `1 and 3 start in the <b>relative south</b> corner, straight across from Athena, because the first dash comes to you.`,
         '24': `2 and 4 start off the line the first dash will take, usually in the <b>relative north-east</b> corner. Anywhere in the northern tiles, above the first tile line, works as long as you keep off dash 1's path.`,
         '57': `5 and 7 are first in the bait order, so you start <b>standing in close to the middle</b>, spread a little and clear of the dash line, ready for the first yellow add.`,
-        '68': `6 and 8 start in the <b>relative south-east</b> corner and wait there.`
+        '68': `6 and 8 start at the wall just short of the <b>relative south-east</b> corner, towards east, and wait there.`
       }[st.group];
       judge(ok, ok ? 'Right spot' : 'Wrong spot',
         (ok ? '' : missNote(v) + ' ') + why + ` Everything is read off Athena's corner, which is relative north this pull.`, stepTo(2));
