@@ -17,8 +17,9 @@ Probe.run('panel-palladion', 'p4-clock', async ({ P, log, sleep, clockT, head, u
     if(mode === 'stay') moves = [];
     // 2/4 into Athena's corner before dash 1 has gone through it
     if(mode === 'early') moves = [moves[0], at(3.0, D.DASH[2]), ...moves.slice(1)];
-    // 5/7 wait at the wall instead of standing in for the first lasers
-    if(mode === 'nobait') moves = [at(2.0, D.WALL['57'])].concat(moves.filter(m => m.at > L.flame[st.ys[0] - 1]));
+    // 5/7 wait at the west corner instead of standing in for the first lasers (not straight out behind the partner,
+    // where the partner's laser would run on through them)
+    if(mode === 'nobait') moves = [at(2.0, [300 - 12.6 * D.Y, 300])].concat(moves.filter(m => m.at > L.flame[st.ys[0] - 1]));
     // 6/8 stand in closer to the middle than 5/7 while those have the lasers
     if(mode === 'greedy') moves = [at(2.0, [380, 330])];
     // 1/3 step off dash 2's line after dash 1 but stay in its puddle

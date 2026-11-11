@@ -92,8 +92,8 @@ camera where the puddle lies, and in the logs nobody alive stood within 5.9 yalm
 5.5 in radius (the bright ovals in videos are the waymarks; the raidplan's 2.1 is a schematic). A video shows puddle 1
 going as puddle 6 appears (each lasts five dashes). It turns lethal 3 s after it drops (`GRACE`: the pair it landed on were still 2.9 yalms from its centre 2 s after, nobody inside
 from 3 s). Where the stand-ins stand (`STANDIN_AT`) keeps each pair clear of the puddles down while it baits, of the
-stacks landing beside it and of the dash lines, with its lasers off the pair waiting at the wall: 5/7 west and 6/8
-at 118° (short of the south-east corner, as the raidplan has them), 8.6 out (White Flame's targets stood a median 8.6 out); 1/3 at 326° and 8.0 out, 2/4 at 146° and 7.5 out,
+stacks landing beside it and of the dash lines, with its lasers off the pair waiting at the wall: 5/7 at 297° and
+8.3 out, 6/8 opposite at 118° (short of the south-east corner) and 8.6 out, as the raidplan has them (White Flame's targets stood a median 8.6 out); 1/3 at 326° and 8.0 out, 2/4 at 146° and 7.5 out,
 at least 0.6 yalms clear of dash 7's and dash 8's stacks, puddles 2 and 1 and the lines (`scratch/palladion/standin.py`;
 the raidplan draws 1/3 at about 285° and 7 out, 2/4 at about 130°). The rest of the party plays the plan
 (`scheduleOf`), trading places along the wall (`ringVia`), and where it has you is the spot a failed pull shows. Your
