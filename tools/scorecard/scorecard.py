@@ -460,7 +460,9 @@ def fetch(code, refresh, bench):
     print(f"  {code}: {len(fights)} pulls, fetching events", file=sys.stderr)
     data = dict(code=code, title=meta["title"], startTime=meta["startTime"], fights=fights,
                 masterData={"actors": meta["masterData"]["actors"]},
-                abilities={a["gameID"]: a["name"] for a in meta["masterData"]["abilities"]},
+                # keyed by str, as the cache's JSON holds it: the *_compact functions look names up by str, and with
+                # FFLogs' int ids a fresh fetch's casts came out empty (2026-11-12)
+                abilities={str(a["gameID"]): a["name"] for a in meta["masterData"]["abilities"]},
                 deaths=fflogs.events(code, fights, "Deaths"),
                 debuffs=fflogs.events(code, fights, "Debuffs"),
                 dmg=fflogs.events(code, fights, "DamageTaken", resources=True))
@@ -477,6 +479,7 @@ def fetch(code, refresh, bench):
     fetch_p3(data)
     fetch_sc1(data)
     fetch_p2(data)
+    fetch_pall(data)
     fetch_servers(data)
     fflogs.CACHE.mkdir(exist_ok=True); cf.write_text(json.dumps(data))
     return data
