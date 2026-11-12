@@ -72,7 +72,7 @@ case's `known` can go. The suite needs no Chrome, but it needs the scorecard's r
 case fields (`known`, `wipe_known`, `rules_day`, `own_day`, `shares`, `wipe_shares`, `cause_has`, `cause_lacks`,
 `wipe_label`, `saved`, `note`) are described in `tests/blame.py`'s docstring.
 
-The suite holds 100 pulls (1,109 incidents, 92 wipes put on someone; counted 2026-10-28). One wipe is known
+The suite holds 109 pulls (1,219 incidents, 108 wipes as checked; counted 2026-11-12, nine of them Palladion's from 2026-11-11). One wipe is known
 wrong: a Superchain I laser aimed before its Strong Soul ran, which the rules can't see because they only read
 positions at the hit.
 

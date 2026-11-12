@@ -58,6 +58,14 @@ LABELS = {
     "avoid.Superchain Burst": "Green orb (Superchain)", "avoid.Superchain Coil": "Donut (Superchain)", "avoid.Clear Cut": "Clear Cut cone",
     "avoid.Unnatural Enchainment": "Destroyed tile", "avoid.Sample": "Destroyed tile", "avoid.Palladian Ray": "Palladion puddle",
     "palladion.dash": "Palladion dash line",
+    # Palladion
+    "pall.dash.short": "Palladion dash too short", "pall.dash.line": "Palladion dash line", "pall.dash.undecided": "Palladion dash undecided (both blamed)",
+    "pall.dash.dead_number": "Palladion dash to a dead player", "pall.stack.alone": "Palladion stack taken alone",
+    "pall.stack.undecided": "Palladion stack taken alone, undecided (both blamed)", "pall.stack.partner_dead": "Palladion stack a sharer short (partner dead)",
+    "pall.stack.extra": "Stood in another pair's Palladion stack", "pall.wf.picked": "Palladion White Flame went to the wrong player",
+    "pall.wf.line": "Palladion White Flame line", "pall.wf.both": "Both Palladion White Flame lasers on one player",
+    "pall.wf.undecided": "Palladion White Flame undecided (both blamed)", "pall.wf.baiter_dead": "Palladion White Flame (baiter dead)",
+    "pall.puddle": "Palladion puddle", "pall.ultima.short": "Theos's Ultima a sharer short",
     # Paradeigma I
     "p1.wf.not_in_line_up": "Missed White Flame bait", "p1.wf.too_close": "Too close to a White Flame add",
     "p1.wf.off_spot": "Off their White Flame line-up spot", "p1.wf.line": "White Flame line", "p1.wf.baiter_dead": "White Flame line",
@@ -379,6 +387,47 @@ def fetch_sc1(data):
     data["sc1"], data["sc1_v"] = out, SC1_VERSION
 
 
+PALL_WINDOW = (283, 318)   # seconds into the pull: Palladion from the cast (~284 s) through the eighth stack (~315 s)
+PALL_CASTS = ("Palladion", "Shockwave", "White Flame", "Clear Cut")
+PALL_VERSION = 1          # bumped when pall_compact changes: caches holding another are fetched again
+
+
+def pall_compact(f, events, abilities):
+    """One pull's Palladion, for the classifier (Pull.pall): {casts: [[t, name, source id, source instance, target id or
+    None, x, y]] (Athena's Palladion casts log where she sets off on each dash, the first being the end of her 7.7 s cast
+    on her corner; the adds' White Flame and Clear Cut casts come from the middle; each White Flame laser names its
+    target, with the target's position), pos: [[t, player id, x, y]]}, times in seconds from the pull. The damage events
+    hold only the hit players' positions, so who was nearest the add, or where a missing partner stood, needs these."""
+    players, seen, casts, pos = set(f["friendlyPlayers"]), set(), [], []
+    xy = lambda r: (round((r["x"] - 10000) / 100, 2), round((r["y"] - 10000) / 100, 2)) if r and "x" in r else None
+    for e in events:
+        k = json.dumps(e, sort_keys=True)   # the Enemies and Friendlies queries both return events between the sides
+        if k in seen: continue
+        seen.add(k)
+        t, nm = round((e["timestamp"] - f["startTime"]) / 1000, 3), abilities.get(str(e.get("abilityGameID")))
+        if e["type"] == "cast" and nm in PALL_CASTS and e.get("sourceID") not in players and (p := xy(e.get("sourceResources"))):
+            tg = e.get("targetID") if e.get("targetID") in players else None
+            casts.append([t, nm, e.get("sourceID"), e.get("sourceInstance"), tg, *p])
+            if tg and (q := xy(e.get("targetResources"))): pos.append([t, tg, *q])
+        for side in ("source", "target"):
+            if e.get(f"{side}ID") in players and (p := xy(e.get(f"{side}Resources"))): pos.append([t, e[f"{side}ID"], *p])
+    return dict(casts=sorted(casts, key=lambda c: c[0]), pos=sorted(pos))
+
+
+def fetch_pall(data):
+    """Palladion's casts and positions for every pull that lasts into it (pall_compact)."""
+    fights, out = [f for f in data["fights"] if f["endTime"] - f["startTime"] > PALL_WINDOW[0] * 1000], {}
+    for i in range(0, len(fights), 8):
+        part, evs = fights[i:i + 8], collections.defaultdict(list)
+        for h in ("Enemies", "Friendlies"):
+            q = "query($c:String!){reportData{report(code:$c){" + " ".join(WF_EVENTS % (f["id"], f["id"], f["startTime"] + PALL_WINDOW[0] * 1000,
+                min(f["endTime"], f["startTime"] + PALL_WINDOW[1] * 1000), h) for f in part) + "}}}"
+            r = fflogs.gql(q, {"c": data["code"]})["reportData"]["report"]
+            for f in part: evs[f["id"]] += r[f"f{f['id']}"]["data"]
+        for f in part: out[str(f["id"])] = pall_compact(f, evs[f["id"]], data["abilities"])
+    data["pall"], data["pall_v"] = out, PALL_VERSION
+
+
 def pot_gain(data, fid, y):
     """DPS over 0:00-2:00 a tincture added to this table row, as build_benchmark.py reckons the clears': the seconds under
     it at the player's 0:00-0:38 damage rate, times the tincture's share."""
@@ -397,8 +446,9 @@ def fetch(code, refresh, bench):
                                 ("pots", lambda: fetch_pots(data), "tinctures"), ("wf", lambda: fetch_wf(data), "positions at White Flame"),
                                 ("p3", lambda: fetch_p3(data), "tethers at Paradeigma III"), ("sc1", lambda: fetch_sc1(data), "towers at Superchain I"),
                                 ("p2", lambda: fetch_p2(data), "tethers and positions at Paradeigma II"),
+                                ("pall", lambda: fetch_pall(data), "casts and positions at Palladion"),
                                 ("servers", lambda: fetch_servers(data), "home worlds")):
-            if key not in data or key == "sc1" and data.get("sc1_v") != SC1_VERSION:   # reports cached before this part existed, or changed
+            if key not in data or key == "sc1" and data.get("sc1_v") != SC1_VERSION or key == "pall" and data.get("pall_v") != PALL_VERSION:   # reports cached before this part existed, or changed
                 if CACHED_ONLY: print(f"  {code}: no {what} in the cache, left out (--cached)", file=sys.stderr); continue
                 print(f"  {code}: fetching {what}", file=sys.stderr); fill(); cf.write_text(json.dumps(data))
         return data
@@ -568,7 +618,7 @@ def analyse(group, data, bench):
                 hp={k: v for k, v in data.get("hp", {}).items() if k not in echo})
     names = {a["id"]: a["name"] for a in data["masterData"]["actors"] if a["subType"] in ROLE}
     rep = {"masterData": data["masterData"], "deaths": data["deaths"]}
-    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf"), "p3": data.get("p3"), "sc1": data.get("sc1"), "p2": data.get("p2")}
+    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf"), "p3": data.get("p3"), "sc1": data.get("sc1"), "p2": data.get("p2"), "pall": data.get("pall")}
     import acts                                 # the players' casts, for the rules that read them (the Glaukopis swap)
     A = acts.report(data["code"], data["fights"])
     pulls = [Pull(data["code"], f, rep, ev, acts=A.get(str(f["id"]))) for f in data["fights"]]

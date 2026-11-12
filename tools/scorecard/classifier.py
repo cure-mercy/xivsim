@@ -97,6 +97,7 @@ class Pull:
         self.p3 = (ev.get("p3") or {}).get(str(self.fid))   # Paradeigma III's add tethers (scorecard.p3_compact)
         self.sc1 = (ev.get("sc1") or {}).get(str(self.fid))   # Superchain I's towers, last cluster and positions (scorecard.sc1_compact)
         self.p2 = (ev.get("p2") or {}).get(str(self.fid))   # Paradeigma II's tethers, casts and positions (scorecard.p2_compact)
+        self.pall = (ev.get("pall") or {}).get(str(self.fid))   # Palladion's casts and positions (scorecard.pall_compact)
 
     # helpers
     def white_flame(self, lo, hi):
@@ -2148,6 +2149,583 @@ def dialogos(p):
 # a mechanic with no rule function: GENERIC blames avoidable hits and their fallout, NOT_YET no one, AVOIDABLE_ONLY
 # (before the group had a strategy for it) only avoidable hits and deaths within STUNG_S of one
 GENERIC, NOT_YET, AVOIDABLE_ONLY = "generic", "not yet", "avoidable only"
+# ---------- Palladion: Athena's dashes, the stacks and White Flame ----------
+# The groups play the raidplan's Palladion (slides 29-38), as the trainer's drill does (mechanics/palladion.js): numbers
+# pair 1+3, 2+4, 5+7, 6+8; the first two dashes land in corners (1 opposite Athena's corner, 2 in the corner she left),
+# every later one just clockwise of the last puddle on its side (1-3-5-7, 2-4-6-8), so each spot follows from where the
+# dashes before it on that side really landed; one pair at a time stands in near the middle for the lasers, in the order
+# 5/7, 6/8, 1/3, 2/4, one set per yellow add. Everything is measured clockwise from Athena's corner (relative north).
+PALL_RING = 12.6      # y to the corners of the ring players walk just inside the wall (the drill's R_PATH)
+PALL_PACK = 7.0       # y between a side's puddles (6.7-7.5 in the logs)
+PALL_STANDIN = {"57": (297, 8.3), "68": (118, 8.6), "13": (326, 8.0), "24": (146, 7.5)}   # degrees, y out
+PALL_WALL_AT = {"57": 297, "68": 118}   # degrees: where 5/7 and 6/8 wait at the wall
+PALL_GROUP = {1: "13", 3: "13", 2: "24", 4: "24", 5: "57", 7: "57", 6: "68", 8: "68"}
+PALL_PARTNER = {1: 3, 3: 1, 2: 4, 4: 2, 5: 7, 7: 5, 6: 8, 8: 6}
+PALL_BAIT_ORDER = ("57", "68", "13", "24")
+PALL_STACK_R = 6.0    # y: the stack's radius (Action sheet, 33526)
+PALL_LINE_HALF = 2.0  # y either side of the dash line (Shockwave, 4 wide; hits logged up to 1.9-2.1 y off it)
+PALL_FLAME_HALF = 2.0 # y either side of a White Flame laser (4 wide)
+PALL_PUDDLE_R = 5.5   # y: a puddle's radius, lethal 3 s after it drops, for five dashes
+PALL_GRACE = 3.0
+PALL_BLEED_R = 8.0    # y from a puddle's centre: as far as any Bleeding was applied (the drill's 5.5 y is the outline seen)
+
+
+def pall_frame(p):
+    """Palladion as the log has it, or None without the casts (scorecard.fetch_pall): {corner: Athena's corner (x, y),
+    dashes: [{k, t: when she set off, start, land (None for the last, where nothing logs it), hits: the stack's hits,
+    shock: the line's hits, target: number k's player or None}], adds: {k: "Y" or "P"} (the add returning for dash k),
+    lasers: {k: [(t, player)]}, numbers: {player: number}}. Athena's Palladion casts log where she sets off; the first,
+    the end of her 7.7 s cast on her corner, comes 0.2 s before dash 1's."""
+    pl = p.pall
+    if not pl or not pl.get("casts"): return None
+    pal = [c for c in pl["casts"] if c[1] == "Palladion"]
+    if not pal: return None
+    sets = []
+    for c in pal:   # the end of her cast and dash 1's set-off come 0.2 s apart: dash 1 is the later
+        if sets and c[0] - sets[-1][0] < 0.6: sets[-1] = c
+        else: sets.append(c)
+    athena = sets[0][2]
+    ds = [dict(k=k, t=c[0], start=(c[5], c[6])) for k, c in enumerate(sets[:8], 1)]
+    for d, nxt in zip(ds, ds[1:] + [None]):
+        d["land"] = nxt["start"] if nxt else None
+        d["hits"] = [e for e in p.dmg if e["name"] == "Palladion" and 0 <= e["t"] - d["t"] <= 1.2]
+        d["shock"] = [e for e in p.dmg if e["name"] == "Shockwave" and 0 <= e["t"] - d["t"] <= 0.8]
+    adds, lasers = {}, collections.defaultdict(list)
+    dash_of = lambda t: next((d["k"] for d in ds if d["t"] >= t - 0.05), None)   # the dash it comes just before
+    # an add's own cast is alone; its two lasers come together ~0.9 s later, each naming its target or not (then the
+    # laser hit the next nearest player: 82 of 465 sets name one, a few none)
+    wf = [c for c in pl["casts"] if c[1] == "White Flame" and c[2] != athena]
+    paired = lambda c: c[4] is not None or sum(1 for o in wf if abs(o[0] - c[0]) < 0.02) >= 2
+    for c in pl["casts"]:
+        t, nm, src, inst, tg, x, y = c
+        if src == athena or nm not in ("White Flame", "Clear Cut"): continue
+        k = dash_of(t)
+        if k is None: continue
+        if nm == "White Flame" and paired(c): lasers[k].append((t, p.players.get(tg) if tg else None))
+        elif k not in adds: adds[k] = "Y" if nm == "White Flame" else "P"
+    for k in lasers: adds.setdefault(k, "Y")
+    # number k: the player dash k landed on, where they stood as Athena set off (682 of 700 dashes within 1 y of the
+    # landing, the partner beside them 1.4 y off; replay_check.py), else the stack's hit at the landing (a target its own
+    # dash killed is not among the stack's hits)
+    numbers = {}
+    for d in ds:
+        d["target"] = None
+        if d["land"]:
+            near = sorted((math.dist(q[0], d["land"]), w) for w in p.job if w not in p.dead_by(d["t"]) and (q := pall_where(p, w, d["t"])) and q[1] <= 1.0)
+            if near and near[0][0] <= 1.0 and (len(near) < 2 or near[1][0] - near[0][0] >= 0.4): d["target"] = near[0][1]
+            hs = [e for e in d["hits"] if e["pos"]]
+            if d["target"] is None and hs:
+                e = min(hs, key=lambda e: math.dist(e["pos"], d["land"]))
+                if math.dist(e["pos"], d["land"]) <= 1.0: d["target"] = e["who"]
+    # each pair's starting spot as dash 1 sets off (1/3 on its spot opposite Athena, 2/4 in the corner clockwise of hers,
+    # 5/7 standing in, 6/8 at the wall): a dash whose number is dead goes to someone else (Athena does not wait), told by
+    # a target who started with another pair while one who started with this dash's pair is dead
+    plan0, T1 = PallPlan(ds[0]["start"], adds), ds[0]["t"]
+    starts = {g: plan0.world(plan0.start[g]) for g in PALL_BAIT_ORDER}
+    start_of = {}
+    for w in p.job:
+        q = pall_where(p, w, T1)
+        if not q: continue
+        near = sorted((math.dist(q[0], v), g) for g, v in starts.items())
+        if near[0][0] <= 3.5 and near[1][0] - near[0][0] >= 0.75: start_of[w] = near[0][1]
+    for d in ds:
+        g, tw = PALL_GROUP[d["k"]], d["target"]
+        d["retarget"] = bool(tw) and (tw in numbers or start_of.get(tw, g) != g and any(start_of.get(w) == g for w in p.dead_by(d["t"])))
+        if tw and not d["retarget"] and tw not in numbers: numbers[tw] = d["k"]
+    return dict(corner=ds[0]["start"], dashes=ds, adds=adds, lasers=dict(lasers), numbers=numbers, athena=athena, start_of=start_of)
+
+
+def pall_where(p, w, at):
+    """(position, seconds to its nearest sample) of player w at `at` from Palladion's positions, or None."""
+    return track_at(p, (p.pall or {}).get("pos", ()), w, at)
+
+
+class PallPlan:
+    """Where the plan puts each number at each beat of one pull, in the arena's coordinates: spot(n, k) is where number n
+    should stand as dash k sets off (after beat k-1's moves), or as add k's White Flame picks its targets. Spots for
+    dashes not yet landed pack clockwise from where the earlier dashes on that side really landed (`landed`: {k: (x, y)}),
+    as the drill's relayout does: a pair's dash spot shifts with every puddle before it on its side."""
+
+    def __init__(self, corner, adds, landed=None):
+        self.rot = math.atan2(corner[1], corner[0]) - math.atan2(-1, 0)   # the drill's corner is straight up (y south)
+        self.side = 2 * PALL_RING * math.sin(math.radians(22.5))
+        self.perim = 8 * self.side
+        self.ys = [k for k in range(1, 9) if adds.get(k) == "Y"][:4]
+        while len(self.ys) < 4: self.ys.append(9)   # an add the log lacks: its set is not judged
+        self.landed = {k: self.local(v) for k, v in (landed or {}).items() if v}
+        self.layout()
+        self.plan = self.build()
+
+    # the drill's frame: Athena's corner at (0, -R), y pointing south, clockwise as in the game
+    def local(self, q):
+        c, s = math.cos(-self.rot), math.sin(-self.rot)
+        return (q[0] * c - q[1] * s, q[0] * s + q[1] * c)
+
+    def world(self, q):
+        c, s = math.cos(self.rot), math.sin(self.rot)
+        return (q[0] * c - q[1] * s, q[0] * s + q[1] * c)
+
+    def corner_pt(self, i, r=PALL_RING):
+        a = math.radians(-90 + i * 45)
+        return (math.cos(a) * r, math.sin(a) * r)
+
+    def path_pt(self, s):
+        s %= self.perim
+        k = int(s // self.side)
+        t = s / self.side - k
+        a, b = self.corner_pt(k), self.corner_pt((k + 1) % 8)
+        return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+    def along_of(self, q):
+        return min((self.perim * i / 720 for i in range(720)), key=lambda s: math.dist(self.path_pt(s), q))
+
+    def pack_past(self, q, d):
+        """The spot along the ring just clear of a puddle at q, clockwise (d = 1) or anticlockwise (-1)."""
+        s0, lo, hi = self.along_of(q), 0.0, self.perim / 4
+        for _ in range(40):
+            mid = (lo + hi) / 2
+            if math.dist(self.path_pt(s0 + d * mid), q) < PALL_PACK: lo = mid
+            else: hi = mid
+        return self.path_pt(s0 + d * hi)
+
+    def ring_at(self, deg):
+        a = math.radians(deg)
+        return self.path_pt(self.along_of((math.sin(a) * PALL_RING, -math.cos(a) * PALL_RING)))
+
+    def layout(self):
+        D = {1: self.landed.get(1) or self.path_pt(4 * self.side), 2: self.landed.get(2) or self.path_pt(0)}
+        for n in range(3, 9):
+            D[n] = self.landed.get(n) or self.pack_past(D[n - 2], 1)
+        self.dash = D
+        self.wall = {"13": self.pack_past(D[2], -1), "24": self.pack_past(D[1], -1),
+                     "57": self.ring_at(PALL_WALL_AT["57"]), "68": self.ring_at(PALL_WALL_AT["68"])}
+        self.standin = {g: (math.sin(math.radians(a)) * r, -math.cos(math.radians(a)) * r) for g, (a, r) in PALL_STANDIN.items()}
+        self.out = self.pack_past(D[7], 1)
+        self.start = {"13": D[1], "24": self.corner_pt(1), "57": self.standin["57"], "68": self.wall["68"]}
+
+    def build(self):
+        """Each pair's job on each beat (the drill's buildPlan)."""
+        ys, plan = self.ys, {g: {} for g in PALL_BAIT_ORDER}
+        take, bait, wall, stand = ("take",), ("bait",), ("hold",), ("standin",)
+
+        def run(g, frm, to, already):
+            y = ys[PALL_BAIT_ORDER.index(g)]
+            for n in range(frm, to + 1):
+                if n in plan[g]: continue
+                plan[g][n] = bait if n == y else wall if n > y else (("stepin",) if not already and n == frm else stand)
+        plan["57"][4] = ("dash", 5)
+        if ys[0] < 3: plan["57"][3] = wall
+        run("57", 1, 4, True)
+        plan["57"].update({5: take, 6: ("dash", 7), 7: take, 8: ("out",)})
+        for n in range(1, min(ys[0], 8) + 1): plan["68"][n] = wall
+        run("68", ys[0] + 1, 4, False)
+        plan["68"].update({5: ("dash", 6), 6: take, 7: ("dash", 8), 8: take})
+        plan["13"].update({1: take, 2: ("dash", 3), 3: take, 4: ("swap",) if ys[1] == 4 else ("stepin",)})
+        run("13", 5, 8, ys[1] != 4)
+        plan["24"].update({1: ("dash", 2), 2: take, 3: ("dash", 4), 4: take, 5: ("swap",)})
+        for n in range(6, min(ys[2], 8) + 1): plan["24"][n] = wall
+        run("24", ys[2] + 1, 8, False)
+        return plan
+
+    def track(self, g):
+        """([(where the pair is after beat k's moves, wide, the dash it stands on)] for k = 0 (its start) to 8, {beat k:
+        its stand-in spot while it baits beat k's lasers}): a pair that baits is back at its wall spot after."""
+        cur = (self.start[g], g == "57", 1 if g == "13" else 0)
+        out, bait = [cur], {}
+        for n in range(1, 9):
+            e = self.plan[g][n]
+            if e[0] == "take": cur = (self.dash[n], False, n)
+            elif e[0] == "dash": cur = (self.dash[e[1]], False, e[1])
+            elif e[0] == "stepin": cur = (self.standin[g], True, 0)
+            elif e[0] == "swap": cur = (self.wall[g], False, 0)
+            elif e[0] == "out": cur = (self.out, False, 0)
+            if e[0] == "bait":
+                bait[n] = (self.standin[g], True, 0)
+                cur = (self.wall[g], False, 0)
+            out.append(cur)
+        return out, bait
+
+    def offset(self, n, at, wide, on, g):
+        """A number's own spot beside its pair's (the drill's numAt): on a dash spot the number Athena comes for right on
+        it and the partner 1.35 y clockwise; elsewhere the pair side by side."""
+        r = math.hypot(*at) or 1
+        tx, ty = -at[1] / r, at[0] / r   # clockwise along the wall
+        if on: gap = 0 if n == on else 1.35
+        else:
+            gap = (2.15 if g == "57" else 1.46) if wide else (2.1 if g == "68" else 0.68)
+            gap *= -1 if n in (1, 2, 5, 6) else 1
+        return (at[0] + tx * gap, at[1] + ty * gap)
+
+    def spot(self, n, k, laser=False):
+        """(where number n should be as dash k sets off, or with laser as add k's White Flame picks its targets, in the
+        arena's coordinates; the job then: "take" (dash k is theirs), "partner" (their partner's), "bait", "standin",
+        "dash" (waiting on a later dash's spot) or "wall")."""
+        g = PALL_GROUP[n]
+        tr, bait = self.track(g)
+        if k in bait:   # on its stand-in spot for the lasers, then straight back out
+            at, wide, on = bait[k]
+            return self.world(self.offset(n, at, wide, on, g)), "bait"
+        # each beat's moves start just after the stack before it (2.5 s before the set-off, the drill's scheduleOf), so
+        # by dash k everyone stands where beat k takes them; on beat 1, 2/4 wait for dash 1's line before stepping into
+        # Athena's corner
+        at, wide, on = tr[k] if k > 1 else tr[0]
+        job = ("take" if n == on else "partner") if on == k else "dash" if on else "standin" if wide else "wall"
+        return self.world(self.offset(n, at, wide, on, g)), job
+
+    def owed(self, k):
+        """The pair whose laser set add k is (a yellow add), or None."""
+        return PALL_BAIT_ORDER[self.ys.index(k)] if k in self.ys else None
+
+
+def pall_numbers(p, fr):
+    """({player: number}, {players whose number is read from where they stood, not from a dash}). The log names number k
+    as the player dash k landed on; their partner is the other player both of the pair's stacks hit. Anyone left over (dead
+    before their dashes, or a pull that ended early) is read from where they stood as dash 1 set off, the pairs' starting
+    spots (1/3 on dash 1's spot, 2/4 in the corner clockwise of Athena's, 5/7 standing in, 6/8 at the wall), and within a
+    pair by side (1, 2, 5 and 6 anticlockwise of their partner): those are guesses."""
+    num = dict(fr["numbers"])
+    by = {d["k"]: d for d in fr["dashes"]}
+    for k, d in by.items():
+        if d["target"] is None or d.get("retarget"): continue
+        mate = PALL_PARTNER[k]
+        if mate in num.values(): continue
+        others = {e["who"] for e in d["hits"]} - {d["target"]} - set(num)
+        if mate in by and by[mate]["target"] is None and by[mate]["hits"]: others &= {e["who"] for e in by[mate]["hits"]}
+        if len(others) == 1: num[others.pop()] = mate
+    left = [w for w in p.job if w not in num]
+    free = [n for n in range(1, 9) if n not in num.values()]
+    guessed = set()
+    if left and free:
+        plan, T = PallPlan(fr["corner"], fr["adds"]), fr["dashes"][0]["t"]
+        spots = {n: plan.spot(n, 1)[0] for n in free}
+        at = {w: q[0] for w in left if (q := pall_where(p, w, T))}
+        # the closest pairing of the players left to the numbers left, one by one
+        pairs = sorted((math.dist(q, spots[n]), w, n) for w, q in at.items() for n in free)
+        for _, w, n in pairs:
+            if w in num or n in num.values(): continue
+            num[w] = n
+            guessed.add(w)
+    return num, guessed
+
+
+# Tolerances, from 2026-11-12 over the clean dashes of 142 pulls (scratch/palladion/replay_check.py, radii.py): a dash lands
+# within 1.4 y of the plan's spot 99 times in 100 (packed from the puddles before it on its side), a partner beside it
+# within 2.5 y; at a laser cast, 95% of baiters stood no more than 0.9 y farther out than their stand-in spot, and 95% of
+# the others no more than 2.5 y nearer the middle than their wall spot (0.8 y on a dash spot).
+PALL_TOL_TAKE = 1.5     # y from the plan's dash spot: off it
+PALL_TOL_OUT = 1.0      # y farther out than the stand-in spot: off it (a baiter)
+PALL_TOL_IN = {"wall": 2.5, "standin": 2.5, "dash": 1.0, "take": 1.0, "partner": 1.0}   # y nearer the middle than the spot
+# The dash line and the stack both hit harder the shorter the dash: their damage falls off with the distance from where
+# Athena set off. The stack takes a flat 0.66 of a sharer's max HP (unmitigated, two sharers) from 23.5 y, 0.82 at 23 y,
+# 1.0 at 22.5 y, 1.8 at 21 y (5,700 sharer hits, scratch/palladion/stackdmg.py); the line 0.08 from 22 y, 0.43 at 20-22 y,
+# 1.3-6 under 20 y (shockwave.py), ten times that with Magic Vulnerability Up. The plan's dashes run 24-27 y.
+PALL_SAFE_DASH = 23.5   # y: from here a stack does its least (PALL_STACK_BASE)
+PALL_SAFE_SHOCK = 22.0  # y: from here the line barely scratches whoever it lands on
+PALL_STACK_BASE = 121000   # the stack's unmitigated damage in all from PALL_SAFE_DASH, split between its sharers (median)
+PALL_LINE_END = 0.9     # share of the dash line from its end: there it is the target's and partner's, not a bystander's
+
+
+def pall_spared(e, n):
+    """Would a stack hit e, shared by n, have spared its target at a full-length dash (PALL_STACK_BASE)?"""
+    u = e.get("unmitigatedAmount") or 0
+    if u <= 0: return False
+    hp, ab = e["amount"] - e.get("overkill", 0), e.get("absorbed", 0)
+    return hp > (e["amount"] + ab) * (PALL_STACK_BASE / n) / u - ab
+
+
+def pall_vuln(p, w, t):
+    """Did w carry Magic Vulnerability Up at t (it makes White Flame and Shockwave lethal)?"""
+    return w in p.has_debuff_at("Magic Vulnerability Up", t - 0.05)
+
+
+def pall_decide(cands):
+    """Who is to blame among candidates [(player, fixes, off, margin, u)]: fixes, whether their move alone to their spot
+    would have prevented the hit (margin: by how much, against the uncertainty u); off, whether they stood off their
+    spot. One who would have: theirs. Several: those of them off their spot, both when both were (medium); none off:
+    undecided, all of them, low. None would have alone: those off their spot together. ([culprits], confidence, undecided)."""
+    fix = [c for c in cands if c[1]]
+    if len(fix) == 1: return [fix[0][0]], certainty(fix[0][3], fix[0][4]), False
+    pool = fix or cands
+    off = [c for c in pool if c[2]]
+    if len(off) == 1: return [off[0][0]], least_sure([certainty(off[0][3], off[0][4]), "medium" if fix else "high"]), False
+    if off: return [c[0] for c in off], "medium", False
+    return [c[0] for c in pool], "low", True
+
+
+def palladion(p, lp):
+    """Palladion's faults (see the section's comments above PALL_RING): the stacks, the dash lines, White Flame, the
+    puddles and Theos's Ultima, each replayed from the positions (scorecard.fetch_pall) against the plan's spots."""
+    fr = pall_frame(p)
+    if not fr: return []
+    out, M = [], "Palladion"
+    num, guessed = pall_numbers(p, fr)
+    who = {n: w for w, n in num.items()}
+    cap = lambda ws, c: least_sure([c, "medium"]) if set(ws) & guessed else c   # a number read from the start is a guess
+    landed = {d["k"]: d["land"] for d in fr["dashes"] if d["land"]}
+    plan_at = {d["k"]: PallPlan(fr["corner"], fr["adds"], {j: v for j, v in landed.items() if j < d["k"]}) for d in fr["dashes"]}
+    lethal = lambda e: (e.get("targetResources") or {}).get("hitPoints") == 0
+    where = lambda w, t: pall_where(p, w, t)
+
+    for d in fr["dashes"]:
+        k, T, start, land = d["k"], d["t"], d["start"], d["land"]
+        plan = plan_at[k]
+        dead = p.dead_by(T)
+        tw = d["target"]
+        if land is None and tw is None and who.get(k) and who[k] not in dead:   # the last dash: where its target stood
+            q = where(who[k], T)
+            if q: land, tw = q[0], who[k]
+        spot_k = plan.spot(k, k)[0]
+        prev_spot = plan_at[k - 1].spot(k - 1, k - 1)[0] if k > 1 and k - 1 in plan_at else None
+        moved = land is not None and math.dist(start, land) >= 1.0
+
+        # ---- a dash to a dead number: Athena stays where she is and the blast kills whoever stands near her, or she
+        # goes for someone else (a player another dash's number already named) ----
+        retarget = d.get("retarget")
+        if not moved and tw is None or retarget:
+            g = PALL_GROUP[k]
+            holder = [who[k]] if who.get(k) in dead and who[k] != tw else sorted(w for w in dead if fr["start_of"].get(w) == g) or sorted(w for w in dead if w not in num)
+            for e in d["hits"] if retarget else ():
+                if lethal(e) and holder:
+                    out.append(fault(e["t"], M, holder, [e["who"]], f"dash {k} went to {tw}, its number dead: its stack hit {e['who']}",
+                                     "consequence", chain=holder, ability="Palladion", tag="pall.dash.dead_number"))
+            for e in d["shock"]:
+                if lethal(e) and holder:
+                    out.append(fault(e["t"], M, holder, [e["who"]], f"dash {k} went to a dead player: Athena stayed where she was and its blast hit {e['who']}",
+                                     "consequence", chain=holder, ability="Shockwave", tag="pall.dash.dead_number"))
+            continue
+        if land is None: continue
+
+        # ---- the dash line (Shockwave): a dash too short for its target, or someone in its line ----
+        L = math.dist(start, land)
+
+        def too_short(e, ab, safe):
+            """A lethal hit where dash k landed, the dash shorter than `safe`: whoever's move to their spot alone would have
+            made it long enough, number k (their landing) or number k-1 (where Athena set off from), or None."""
+            cands = [(tw, math.dist(start, spot_k) >= safe, math.dist(land, spot_k) > PALL_TOL_TAKE, abs(math.dist(start, spot_k) - safe), unc(0.3))] if tw else []
+            if prev_spot and who.get(k - 1) and who[k - 1] != tw:
+                cands.append((who[k - 1], math.dist(prev_spot, land) >= safe, math.dist(start, prev_spot) > PALL_TOL_TAKE, abs(math.dist(prev_spot, land) - safe), unc(0.3)))
+            if not cands: return None
+            cul, conf, und = pall_decide(cands)
+            why = (f"dash {k} was {L:.1f} y long, too short for whoever it lands on (from {safe:.1f} y its {'line' if ab == 'Shockwave' else 'stack'} does its least): "
+                   f"{tw or 'its target'} stood {math.dist(land, spot_k):.1f} y from their spot" + (f", dash {k - 1} landed {math.dist(start, prev_spot):.1f} y from its own" if prev_spot else ""))
+            return fault(e["t"], M, cul, [e["who"]], why, cap(cul, conf), ability=ab, tag="pall.dash.undecided" if und else "pall.dash.short")
+        for e in d["shock"]:
+            if not lethal(e): continue
+            w = e["who"]
+            vul = pall_vuln(p, w, e["t"])
+            q = e["pos"] or (where(w, e["t"]) or (None,))[0]
+            if q is None: continue
+            dl, al = pall_seg(start, land, q)
+            at_end = w == tw or al >= PALL_LINE_END
+            if at_end:
+                if L >= PALL_SAFE_SHOCK: continue   # long enough: what killed them is their vulnerability, judged where it came from
+                if f := too_short(e, "Shockwave", PALL_SAFE_SHOCK): out.append(f)
+                continue
+            # a bystander: their spot clear of the line, or the line where the plan has it clear of them
+            nw = num.get(w)
+            sp = plan.spot(nw, k)[0] if nw else None
+            cands = []
+            if sp:
+                cands.append((w, pall_seg(start, land, sp)[0] > PALL_LINE_HALF, math.dist(q, sp) > PALL_TOL_IN.get(plan.spot(nw, k)[1], 2.5),
+                              abs(pall_seg(start, land, sp)[0] - PALL_LINE_HALF), unc(0)))
+            if tw and tw != w:
+                cands.append((tw, pall_seg(start, spot_k, q)[0] > PALL_LINE_HALF, math.dist(land, spot_k) > PALL_TOL_TAKE,
+                              abs(pall_seg(start, spot_k, q)[0] - PALL_LINE_HALF), unc(0, 0.3)))
+            if prev_spot and who.get(k - 1) and who[k - 1] != w:
+                cands.append((who[k - 1], pall_seg(prev_spot, land, q)[0] > PALL_LINE_HALF, math.dist(start, prev_spot) > PALL_TOL_TAKE,
+                              abs(pall_seg(prev_spot, land, q)[0] - PALL_LINE_HALF), unc(0, 0.3)))
+            if not cands: cands = [(w, True, True, PALL_LINE_HALF - dl, unc(0))]
+            cul, conf, und = pall_decide(cands)
+            out.append(fault(e["t"], M, cul, [w], f"stood in dash {k}'s line, {dl:.1f} y from it" + (" with Magic Vulnerability Up" if vul else ""),
+                             cap(cul, conf), ability="Shockwave", tag="pall.dash.undecided" if und else "pall.dash.line"))
+
+        # ---- the stack ----
+        hits = d["hits"]
+        n_share = len({e["who"] for e in hits})
+        sharers = {e["who"] for e in hits}
+        mate = who.get(PALL_PARTNER[k])
+        pair = {tw, mate} - {None}
+        if len(sharers) == 1 and pair and next(iter(sharers)) in pair:
+            e = hits[0]
+            # the other of the pair dead by the stack (killed by this very dash's line, a short dash, too): its fallout
+            gone = sorted(w for w in pair - sharers if w in p.dead_by(e["t"] + 0.05) or any(x["who"] == w and lethal(x) for x in d["shock"]))
+            if gone:
+                if lethal(e):
+                    f = share_short(e["t"], M, e, 1, 2, gone, f"dash {k}'s stack", tags=("pall.stack.partner_dead", "pall.stack.partner_dead"))
+                    if f is None and L < PALL_SAFE_DASH and pall_spared(e, 2): f = too_short(e, "Palladion", PALL_SAFE_DASH)
+                    if f: out.append(f)
+            elif mate and tw in sharers and lethal(e):
+                snap = next((c["t"] for c in p.calc if c["name"] == "Palladion" and 0 <= c["t"] - T <= 1.2), T)   # the stack snaps as she sets off
+                qp = where(mate, snap)
+                far = math.dist(qp[0], land) if qp else None
+                tfix = qp is not None and math.dist(qp[0], spot_k) <= PALL_STACK_R
+                toff = math.dist(land, spot_k) > PALL_TOL_TAKE
+                # the partner not in it is the log's fact; where they stood (read between samples) only says how far
+                cands = [(mate, True, True, (far - PALL_STACK_R) if far is not None and far > PALL_STACK_R else unc(0) * 1.5, unc(qp[1] if qp else 1.0)),
+                         (tw, tfix, toff, abs(math.dist(land, spot_k) - PALL_TOL_TAKE), unc(0.3))]
+                cul, conf, und = pall_decide(cands)
+                left = f"{mate} left dash {k}'s stack to {tw} alone" + (f" (they stood {far:.1f} y from it)" if far is not None else "")
+                ran = f"{tw} took dash {k} {math.dist(land, spot_k):.1f} y from their spot" + ("" if mate in cul else ", out of their partner's reach")
+                why = left if cul == [mate] else ran if cul == [tw] else f"{ran}; {left}"
+                out.append(fault(e["t"], M, cul, [tw], why, cap(cul, conf), ability="Palladion", tag="pall.stack.undecided" if und else "pall.stack.alone"))
+        # a third player in a stack takes its vulnerability (4 s): their own
+        if tw and len(sharers) >= 2:
+            for e in hits:
+                if e["who"] in pair or not pair: continue
+                out.append(fault(e["t"], M, [e["who"]], [e["who"]], f"stood in dash {k}'s stack, not theirs (its Magic Vulnerability Up)", "high", ability="Palladion", tag="pall.stack.extra"))
+        # a full share that killed: the dash too short (its stack hit harder), else healing and mitigation fell short (the
+        # user's ruling, 2026-11-12, for a full share at a full length)
+        for e in hits:
+            if len(sharers) >= 2 and lethal(e) and not pall_vuln(p, e["who"], e["t"]) and e["who"] in pair:
+                lined = L < PALL_SAFE_SHOCK and any(x["who"] == e["who"] for x in d["shock"])   # its own short line hit them first
+                if L < PALL_SAFE_DASH and (pall_spared(e, n_share) or lined) and (f := too_short(e, "Palladion", PALL_SAFE_DASH)):
+                    out.append(f)
+                    continue
+                gone = sorted(p.dead_by(e["t"] - 0.3) - {e["who"]})
+                alive = sorted(w for w in p.job if w not in gone)
+                f = fault(e["t"], M, alive, [e["who"]], f"dash {k}'s stack, shared by {len(sharers)}: healing and mitigation fell short, everyone shares it (no one's part can be told)",
+                          "low", chain=gone, ability="Palladion", tag="raidwide", share="together")
+                out.append(dict(f, direct=alive, direct_conf="low"))
+
+    # ---- White Flame: the add returning for dash k ----
+    for d in fr["dashes"]:
+        k, T = d["k"], d["t"]
+        plan, dead = plan_at[k], p.dead_by(T)
+        ls = fr["lasers"].get(k)
+        if not ls: continue
+        tL = ls[0][0]
+        alive = [w for w in p.job if w not in p.dead_by(tL)]
+        at = {w: q for w in alive if (q := where(w, tL))}
+        r = {w: math.hypot(*q[0]) for w, q in at.items()}
+        whits = [e for e in p.dmg if e["name"] == "White Flame" and 0 < e["t"] - tL < 1.2]
+        hit_n = collections.Counter(e["who"] for e in whits)
+        # the lasers' targets: those the casts name (both lasers can name one player), then for a laser left unnamed the
+        # player whose line takes in the most of the hits no named laser explains (a laser hits its target and anyone in
+        # line), then the nearest (the replay's two nearest are the casts' 99% of the time where both are named)
+        named = [w for _, w in ls if w and w in at]
+        picks = list(dict.fromkeys(named))
+        hit_at = {e["who"]: e["pos"] for e in whits if e["pos"]}
+        in_line = lambda x, ws: {v for v in ws if v in hit_at and pall_ray(at[x][0], hit_at[v]) <= PALL_FLAME_HALF + 0.5}
+        loose = set(hit_at) - set(picks) - {v for x in picks for v in in_line(x, hit_at)}
+        for _ in range(len(ls) - len(named)):
+            cands = [c for c in hit_at if c in at and c not in picks] or [w for w in sorted(r, key=r.get) if w not in picks][:1]
+            if not cands: break
+            c = max(cands, key=lambda c: (len(in_line(c, loose | {c})), hit_n[c], -r.get(c, 99)))
+            picks.append(c)
+            loose -= in_line(c, loose) | {c}
+        g = plan.owed(k)
+        owed = [who[n] for n in PALL_GROUP if PALL_GROUP[n] == g] if g and all(who.get(n) for n in PALL_GROUP if PALL_GROUP[n] == g) else []
+        spot_r = lambda w: math.hypot(*plan.spot(num[w], k, laser=True)[0])
+        job = lambda w: plan.spot(num[w], k, laser=True)[1]
+        off_in = lambda w: w in num and spot_r(w) - r[w] > PALL_TOL_IN.get(job(w), 2.5)
+        off_out = lambda w: w in num and r.get(w, 99) - spot_r(w) > PALL_TOL_OUT
+        wrong = {}
+        for w in picks:
+            if not owed or w in owed or w not in num: continue
+            others = sorted(v for x, v in r.items() if x != w)
+            second = others[1] if len(others) > 1 else 99
+            cands = [(w, spot_r(w) > second, off_in(w), abs(spot_r(w) - second), unc(at[w][1]))]
+            for b in owed:
+                if b in picks: continue
+                if b in dead or b not in r:
+                    cands = None
+                    break
+                cands.append((b, spot_r(b) < r[w], off_out(b), abs(r[w] - spot_r(b)), unc(at[b][1], at[w][1])))
+            if cands is None:   # a baiter owed this set was dead: their death's fallout
+                gone = [b for b in owed if b in dead or b not in r]
+                f = fault(tL, M, gone, [w], f"a White Flame laser went to {w}: {', '.join(gone)}, owed this set, already dead", "consequence",
+                          chain=gone, ability="White Flame", tag="pall.wf.baiter_dead")
+            else:
+                cul, conf, und = pall_decide(cands)
+                f = fault(tL, M, cul, [w], f"a White Flame laser went to {w}, {r[w]:.1f} y from the middle, not to {' and '.join(owed)} standing in",
+                          cap(cul, conf), ability="White Flame", tag="pall.wf.undecided" if und else "pall.wf.picked")
+            out.append(f)
+            wrong[w] = f
+        # a baiter killed by their own laser alone, without Magic Vulnerability Up: healing and mitigation fell short
+        for e in whits:
+            w = e["who"]
+            if w in picks and hit_n[w] == 1 and lethal(e) and w not in wrong and not pall_vuln(p, w, tL):
+                gone = sorted(p.dead_by(e["t"] - 0.3) - {w})
+                alive = sorted(x for x in p.job if x not in gone)
+                f = fault(e["t"], M, alive, [w], f"took their White Flame laser: healing and mitigation fell short, everyone shares it (no one's part can be told)",
+                          "low", chain=gone, ability="White Flame", tag="raidwide", share="together")
+                out.append(dict(f, direct=alive, direct_conf="low"))
+        # in a laser's line: from the middle through its target, out to the wall
+        for e in whits:
+            w = e["who"]
+            if w in picks and hit_n[w] < 2: continue
+            q = e["pos"] or (at.get(w) or (None,))[0]
+            if q is None: continue
+            lines = [x for x in picks if x != w and x in at and pall_ray(at[x][0], q) <= PALL_FLAME_HALF + 0.5]
+            if not lines: continue
+            x = min(lines, key=lambda x: pall_ray(at[x][0], q))
+            if x in wrong:   # the laser should not have come this way at all
+                f0 = wrong[x]
+                out.append(fault(e["t"], M, f0["culprits"], [w], f"in the line of a White Flame laser that went to {x} instead of the pair standing in", f0["confidence"],
+                                 chain=f0["chain"], ability="White Flame", tag="pall.wf.line"))
+                continue
+            both = w in picks
+            cands = []
+            if w in num:
+                sw = plan.spot(num[w], k, laser=True)[0]
+                cands.append((w, pall_ray(at[x][0], sw) > PALL_FLAME_HALF, math.dist(q, sw) > (PALL_TOL_OUT + 1 if both else PALL_TOL_IN.get(job(w), 2.5)),
+                              abs(pall_ray(at[x][0], sw) - PALL_FLAME_HALF), unc(0)))
+            if x in num:
+                sx = plan.spot(num[x], k, laser=True)[0]
+                cands.append((x, pall_ray(sx, q) > PALL_FLAME_HALF, math.dist(at[x][0], sx) > PALL_TOL_OUT + 1,
+                              abs(pall_ray(sx, q) - PALL_FLAME_HALF), unc(at[x][1])))
+            if not cands: continue
+            cul, conf, und = pall_decide(cands)
+            why = f"took both White Flame lasers (the pair standing in did not spread)" if both else f"stood in the line of the White Flame laser on {x}"
+            out.append(fault(e["t"], M, cul, [w], why, cap(cul, conf), ability="White Flame", tag="pall.wf.undecided" if und else "pall.wf.both" if both else "pall.wf.line"))
+
+    # ---- the puddles: Bleeding is standing in one. Nothing else in the log or the Action sheet is the puddle, and every
+    # Bleeding with a position read within 1 s of a sample (29) lay within PALL_BLEED_R of a puddle on the floor: 21
+    # within 5.5 y, 8 at 6.2-7.9 y, none farther (scratch/palladion/bleeding.py). The reading is ours, so at most medium ----
+    drops = [(d["hits"][0]["t"] if d["hits"] else d["t"] + 0.63, d["land"]) for d in fr["dashes"] if d["land"]]
+    for b in p.deb:
+        if b["name"] != "Bleeding" or b["type"] != "applydebuff" or not 283 <= b["t"] <= 330: continue
+        q = where(b["who"], b["t"])
+        if not q or q[1] > 1.0: continue
+        live = [(math.dist(q[0], c), j) for j, (t0, c) in enumerate(drops) if t0 <= b["t"] and (j + 5 >= len(drops) or b["t"] <= drops[j + 5][0] + 0.5)]
+        if not live: continue
+        dist, j = min(live)
+        if dist > PALL_BLEED_R + unc(q[1]): continue
+        kill = next((e for e in p.dmg if e["who"] == b["who"] and e["name"] == "Bleeding" and lethal(e) and e["t"] >= b["t"]), None)
+        out.append(fault(kill["t"] if kill else b["t"], M, [b["who"]], [b["who"]], f"stood in puddle {j + 1} ({dist:.1f} y from its centre): Bleeding",
+                         least_sure([certainty(PALL_BLEED_R - dist, unc(q[1])), "medium"]), ability="Bleeding", tag="pall.puddle"))
+
+    # ---- Theos's Ultima: split between everyone alive ----
+    for e in p.hits("Theos's Ultima", 315, 345):
+        if not lethal(e): continue
+        gone = sorted(p.dead_by(e["t"] - 0.3))
+        n = len({x["who"] for x in p.hits("Theos's Ultima", e["t"] - 0.5, e["t"] + 0.5)})
+        if gone and (f := share_short(e["t"], M, e, n, n + len(gone), gone, "Theos's Ultima", tags=("pall.ultima.short", "pall.ultima.short"))):
+            out.append(f)
+            continue
+        alive = sorted(w for w in p.job if w not in gone)
+        f = fault(e["t"], M, alive, [e["who"]], "Theos's Ultima: healing and mitigation fell short, everyone shares it (no one's part can be told)" +
+                  (f"; {', '.join(gone)} already dead" if gone else ""), "low", chain=gone, ability="Theos's Ultima", tag="raidwide", share="together")
+        out.append(dict(f, direct=alive, direct_conf="low"))
+    return out
+
+
+def pall_seg(a, b, q):
+    """(distance of q from the segment a-b, how far along it, 0 to 1)."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    L = dx * dx + dy * dy
+    k = 0 if L == 0 else max(0, min(1, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / L))
+    return math.hypot(q[0] - a[0] - k * dx, q[1] - a[1] - k * dy), k
+
+
+def pall_ray(target, q):
+    """How far q is from a White Flame laser: from the middle through its target and on to the wall (inf behind the add)."""
+    r = math.hypot(*target) or 1
+    ux, uy = target[0] / r, target[1] / r
+    if q[0] * ux + q[1] * uy <= 0: return float("inf")
+    return abs(-q[0] * uy + q[1] * ux)
+
+
 CONF_ORDER = {"high": 0, "medium": 1, "low": 2}   # surest first
 least_sure = lambda confs: max(confs, key=lambda c: CONF_ORDER.get(c, 1))
 
@@ -2193,7 +2771,8 @@ RULEBOOK = {
                        ("2026-10-25", lambda p, lp: para3(p, lp, bright_by="light_party")),   # the original strategy arrived: bright Souls by light party
                        ("2026-10-26", lambda p, lp: para3(p, lp, bright_by="priority"))],   # bright Souls by H1 > T1 > T2 > H2
     "Glaukopis / Ultima Blade": [(None, AVOIDABLE_ONLY), ("2026-09-29", lambda p, lp: glaukopis(p, 236, 280))],   # the same swap
-    "Palladion": [(None, NOT_YET)],   # to start blaming it: ("YYYY-MM-DD", GENERIC) or a rule
+    "Palladion": [(None, AVOIDABLE_ONLY),   # before the groups played the raidplan's Palladion
+                  ("2026-11-11", palladion)],   # the user's start date (2026-11-12: "the 11.11. (included)")
 }
 
 
@@ -2404,7 +2983,8 @@ def classify(p, lp, day=None):
             add(dict(i, mechanic=mech, cause=f"had {m:,} max HP against the party's ~{med:,} (broken gear?)", culprits=[i["victim"]], confidence="medium", own_hit=True, tag="broken_gear"))
         elif fell_off(p, i, incs):
             add(dict(i, mechanic=mech, cause="died without taking a hit while the pull went on (fell off the arena?)", culprits=[i["victim"]], confidence="low", own_hit=True, tag="fell_off"))
-        elif i["ability"] == "Shockwave":
+        elif i["ability"] == "Shockwave" and not (p.pall and p.pall.get("casts") and callable(rules.get("Palladion"))):
+            # judged from the hit alone where the replay has nothing to go on (no Palladion casts and positions)
             add(dict(i, mechanic=mech, cause="stood in Athena's dash line (Palladion Shockwave)", culprits=[i["victim"]], confidence="medium", tag="palladion.dash"))
         elif i["kind"] == "death" and i["ability"] in RAIDWIDES and i["t"] < called:
             # a raidwide no rule explains, before the wipe was called (no one heals after the first jump): healing and

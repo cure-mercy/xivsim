@@ -59,7 +59,7 @@ def pulls(code, C=classifier):
     af = fflogs.CACHE / f"acts_{code}.json"
     A = json.loads(af.read_text()) if af.exists() else {}
     rep = {"masterData": data["masterData"], "deaths": data["deaths"]}
-    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf"), "p3": data.get("p3"), "sc1": data.get("sc1"), "p2": data.get("p2")}
+    ev = {"abilities": data["abilities"], "dmg": data["dmg"], "debuffs": data["debuffs"], "wf": data.get("wf"), "p3": data.get("p3"), "sc1": data.get("sc1"), "p2": data.get("p2"), "pall": data.get("pall")}
     # a Pull keeps only its own fight's events: hand each just those, not the whole report's to sift
     own = collections.defaultdict(lambda: {"dmg": [], "debuffs": [], "deaths": []})
     for k, src in (("dmg", ev), ("debuffs", ev), ("deaths", rep)):
