@@ -360,7 +360,10 @@ less than 15 seconds between them (`CASCADE_GAP`); earlier deaths the group reco
 outliving the rest by more than that (an invulnerability, a late raise) does not make a collapse of their own unless
 the wipe was called, and deaths after the whole party was dead (players raised after the wipe, dying again) belong to
 the collapse before (`party_dead`, the user's rule, 2026-10-28: in dMvrn pull 7 a Paradeigma III explosion left no one
-alive, and two raised players' deaths 17 s later had passed the wipe to a laser mistake 1:30 earlier). A mass death in the collapse (four or more players to one ability within 3 seconds, or two to a
+alive, and two raised players' deaths 17 s later had passed the wipe to a laser mistake 1:30 earlier). Theos's Ultima,
+split between everyone alive about 24 s after Palladion's last dash, makes no collapse of its own after Palladion's
+deaths: it finishes the party Palladion left short, so the collapse runs from those deaths, and a later collapse with no
+culprit passes over it to them (`ULTIMA`, the user's ruling, 2026-11-12). A mass death in the collapse (four or more players to one ability within 3 seconds, or two to a
 tower explosion or Electrify, which kill everyone left, within 5 seconds of the collapse's start: `RAIDWIDE`) decides
 the wipe; otherwise the collapse's first death does, or a death with a culprit within 1.5 seconds of it (the same
 hit). Deaths within 0.6 seconds of the deciding one (`SIMULTANEOUS_S`: one step of a mechanic; its next step comes

@@ -32,7 +32,8 @@ CASCADE_GAP = 15                 # deaths closer together than this (seconds) be
 SIMULTANEOUS_S = 0.6             # deaths this close to the one that lost the pull lost it with it (one mechanic's step:
                                  # in the hand-checked pulls up to 0.53 s apart; its next step comes 0.8 s or more later)
 RAIDWIDE = {"Electrify", "Unmitigated Explosion"}   # kill everyone left alive: two such deaths are already a mass death,
-RAIDWIDE_S = 5                   # when they come this soon after the collapse began (later, the pull was already lost)
+ULTIMA = "Theos's Ultima"         # Palladion's closing raidwide: a collapse of its own only with Palladion's deaths before it
+RAIDWIDE_S = 5                  # when they come this soon after the collapse began (later, the pull was already lost)
 UNCLEAR = {"p2.tower.unclear", "sc1.tower.wrong_tilt_unclear"}   # rules that blame without knowing why it failed (lone_start)
 LONE_S = 1.5                     # a death with no other this close leads the collapse alone (see lone_start)
 MISTAKE_AFTER_WIPE = 2           # mistakes are counted up to this long after the one that decided the wipe
@@ -558,6 +559,10 @@ def wipe_of(res):
     while jump is None and i > 0 and len({r["victim"] for r in deaths[i:]}) == 1: i = run_start(i - 1)
     # a run after the whole party was dead (players raised after the wipe, dying again) belongs to the run before
     while i > 0 and any(r.get("party_dead") for r in deaths[run_start(i - 1):i]): i = run_start(i - 1)
+    # Theos's Ultima (~24 s after Palladion's last dash, split between everyone alive) killing the last of a party
+    # Palladion left short: the pull was lost in Palladion, its deaths and the Ultima's one collapse (the user's ruling,
+    # 2026-11-12)
+    if i > 0 and deaths[i]["ability"] == ULTIMA and deaths[i - 1]["mechanic"] == "Palladion": i = run_start(i - 1)
     collapse = deaths[i:]
     while len({r["victim"] for r in collapse[1:]}) > 1 and lone_start(collapse, res): collapse = collapse[1:]
     same_hit = lambda r: [q for q in collapse if q["ability"] == r["ability"] and 0 <= q["t"] - r["t"] <= 3]
@@ -568,7 +573,9 @@ def wipe_of(res):
     if not mass and not near and first["confidence"] in ("unattributed", "not blamed"): return [], first
     trig = mass or near or next((r for r in collapse if r["culprits"]), None)
     if not trig and (gated := next((r for r in collapse if r["confidence"] == "not blamed"), None)): return [], gated
-    trig = trig or next((r for r in reversed(deaths[:i]) if r["culprits"]), None)
+    # (passing over Theos's Ultima after Palladion's deaths, as above: the pull was lost in Palladion)
+    after_pall = lambda r: r["ability"] == ULTIMA and any(q["mechanic"] == "Palladion" and q["ability"] != ULTIMA and q["t"] < r["t"] for q in deaths)
+    trig = trig or next((r for r in reversed(deaths[:i]) if r["culprits"] and not after_pall(r)), None)
     if not trig: return [], None
     together = same_hit(trig) if trig is mass else []
     if not (trig is mass and trig["ability"] in RAIDWIDE): together += [q for q in collapse if abs(q["t"] - trig["t"]) <= SIMULTANEOUS_S]
