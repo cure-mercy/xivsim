@@ -601,6 +601,9 @@ function whatHappened(x, who) {
   };
   const deaths = new Set(), count = node => { (node.parts || []).forEach(count); (node.deaths || []).forEach(d => { deaths.add(d.who); count(d.why); }); };
   count(tr);
+  // a chained rule with no earlier death behind it (a raidwide before anyone had died, or the dead with no culprit of
+  // their own): nothing to fold, the cause alone
+  if (!deaths.size && !tr.parts) return own(x.cause);
   // several causes of one hit (both towers exploding) are told in the fold, each with the earlier deaths behind it
   const head = own(tr.rule || `${tr.parts.length} failures at once`);
   // with no earlier deaths behind them (a tether laser, then Electrify), the fold holds only the failures themselves
